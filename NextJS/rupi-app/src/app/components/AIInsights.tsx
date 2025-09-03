@@ -3,7 +3,7 @@
 import { Brain, TrendingUp, Lightbulb, AlertTriangle } from 'lucide-react';
 
 interface AIInsightsProps {
-  widgetSize?: 'square' | 'half' | 'long';
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function AIInsights({ widgetSize = 'half' }: AIInsightsProps) {

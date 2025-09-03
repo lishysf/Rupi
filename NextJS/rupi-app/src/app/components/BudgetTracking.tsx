@@ -3,10 +3,10 @@
 import { Target, TrendingUp, AlertCircle } from 'lucide-react';
 
 interface BudgetTrackingProps {
-  widgetSize?: 'square' | 'half' | 'long';
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
-export default function BudgetTracking({ widgetSize = 'square' }: BudgetTrackingProps) {
+export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTrackingProps) {
   // Mock budget data
   const budgets = [
     {
@@ -68,12 +68,28 @@ export default function BudgetTracking({ widgetSize = 'square' }: BudgetTracking
   const totalSpent = budgets.reduce((sum, item) => sum + item.spent, 0);
   const overallProgress = (totalSpent / totalBudget) * 100;
 
+  // Adjust number of items based on widget size
+  const getItemLimit = () => {
+    switch (widgetSize) {
+      case 'half': return 2;
+      case 'medium': return 3;
+      case 'long': return 5;
+      default: return 3;
+    }
+  };
+
+  const visibleBudgets = budgets.slice(0, getItemLimit());
+
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center">
-          <Target className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <Target className={`${
+            widgetSize === 'half' ? 'w-4 h-4' : 'w-5 h-5'
+          } text-blue-600 dark:text-blue-400 mr-2`} />
+          <h2 className={`${
+            widgetSize === 'half' ? 'text-base' : 'text-lg'
+          } font-semibold text-slate-900 dark:text-white`}>
             Budget Tracking
           </h2>
         </div>
@@ -83,9 +99,13 @@ export default function BudgetTracking({ widgetSize = 'square' }: BudgetTracking
       </div>
 
       {/* Overall Budget Summary */}
-      <div className="mb-3 p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 flex-shrink-0">
+      <div className={`${
+        widgetSize === 'half' ? 'mb-2 p-2' : 'mb-3 p-3'
+      } bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 flex-shrink-0`}>
         <div className="flex justify-between items-center mb-1">
-          <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+          <span className={`${
+            widgetSize === 'half' ? 'text-xs' : 'text-sm'
+          } font-medium text-blue-900 dark:text-blue-100`}>
             Monthly Budget
           </span>
           <span className="text-xs text-blue-700 dark:text-blue-300">
@@ -93,7 +113,9 @@ export default function BudgetTracking({ widgetSize = 'square' }: BudgetTracking
           </span>
         </div>
         <div className="flex justify-between items-center mb-2">
-          <span className="text-lg font-bold text-blue-900 dark:text-blue-100">
+          <span className={`${
+            widgetSize === 'half' ? 'text-sm' : 'text-lg'
+          } font-bold text-blue-900 dark:text-blue-100`}>
             {formatCurrency(totalSpent)}
           </span>
           <span className="text-xs text-blue-700 dark:text-blue-300">
@@ -109,19 +131,25 @@ export default function BudgetTracking({ widgetSize = 'square' }: BudgetTracking
       </div>
 
       {/* Individual Budget Items */}
-      <div className="flex-1 space-y-2 overflow-y-auto">
-        {budgets.slice(0, 3).map((budget) => {
+      <div className={`flex-1 ${
+        widgetSize === 'half' ? 'space-y-1' : 'space-y-2'
+      } overflow-y-auto`}>
+        {visibleBudgets.map((budget) => {
           const percentage = (budget.spent / budget.budget) * 100;
           const isOverspending = percentage >= 100;
           
           return (
             <div
               key={budget.category}
-              className={`p-2 rounded-lg border ${getBackgroundColor(budget.spent, budget.budget)}`}
+              className={`${
+                widgetSize === 'half' ? 'p-1.5' : 'p-2'
+              } rounded-lg border ${getBackgroundColor(budget.spent, budget.budget)}`}
             >
               <div className="flex justify-between items-center mb-1">
                 <div className="flex items-center">
-                  <span className="text-sm font-medium text-slate-900 dark:text-white">
+                  <span className={`${
+                    widgetSize === 'half' ? 'text-xs' : 'text-sm'
+                  } font-medium text-slate-900 dark:text-white`}>
                     {budget.category}
                   </span>
                   {isOverspending && (
@@ -154,10 +182,14 @@ export default function BudgetTracking({ widgetSize = 'square' }: BudgetTracking
       </div>
 
       {/* Quick Stats */}
-      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+      <div className={`${
+        widgetSize === 'half' ? 'mt-2 pt-2' : 'mt-3 pt-3'
+      } border-t border-slate-200 dark:border-slate-700 flex-shrink-0`}>
         <div className="grid grid-cols-2 gap-2">
           <div className="text-center">
-            <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+            <div className={`${
+              widgetSize === 'half' ? 'text-xs' : 'text-sm'
+            } font-bold text-emerald-600 dark:text-emerald-400`}>
               {budgets.filter(b => (b.spent / b.budget) * 100 < 80).length}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -165,7 +197,9 @@ export default function BudgetTracking({ widgetSize = 'square' }: BudgetTracking
             </div>
           </div>
           <div className="text-center">
-            <div className="text-sm font-bold text-red-600 dark:text-red-400">
+            <div className={`${
+              widgetSize === 'half' ? 'text-xs' : 'text-sm'
+            } font-bold text-red-600 dark:text-red-400`}>
               {budgets.filter(b => (b.spent / b.budget) * 100 >= 100).length}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400">

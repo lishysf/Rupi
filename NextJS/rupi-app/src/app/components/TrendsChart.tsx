@@ -79,7 +79,7 @@ const chartConfig = {
 } satisfies ChartConfig
 
 interface TrendsChartProps {
-  widgetSize?: 'square' | 'half' | 'long';
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {

@@ -3,10 +3,10 @@
 import { Target, Laptop, Car, Home, Plane } from 'lucide-react';
 
 interface SavingsGoalsProps {
-  widgetSize?: 'square' | 'half' | 'long';
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
-export default function SavingsGoals({ widgetSize = 'square' }: SavingsGoalsProps) {
+export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProps) {
   // Mock savings goals data
   const goals = [
     {

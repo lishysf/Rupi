@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/chart"
 
 interface CategoryBreakdownProps {
-  widgetSize?: 'square' | 'half' | 'long';
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBreakdownProps) {

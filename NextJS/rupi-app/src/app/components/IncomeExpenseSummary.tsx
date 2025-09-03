@@ -3,7 +3,7 @@
 import { ArrowUpCircle, ArrowDownCircle, PiggyBank } from 'lucide-react';
 
 interface IncomeExpenseSummaryProps {
-  widgetSize?: 'square' | 'half' | 'long';
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeExpenseSummaryProps) {

@@ -2,6 +2,7 @@
 
 import DashboardEditor from '@/app/components/DashboardEditor';
 import NotificationCenter from '@/app/components/NotificationCenter';
+import FloatingChat from '@/app/components/FloatingChat';
 
 export default function Dashboard() {
   return (
@@ -27,6 +28,9 @@ export default function Dashboard() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <DashboardEditor />
       </main>
+
+      {/* Floating Chat */}
+      <FloatingChat />
     </div>
   );
 }

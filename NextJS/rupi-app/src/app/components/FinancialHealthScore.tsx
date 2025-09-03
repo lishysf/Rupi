@@ -3,7 +3,7 @@
 import { Heart, TrendingUp, Activity, PiggyBank } from 'lucide-react';
 
 interface FinancialHealthScoreProps {
-  widgetSize?: 'square' | 'half' | 'long';
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function FinancialHealthScore({ widgetSize = 'square' }: FinancialHealthScoreProps) {

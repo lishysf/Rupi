@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Settings, X, GripVertical, Eye, EyeOff } from 'lucide-react';
+import { Plus, Settings, X } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -37,73 +37,73 @@ import FinancialHealthScore from '@/app/components/FinancialHealthScore';
 const WIDGET_SIZES = {
   'square': { cols: 3, name: '1:1', icon: '⬜' },
   'half': { cols: 6, name: '1:2', icon: '▬' },
+  'medium': { cols: 6, name: '2:2', icon: '⬛' },
   'long': { cols: 12, name: '2:1', icon: '▭' }
-};
+} as const;
 
 // Available components
 const AVAILABLE_COMPONENTS = {
   'balance-overview': {
     name: 'Balance Overview',
     component: BalanceOverview,
-    defaultSize: 'half',
+    defaultSize: 'half' as const,
     description: 'Current balance and monthly progress'
   },
   'income-expense': {
     name: 'Income & Expense',
     component: IncomeExpenseSummary,
-    defaultSize: 'square',
+    defaultSize: 'square' as const,
     description: 'Weekly and monthly summaries'
   },
   'category-breakdown': {
     name: 'Category Breakdown',
     component: CategoryBreakdown,
-    defaultSize: 'square',
+    defaultSize: 'square' as const,
     description: 'Expense breakdown by category'
   },
   'trends-chart': {
     name: 'Trends Chart',
     component: TrendsChart,
-    defaultSize: 'half',
+    defaultSize: 'half' as const,
     description: 'Interactive expense trends'
   },
   'ai-insights': {
     name: 'AI Insights',
     component: AIInsights,
-    defaultSize: 'half',
+    defaultSize: 'half' as const,
     description: 'Smart suggestions and summaries'
   },
   'recent-transactions': {
     name: 'Recent Transactions',
     component: RecentTransactions,
-    defaultSize: 'long',
+    defaultSize: 'long' as const,
     description: 'Latest transaction history'
   },
   'budget-tracking': {
     name: 'Budget Tracking',
     component: BudgetTracking,
-    defaultSize: 'square',
+    defaultSize: 'medium' as const,
     description: 'Monthly budget progress'
   },
   'savings-goals': {
     name: 'Savings Goals',
     component: SavingsGoals,
-    defaultSize: 'square',
+    defaultSize: 'medium' as const,
     description: 'Track your saving targets'
   },
   'financial-health': {
     name: 'Financial Health',
     component: FinancialHealthScore,
-    defaultSize: 'square',
+    defaultSize: 'square' as const,
     description: 'Overall financial score'
   }
-};
+} as const;
 
 interface DashboardItem {
   id: string;
   componentKey: keyof typeof AVAILABLE_COMPONENTS;
   size: keyof typeof WIDGET_SIZES;
   order: number;
-  visible: boolean;
 }
 
 // Sortable component wrapper
@@ -113,7 +113,6 @@ function SortableWidget({
   getColSpanClass, 
   getAvailableSizes, 
   updateComponentSize, 
-  toggleComponentVisibility, 
   removeComponent 
 }: {
   item: DashboardItem;
@@ -121,7 +120,6 @@ function SortableWidget({
   getColSpanClass: (size: keyof typeof WIDGET_SIZES) => string;
   getAvailableSizes: (componentKey: keyof typeof AVAILABLE_COMPONENTS) => (keyof typeof WIDGET_SIZES)[];
   updateComponentSize: (id: string, newSize: keyof typeof WIDGET_SIZES) => void;
-  toggleComponentVisibility: (id: string) => void;
   removeComponent: (id: string) => void;
 }) {
   const {
@@ -147,30 +145,14 @@ function SortableWidget({
     <div
       ref={setNodeRef}
       style={style}
-      className={`${getColSpanClass(item.size)} relative group`}
+      {...(isEditing ? { ...attributes, ...listeners } : {})}
+      className={`${getColSpanClass(item.size)} relative group ${
+        isEditing ? 'cursor-grab active:cursor-grabbing' : ''
+      }`}
     >
-      {/* Drag Handle */}
-      {isEditing && (
-        <div 
-          {...attributes}
-          {...listeners}
-          className="absolute top-2 left-2 z-10 p-1 bg-slate-600 hover:bg-slate-700 text-white rounded cursor-grab active:cursor-grabbing"
-          title="Drag to reorder"
-        >
-          <GripVertical className="w-3 h-3" />
-        </div>
-      )}
-
       {/* Edit Controls */}
       {isEditing && (
         <div className="absolute -top-3 -right-3 z-10 flex gap-2">
-          <button
-            onClick={() => toggleComponentVisibility(item.id)}
-            className="p-1 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs"
-            title={item.visible ? 'Hide' : 'Show'}
-          >
-            {item.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-          </button>
           <button
             onClick={() => removeComponent(item.id)}
             className="p-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
@@ -195,7 +177,7 @@ function SortableWidget({
                     ? 'bg-emerald-600 text-white'
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                 }`}
-                title={`${sizeInfo.name} - ${sizeKey === 'square' ? '4 per row' : sizeKey === 'half' ? '2 per row' : 'Full width, 2 rows tall'}`}
+                title={`${sizeInfo.name} - ${sizeKey === 'square' ? '2 per row (mobile), 4 per row (desktop)' : sizeKey === 'half' ? '1 per row (mobile), 2 per row (desktop)' : 'Full width'}`}
               >
                 <span>{sizeInfo.icon}</span>
                 <span>{sizeInfo.name}</span>
@@ -214,11 +196,12 @@ function SortableWidget({
 
       {/* Actual Component */}
       <div className={`${isEditing ? 'ring-2 ring-emerald-300 dark:ring-emerald-600 ring-opacity-50' : ''} ${
-        item.size === 'square' ? 'h-72' : 
-        item.size === 'half' ? 'h-72' : 
-        'h-[36rem]'
+        item.size === 'square' ? 'aspect-square' : 
+        item.size === 'half' ? 'h-64 md:h-72' : 
+        item.size === 'medium' ? 'aspect-square' :
+        'h-80 md:h-96 lg:h-[36rem]'
       }`}>
-        <div className="h-full">
+        <div className={`h-full ${isEditing ? 'pointer-events-none' : ''}`}>
           <Component widgetSize={item.size} />
         </div>
       </div>
@@ -229,16 +212,15 @@ function SortableWidget({
 export default function DashboardEditor() {
   const [isEditing, setIsEditing] = useState(false);
   const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>([
-    { id: '1', componentKey: 'balance-overview', size: 'half', order: 1, visible: true },
-    { id: '2', componentKey: 'financial-health', size: 'square', order: 2, visible: true },
-    { id: '3', componentKey: 'income-expense', size: 'square', order: 3, visible: true },
-    // Test case: square + half + square layout (3+6+3=12)
-    { id: '4', componentKey: 'category-breakdown', size: 'square', order: 4, visible: true },
-    { id: '5', componentKey: 'ai-insights', size: 'half', order: 5, visible: true },
-    { id: '6', componentKey: 'budget-tracking', size: 'square', order: 6, visible: true },
-    { id: '7', componentKey: 'trends-chart', size: 'half', order: 7, visible: true },
-    { id: '8', componentKey: 'savings-goals', size: 'square', order: 8, visible: true },
-    { id: '9', componentKey: 'recent-transactions', size: 'long', order: 9, visible: true },
+    { id: '1', componentKey: 'balance-overview', size: 'half', order: 1 },
+    { id: '2', componentKey: 'financial-health', size: 'square', order: 2 },
+    { id: '3', componentKey: 'income-expense', size: 'square', order: 3 },
+    { id: '4', componentKey: 'category-breakdown', size: 'square', order: 4 },
+    { id: '5', componentKey: 'ai-insights', size: 'half', order: 5 },
+    { id: '6', componentKey: 'budget-tracking', size: 'medium', order: 6 },
+    { id: '7', componentKey: 'trends-chart', size: 'half', order: 7 },
+    { id: '8', componentKey: 'savings-goals', size: 'medium', order: 8 },
+    { id: '9', componentKey: 'recent-transactions', size: 'long', order: 9 },
   ]);
 
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -283,8 +265,7 @@ export default function DashboardEditor() {
       id: Date.now().toString(),
       componentKey,
       size: finalSize,
-      order: dashboardItems.length + 1,
-      visible: true
+      order: dashboardItems.length + 1
     };
     setDashboardItems([...dashboardItems, newItem]);
     setShowAddMenu(false);
@@ -307,11 +288,7 @@ export default function DashboardEditor() {
     }));
   };
 
-  const toggleComponentVisibility = (id: string) => {
-    setDashboardItems(dashboardItems.map(item => 
-      item.id === id ? { ...item, visible: !item.visible } : item
-    ));
-  };
+
 
   // Handle drag start event
   const handleDragStart = (event: any) => {
@@ -347,7 +324,7 @@ export default function DashboardEditor() {
     ([key]) => !usedComponents.has(key as keyof typeof AVAILABLE_COMPONENTS)
   );
 
-  const visibleItems = dashboardItems.filter(item => item.visible);
+  const visibleItems = dashboardItems;
 
   // Function to get available sizes for a component
   const getAvailableSizes = (componentKey: keyof typeof AVAILABLE_COMPONENTS): (keyof typeof WIDGET_SIZES)[] => {
@@ -355,7 +332,11 @@ export default function DashboardEditor() {
     if (componentKey === 'trends-chart' || componentKey === 'recent-transactions') {
       return ['square', 'half', 'long'];
     }
-    // All other components can only use square and half
+    // Budget tracking and savings goals should only use medium and half (no square or long)
+    if (componentKey === 'budget-tracking' || componentKey === 'savings-goals') {
+      return ['medium', 'half'];
+    }
+    // All other components can use square and half
     return ['square', 'half'];
   };
 
@@ -363,13 +344,15 @@ export default function DashboardEditor() {
   const getColSpanClass = (size: keyof typeof WIDGET_SIZES) => {
     switch (size) {
       case 'square':
-        return 'lg:col-span-3';
+        return 'col-span-1'; // 1 column: 2 per row on mobile, 4 per row on desktop
       case 'half':
-        return 'lg:col-span-6';
+        return 'col-span-2'; // 2 columns: 1 per row on mobile, 2 per row on desktop
+      case 'medium':
+        return 'col-span-2'; // 2 columns: 1 per row on mobile, 2 per row on desktop (2:2 ratio)
       case 'long':
-        return 'lg:col-span-12';
+        return 'col-span-2 md:col-span-4'; // 2 columns on mobile, 4 columns on desktop (full width)
       default:
-        return 'lg:col-span-3';
+        return 'col-span-1';
     }
   };
 
@@ -447,7 +430,7 @@ export default function DashboardEditor() {
           items={visibleItems.map(item => item.id)}
           strategy={rectSortingStrategy}
         >
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 auto-rows-max">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 auto-rows-max pb-32">
             {visibleItems.map((item) => (
               <SortableWidget
                 key={item.id}
@@ -456,7 +439,6 @@ export default function DashboardEditor() {
                 getColSpanClass={getColSpanClass}
                 getAvailableSizes={getAvailableSizes}
                 updateComponentSize={updateComponentSize}
-                toggleComponentVisibility={toggleComponentVisibility}
                 removeComponent={removeComponent}
               />
             ))}
@@ -476,22 +458,25 @@ export default function DashboardEditor() {
                 const getFixedWidth = (size: keyof typeof WIDGET_SIZES) => {
                   switch (size) {
                     case 'square':
-                      return 'w-72'; // Fixed 288px width for square
+                      return 'w-40 md:w-60'; // 1/2 width on mobile, 1/4 width on desktop
                     case 'half':
-                      return 'w-96'; // Fixed 384px width for half
+                      return 'w-80 md:w-[30rem]'; // Full width on mobile, 1/2 width on desktop
+                    case 'medium':
+                      return 'w-80 md:w-[30rem]'; // Full width on mobile, 1/2 width on desktop (2:2 ratio)
                     case 'long':
-                      return 'w-[48rem]'; // Fixed 768px width for long
+                      return 'w-80 md:w-full md:max-w-4xl'; // Full width on both mobile and desktop
                     default:
-                      return 'w-72';
+                      return 'w-40 md:w-60';
                   }
                 };
                 
                 return (
                   <div className={`${getFixedWidth(activeItem.size)} relative`}>
                     <div className={`${
-                      activeItem.size === 'square' ? 'h-72' : 
-                      activeItem.size === 'half' ? 'h-72' : 
-                      'h-[36rem]'
+                      activeItem.size === 'square' ? 'aspect-square' : 
+                      activeItem.size === 'half' ? 'h-64 md:h-72' : 
+                      activeItem.size === 'medium' ? 'aspect-square' :
+                      'h-80 md:h-96 lg:h-[36rem]'
                     } ring-4 ring-emerald-400 rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-xl`}>
                       <div className="h-full">
                         <Component widgetSize={activeItem.size} />
@@ -514,9 +499,8 @@ export default function DashboardEditor() {
           <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
             <li>• <strong>Add:</strong> Click "Add Component" to add new widgets</li>
             <li>• <strong>Remove:</strong> Click the X button to remove a component</li>
-            <li>• <strong>Resize:</strong> Use widget size buttons (⬜ 1:1: 4 per row, ▬ 1:2: 2 per row, ▭ 2:1: Full width, 2 rows tall)</li>
-            <li>• <strong>Reorder:</strong> Drag the grip handle (⋮⋮) to rearrange components</li>
-            <li>• <strong>Hide:</strong> Use the eye icon to hide/show components</li>
+            <li>• <strong>Resize:</strong> Use widget size buttons (⬜ 1:1: Small widget, ▬ 1:2: Medium widget, ▭ 2:1: Full width)</li>
+            <li>• <strong>Reorder:</strong> Click and drag any component to rearrange the layout</li>
           </ul>
         </div>
       )}

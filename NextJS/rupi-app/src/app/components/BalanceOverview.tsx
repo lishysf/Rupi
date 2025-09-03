@@ -3,7 +3,7 @@
 import { TrendingUp, TrendingDown } from 'lucide-react';
 
 interface BalanceOverviewProps {
-  widgetSize?: 'square' | 'half' | 'long';
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverviewProps) {
