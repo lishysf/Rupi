@@ -1,0 +1,59 @@
+Rupi (Smart Expense Tracker)
+
+### 🔑 **Essential Dashboard Elements**
+
+1. **Balance Overview**
+
+   * Current balance (income – expenses).
+   * Month-to-date balance progress.
+
+2. **Income & Expense Summary**
+
+   * Total income this week/month.
+   * Total expenses this week/month.
+   * Net savings (income – expenses).
+
+3. **Category Breakdown**
+
+   * Pie chart or bar chart showing expenses by category (Food, Transport, Bills, Entertainment, etc.).
+   * Highlight top 3 categories.
+
+4. **Daily/Weekly Trends**
+
+   * Line chart of expenses over time.
+   * Compare current week vs. last week.
+
+5. **AI Insights (from LLaMA)**
+
+   * **Summaries**: “Pengeluaran minggu ini Rp850.000, naik 15% dari minggu lalu.”
+   * **Suggestions**: “Kurangi transportasi online 2x, bisa hemat Rp50.000/minggu.”
+   * **Highlights**: “Kategori kopi sudah mencapai 70% dari budget bulanan.”
+
+6. **Recent Transactions**
+
+   * Simple, scrollable list.
+   * Example: “Bensin Rp50.000 – Transport – 28 Aug.”
+
+7. **Budget Tracking**
+
+   * Monthly budget vs. actual spending.
+   * Progress bar with color indicators (green = safe, red = overspending).
+
+8. **Savings Goals**
+
+   * Example: “Target tabungan laptop Rp10 juta, sudah tercapai 40%.”
+
+9. **Financial Health Score**
+
+   * Simple score (0–100) based on spending habits.
+   * Gamified to encourage saving.
+   * Mascot that changes expression based on the health score
+
+10. 
+
+
+
+11. **Notifications/Alerts (Scale in mobile)**
+
+   * Overspending warning.
+   * Reminder if no transaction logged for a few days.
