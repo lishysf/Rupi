@@ -1,18 +1,98 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { ArrowUpCircle, ArrowDownCircle, PiggyBank } from 'lucide-react';
+
+interface FinancialData {
+  weeklyExpenses: number;
+  monthlyExpenses: number;
+  weeklyIncome: number;
+  monthlyIncome: number;
+}
 
 interface IncomeExpenseSummaryProps {
   widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeExpenseSummaryProps) {
-  // Mock data
-  const weeklyIncome = 2500000; // Rp 2,500,000
-  const weeklyExpenses = 1750000; // Rp 1,750,000
-  const monthlyIncome = 10000000; // Rp 10,000,000
-  const monthlyExpenses = 6800000; // Rp 6,800,000
-  const netSavings = monthlyIncome - monthlyExpenses;
+  const [financialData, setFinancialData] = useState<FinancialData>({
+    weeklyExpenses: 0,
+    monthlyExpenses: 0,
+    weeklyIncome: 0,
+    monthlyIncome: 0
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch financial data from database
+  const fetchFinancialData = async () => {
+    try {
+      setLoading(true);
+      
+      const now = new Date();
+      
+      // Get this week's data (Monday to Sunday)
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
+      weekStart.setHours(0, 0, 0, 0);
+      
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6); // Sunday
+      weekEnd.setHours(23, 59, 59, 999);
+      
+      // Get this month's data
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      const [weekExpenseResponse, monthExpenseResponse, weekIncomeResponse, monthIncomeResponse] = await Promise.all([
+        fetch(`/api/expenses?startDate=${weekStart.toISOString()}&endDate=${weekEnd.toISOString()}`),
+        fetch(`/api/expenses?startDate=${monthStart.toISOString()}&endDate=${monthEnd.toISOString()}`),
+        fetch(`/api/income?startDate=${weekStart.toISOString()}&endDate=${weekEnd.toISOString()}`),
+        fetch(`/api/income?startDate=${monthStart.toISOString()}&endDate=${monthEnd.toISOString()}`)
+      ]);
+
+      if (!weekExpenseResponse.ok || !monthExpenseResponse.ok || !weekIncomeResponse.ok || !monthIncomeResponse.ok) {
+        throw new Error('Failed to fetch financial data');
+      }
+
+      const [weekExpenseData, monthExpenseData, weekIncomeData, monthIncomeData] = await Promise.all([
+        weekExpenseResponse.json(),
+        monthExpenseResponse.json(),
+        weekIncomeResponse.json(),
+        monthIncomeResponse.json()
+      ]);
+
+      if (weekExpenseData.success && monthExpenseData.success && weekIncomeData.success && monthIncomeData.success) {
+        const weeklyExpenses = weekExpenseData.data.reduce((sum: number, expense: any) => sum + parseFloat(expense.amount), 0);
+        const monthlyExpenses = monthExpenseData.data.reduce((sum: number, expense: any) => sum + parseFloat(expense.amount), 0);
+        const weeklyIncome = weekIncomeData.data.reduce((sum: number, income: any) => sum + parseFloat(income.amount), 0);
+        const monthlyIncome = monthIncomeData.data.reduce((sum: number, income: any) => sum + parseFloat(income.amount), 0);
+
+        setFinancialData({
+          weeklyExpenses,
+          monthlyExpenses,
+          weeklyIncome,
+          monthlyIncome
+        });
+      } else {
+        throw new Error('Failed to load financial data');
+      }
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching financial data:', err);
+      setError('Failed to load data');
+      // Keep default values if API fails
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFinancialData();
+  }, []);
+
+  // Calculate net savings from real data
+  const netSavings = financialData.monthlyIncome - financialData.monthlyExpenses;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -22,6 +102,38 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
       maximumFractionDigits: 0,
     }).format(amount);
   };
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 h-full flex flex-col overflow-hidden">
+        <div className={`${
+          widgetSize === 'square' ? 'p-3' : 
+          widgetSize === 'half' ? 'p-4' : 'p-6'
+        } flex-shrink-0`}>
+          <h2 className={`${
+            widgetSize === 'square' ? 'text-sm' :
+            widgetSize === 'half' ? 'text-base' : 'text-lg'
+          } font-semibold text-slate-900 dark:text-white`}>
+            Income & Expense Summary
+          </h2>
+        </div>
+        <div className="flex-1 p-4 space-y-4">
+          <div className="animate-pulse space-y-3">
+            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+            <div className="space-y-2">
+              <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded"></div>
+              <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded"></div>
+            </div>
+            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+            <div className="space-y-2">
+              <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded"></div>
+              <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 h-full flex flex-col overflow-hidden">
@@ -63,8 +175,8 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
                 widgetSize === 'square' ? 'text-xs' : 'text-sm'
               } font-semibold text-emerald-600 dark:text-emerald-400 ml-2 flex-shrink-0`}>
                 {widgetSize === 'square' ? 
-                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(weeklyIncome) :
-                  formatCurrency(weeklyIncome)
+                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(financialData.weeklyIncome) :
+                  formatCurrency(financialData.weeklyIncome)
                 }
               </span>
             </div>
@@ -81,8 +193,8 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
                 widgetSize === 'square' ? 'text-xs' : 'text-sm'
               } font-semibold text-red-600 dark:text-red-400 ml-2 flex-shrink-0`}>
                 {widgetSize === 'square' ? 
-                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(weeklyExpenses) :
-                  formatCurrency(weeklyExpenses)
+                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(financialData.weeklyExpenses) :
+                  formatCurrency(financialData.weeklyExpenses)
                 }
               </span>
             </div>
@@ -111,8 +223,8 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
                 widgetSize === 'square' ? 'text-xs' : 'text-sm'
               } font-semibold text-emerald-600 dark:text-emerald-400 ml-2 flex-shrink-0`}>
                 {widgetSize === 'square' ? 
-                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(monthlyIncome) :
-                  formatCurrency(monthlyIncome)
+                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(financialData.monthlyIncome) :
+                  formatCurrency(financialData.monthlyIncome)
                 }
               </span>
             </div>
@@ -129,8 +241,8 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
                 widgetSize === 'square' ? 'text-xs' : 'text-sm'
               } font-semibold text-red-600 dark:text-red-400 ml-2 flex-shrink-0`}>
                 {widgetSize === 'square' ? 
-                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(monthlyExpenses) :
-                  formatCurrency(monthlyExpenses)
+                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(financialData.monthlyExpenses) :
+                  formatCurrency(financialData.monthlyExpenses)
                 }
               </span>
             </div>

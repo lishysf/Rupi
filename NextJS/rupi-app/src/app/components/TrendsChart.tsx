@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from "react"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import { useFinancialData } from '@/contexts/FinancialDataContext'
 
 import {
   Card,
@@ -26,55 +27,27 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-// Mock expense data for Rupi - Indonesian Rupiah amounts
-const expenseData = [
-  { date: "2024-01-01", food: 250000, transport: 120000, entertainment: 80000 },
-  { date: "2024-01-02", food: 180000, transport: 95000, entertainment: 60000 },
-  { date: "2024-01-03", food: 220000, transport: 110000, entertainment: 90000 },
-  { date: "2024-01-04", food: 290000, transport: 140000, entertainment: 120000 },
-  { date: "2024-01-05", food: 320000, transport: 160000, entertainment: 100000 },
-  { date: "2024-01-06", food: 280000, transport: 130000, entertainment: 85000 },
-  { date: "2024-01-07", food: 240000, transport: 100000, entertainment: 70000 },
-  { date: "2024-01-08", food: 350000, transport: 180000, entertainment: 140000 },
-  { date: "2024-01-09", food: 200000, transport: 90000, entertainment: 50000 },
-  { date: "2024-01-10", food: 270000, transport: 125000, entertainment: 95000 },
-  { date: "2024-01-11", food: 310000, transport: 155000, entertainment: 110000 },
-  { date: "2024-01-12", food: 260000, transport: 115000, entertainment: 80000 },
-  { date: "2024-01-13", food: 330000, transport: 170000, entertainment: 130000 },
-  { date: "2024-01-14", food: 190000, transport: 85000, entertainment: 65000 },
-  { date: "2024-01-15", food: 280000, transport: 135000, entertainment: 90000 },
-  { date: "2024-01-16", food: 240000, transport: 105000, entertainment: 75000 },
-  { date: "2024-01-17", food: 360000, transport: 185000, entertainment: 145000 },
-  { date: "2024-01-18", food: 300000, transport: 150000, entertainment: 115000 },
-  { date: "2024-01-19", food: 220000, transport: 95000, entertainment: 70000 },
-  { date: "2024-01-20", food: 250000, transport: 120000, entertainment: 85000 },
-  { date: "2024-01-21", food: 180000, transport: 80000, entertainment: 55000 },
-  { date: "2024-01-22", food: 290000, transport: 145000, entertainment: 100000 },
-  { date: "2024-01-23", food: 270000, transport: 130000, entertainment: 90000 },
-  { date: "2024-01-24", food: 340000, transport: 175000, entertainment: 125000 },
-  { date: "2024-01-25", food: 210000, transport: 100000, entertainment: 65000 },
-  { date: "2024-01-26", food: 320000, transport: 160000, entertainment: 110000 },
-  { date: "2024-01-27", food: 280000, transport: 140000, entertainment: 95000 },
-  { date: "2024-01-28", food: 260000, transport: 125000, entertainment: 80000 },
-  { date: "2024-01-29", food: 380000, transport: 190000, entertainment: 150000 },
-  { date: "2024-01-30", food: 230000, transport: 110000, entertainment: 75000 },
-]
+// Interface for income vs expense trends data
+interface FinancialTrendData {
+  date: string;
+  income: number;
+  expenses: number;
+  net: number;
+}
+
 
 const chartConfig = {
-  totalExpenses: {
-    label: "Total Expenses",
+  income: {
+    label: "Income",
+    color: "#10b981", // emerald green
   },
-  food: {
-    label: "Food",
-    color: "#10b981", // emerald - matches CategoryBreakdown
+  expenses: {
+    label: "Expenses",
+    color: "#ef4444", // red
   },
-  transport: {
-    label: "Transport", 
-    color: "#3b82f6", // blue - matches CategoryBreakdown
-  },
-  entertainment: {
-    label: "Entertainment",
-    color: "#8b5cf6", // violet - matches CategoryBreakdown
+  net: {
+    label: "Net (Income - Expenses)",
+    color: "#3b82f6", // blue
   },
 } satisfies ChartConfig
 
@@ -83,7 +56,11 @@ interface TrendsChartProps {
 }
 
 export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
-  const [timeRange, setTimeRange] = React.useState("30d")
+  const { fetchTrends } = useFinancialData()
+  const [timeRange, setTimeRange] = React.useState("current_month")
+  const [trendsData, setTrendsData] = React.useState<FinancialTrendData[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -94,26 +71,35 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
     }).format(amount);
   };
 
-  const filteredData = expenseData.filter((item) => {
-    const date = new Date(item.date)
-    const referenceDate = new Date("2024-01-30")
-    let daysToSubtract = 30
-    if (timeRange === "7d") {
-      daysToSubtract = 7
-    } else if (timeRange === "90d") {
-      daysToSubtract = 90
+  // Fetch trends data
+  const fetchTrendsData = React.useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      const data = await fetchTrends(timeRange)
+      setTrendsData(data)
+    } catch (err) {
+      setError('Failed to fetch trends data')
+      console.error('Error fetching trends data:', err)
+    } finally {
+      setLoading(false)
     }
-    const startDate = new Date(referenceDate)
-    startDate.setDate(startDate.getDate() - daysToSubtract)
-    return date >= startDate
-  })
+  }, [timeRange, fetchTrends])
 
-  // Calculate total expenses for trend analysis
-  const totalExpenses = filteredData.reduce((sum, day) => 
-    sum + day.food + day.transport + day.entertainment, 0
-  )
+  // Fetch data on component mount and when time range changes
+  React.useEffect(() => {
+    fetchTrendsData()
+  }, [fetchTrendsData])
+
+  // Calculate totals for trend analysis
+  const totalIncome = trendsData.reduce((sum, day) => sum + day.income, 0)
+  const totalExpenses = trendsData.reduce((sum, day) => sum + day.expenses, 0)
+  const totalNet = totalIncome - totalExpenses
   
-  const avgDailyExpense = totalExpenses / filteredData.length
+  const avgDailyIncome = trendsData.length > 0 ? totalIncome / trendsData.length : 0
+  const avgDailyExpense = trendsData.length > 0 ? totalExpenses / trendsData.length : 0
+  const avgDailyNet = trendsData.length > 0 ? totalNet / trendsData.length : 0
 
   return (
     <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-full flex flex-col">
@@ -124,26 +110,29 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
           <CardTitle className={`text-slate-900 dark:text-white ${
             widgetSize === 'square' ? 'text-sm' :
             widgetSize === 'half' ? 'text-base' : 'text-lg'
-          } truncate`}>Expense Trends</CardTitle>
+          } truncate`}>Income vs Expenses</CardTitle>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
           <SelectTrigger
             className={`${
-              widgetSize === 'square' ? 'w-[80px]' : 'w-[120px]'
+              widgetSize === 'square' ? 'w-[100px]' : 'w-[140px]'
             } rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs flex-shrink-0`}
             aria-label="Select time range"
           >
-            <SelectValue placeholder="30d" />
+            <SelectValue placeholder="This Month" />
           </SelectTrigger>
           <SelectContent className="rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+            <SelectItem value="current_month" className="rounded-lg text-xs">
+              {widgetSize === 'square' ? 'This Month' : 'This Month'}
+            </SelectItem>
+            <SelectItem value="last_month" className="rounded-lg text-xs">
+              {widgetSize === 'square' ? 'Last Month' : 'Last Month'}
+            </SelectItem>
             <SelectItem value="7d" className="rounded-lg text-xs">
               {widgetSize === 'square' ? '7d' : '7 days'}
             </SelectItem>
             <SelectItem value="30d" className="rounded-lg text-xs">
               {widgetSize === 'square' ? '30d' : '30 days'}
-            </SelectItem>
-            <SelectItem value="90d" className="rounded-lg text-xs">
-              {widgetSize === 'square' ? '90d' : '3 months'}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -151,47 +140,47 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
       <CardContent className={`flex-1 flex flex-col overflow-hidden ${
         widgetSize === 'square' ? 'p-2' : 'p-3'
       }`}>
-        <ChartContainer
-          config={chartConfig}
-          className={`flex-1 min-h-0 ${
-            widgetSize === 'square' ? 'mb-2' : 'mb-3'
-          }`}
-        >
-          <AreaChart data={filteredData}>
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-sm text-slate-600 dark:text-slate-300">Loading trends...</div>
+          </div>
+        ) : error ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-sm text-red-600 dark:text-red-400">Error: {error}</div>
+          </div>
+        ) : (
+          <ChartContainer
+            config={chartConfig}
+            className={`flex-1 min-h-0 ${
+              widgetSize === 'square' ? 'mb-2' : 'mb-3'
+            }`}
+          >
+            <AreaChart 
+              data={trendsData}
+              margin={{ top: 10, right: 10, left: 10, bottom: 10 }}
+            >
             <defs>
-              <linearGradient id="fillFood" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="fillIncome" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--color-food)"
+                  stopColor="var(--color-income)"
                   stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--color-food)"
+                  stopColor="var(--color-income)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
-              <linearGradient id="fillTransport" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="fillExpenses" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--color-transport)"
+                  stopColor="var(--color-expenses)"
                   stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--color-transport)"
-                  stopOpacity={0.1}
-                />
-              </linearGradient>
-              <linearGradient id="fillEntertainment" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="var(--color-entertainment)"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--color-entertainment)"
+                  stopColor="var(--color-expenses)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
@@ -213,82 +202,150 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                 })
               }}
             />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              stroke="#64748b"
+              fontSize={10}
+              tickFormatter={(value) => {
+                if (widgetSize === 'square') {
+                  return new Intl.NumberFormat('id-ID', { 
+                    notation: 'compact', 
+                    style: 'currency', 
+                    currency: 'IDR',
+                    maximumFractionDigits: 0
+                  }).format(value);
+                }
+                return new Intl.NumberFormat('id-ID', { 
+                  style: 'currency', 
+                  currency: 'IDR',
+                  maximumFractionDigits: 0,
+                  minimumFractionDigits: 0
+                }).format(value);
+              }}
+            />
             <ChartTooltip
               cursor={false}
-              content={
-                <ChartTooltipContent
-                  className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                  labelFormatter={(value) => {
-                    return new Date(value).toLocaleDateString("id-ID", {
-                      weekday: "short",
-                      month: "short", 
-                      day: "numeric",
-                    })
-                  }}
-                  valueFormatter={(value) => formatCurrency(Number(value))}
-                  indicator="dot"
-                />
-              }
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                
+                return (
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3 min-w-[200px]">
+                    <div className="font-medium text-slate-900 dark:text-white mb-2">
+                      {new Date(label).toLocaleDateString("id-ID", {
+                        weekday: "short",
+                        month: "short", 
+                        day: "numeric",
+                      })}
+                    </div>
+                    <div className="space-y-1">
+                      {payload
+                        .filter(entry => Number(entry.value) > 0)
+                        .sort((a, b) => Number(b.value) - Number(a.value))
+                        .map((entry, index) => {
+                          const config = chartConfig[entry.dataKey as keyof typeof chartConfig];
+                          const color = (config && 'color' in config) ? config.color : '#6b7280';
+                          return (
+                            <div key={index} className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full flex-shrink-0" 
+                                  style={{ backgroundColor: color }}
+                                />
+                                <span className="text-sm text-slate-600 dark:text-slate-300 truncate">
+                                  {config?.label || entry.dataKey}
+                                </span>
+                              </div>
+                              <span className="text-sm font-medium text-slate-900 dark:text-white">
+                                {formatCurrency(Number(entry.value))}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                );
+              }}
             />
             <Area
-              dataKey="entertainment"
-              type="natural"
-              fill="url(#fillEntertainment)"
-              stroke="var(--color-entertainment)"
-              stackId="a"
+              dataKey="income"
+              type="monotone"
+              fill="url(#fillIncome)"
+              stroke="var(--color-income)"
+              strokeWidth={2}
+              fillOpacity={0.6}
             />
             <Area
-              dataKey="transport" 
-              type="natural"
-              fill="url(#fillTransport)"
-              stroke="var(--color-transport)"
-              stackId="a"
+              dataKey="expenses"
+              type="monotone"
+              fill="url(#fillExpenses)"
+              stroke="var(--color-expenses)"
+              strokeWidth={2}
+              fillOpacity={0.6}
             />
-            <Area
-              dataKey="food"
-              type="natural"
-              fill="url(#fillFood)"
-              stroke="var(--color-food)"
-              stackId="a"
-            />
-          </AreaChart>
-        </ChartContainer>
+            </AreaChart>
+          </ChartContainer>
+        )}
 
         {/* Summary Stats */}
-        <div className={`grid grid-cols-2 gap-2 flex-shrink-0 ${
+        <div className={`grid grid-cols-3 gap-2 flex-shrink-0 ${
           widgetSize === 'square' ? 'min-h-0' : ''
         }`}>
-          <div className={`bg-slate-50 dark:bg-slate-700/50 rounded-lg ${
+          <div className={`bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg ${
             widgetSize === 'square' ? 'p-1.5' : 'p-2'
           }`}>
             <div className={`${
               widgetSize === 'square' ? 'text-xs' : 'text-xs'
-            } text-slate-600 dark:text-slate-300 mb-1 truncate`}>
-              Total ({timeRange})
+            } text-green-700 dark:text-green-300 mb-1 truncate`}>
+              Income
             </div>
             <div className={`${
               widgetSize === 'square' ? 'text-xs' : 'text-sm'
-            } font-bold text-slate-900 dark:text-white`}>
+            } font-bold text-green-800 dark:text-green-200`}>
+              {widgetSize === 'square' ? 
+                new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(totalIncome) :
+                formatCurrency(totalIncome)
+              }
+            </div>
+          </div>
+          <div className={`bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg ${
+            widgetSize === 'square' ? 'p-1.5' : 'p-2'
+          }`}>
+            <div className={`${
+              widgetSize === 'square' ? 'text-xs' : 'text-xs'
+            } text-red-700 dark:text-red-300 mb-1 truncate`}>
+              Expenses
+            </div>
+            <div className={`${
+              widgetSize === 'square' ? 'text-xs' : 'text-sm'
+            } font-bold text-red-800 dark:text-red-200`}>
               {widgetSize === 'square' ? 
                 new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(totalExpenses) :
                 formatCurrency(totalExpenses)
               }
             </div>
           </div>
-          <div className={`bg-slate-50 dark:bg-slate-700/50 rounded-lg ${
+          <div className={`${
+            totalNet >= 0 ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800' : 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
+          } rounded-lg ${
             widgetSize === 'square' ? 'p-1.5' : 'p-2'
           }`}>
             <div className={`${
               widgetSize === 'square' ? 'text-xs' : 'text-xs'
-            } text-slate-600 dark:text-slate-300 mb-1 truncate`}>
-              Daily Avg
+            } ${
+              totalNet >= 0 ? 'text-blue-700 dark:text-blue-300' : 'text-orange-700 dark:text-orange-300'
+            } mb-1 truncate`}>
+              Net
             </div>
             <div className={`${
               widgetSize === 'square' ? 'text-xs' : 'text-sm'
-            } font-bold text-slate-900 dark:text-white`}>
+            } font-bold ${
+              totalNet >= 0 ? 'text-blue-800 dark:text-blue-200' : 'text-orange-800 dark:text-orange-200'
+            }`}>
               {widgetSize === 'square' ? 
-                new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(avgDailyExpense) :
-                formatCurrency(avgDailyExpense)
+                new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(totalNet) :
+                formatCurrency(totalNet)
               }
             </div>
           </div>
@@ -297,3 +354,6 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
     </Card>
   );
 }
+
+
+

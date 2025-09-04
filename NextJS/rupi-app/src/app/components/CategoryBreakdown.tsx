@@ -1,6 +1,8 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Pie, PieChart, Cell } from "recharts"
+import { useFinancialData } from '@/contexts/FinancialDataContext';
 
 import {
   Card,
@@ -15,20 +17,118 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 
+interface ExpenseSummary {
+  category: string;
+  total: number;
+  count: number;
+}
+
 interface CategoryBreakdownProps {
   widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBreakdownProps) {
-  // Mock data for category breakdown with specific colors
-  const chartData = [
-    { category: "Food", amount: 2500000, fill: "#10b981" }, // emerald
-    { category: "Transport", amount: 1200000, fill: "#3b82f6" }, // blue
-    { category: "Bills", amount: 800000, fill: "#f59e0b" }, // amber
-    { category: "Entertainment", amount: 600000, fill: "#8b5cf6" }, // violet
-    { category: "Shopping", amount: 450000, fill: "#ef4444" }, // red
-    { category: "Coffee", amount: 280000, fill: "#6b7280" }, // gray
-  ];
+  const { state } = useFinancialData();
+  const { expenses } = state.data;
+  const loading = state.loading.initial && expenses.length === 0;
+
+  // Calculate expense summary from context data
+  const expenseSummary: ExpenseSummary[] = useMemo(() => {
+    if (expenses.length === 0) return [];
+
+    // Group expenses by category
+    const categoryMap = new Map<string, { total: number; count: number }>();
+    
+    expenses.forEach(expense => {
+      const category = expense.category;
+      const amount = parseFloat(expense.amount);
+      
+      if (categoryMap.has(category)) {
+        const existing = categoryMap.get(category)!;
+        categoryMap.set(category, {
+          total: existing.total + amount,
+          count: existing.count + 1
+        });
+      } else {
+        categoryMap.set(category, {
+          total: amount,
+          count: 1
+        });
+      }
+    });
+
+    // Convert to array and sort by total amount descending
+    return Array.from(categoryMap.entries())
+      .map(([category, data]) => ({
+        category,
+        total: data.total,
+        count: data.count
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [expenses]);
+
+  // Color mapping for categories
+  const getCategoryColor = (category: string) => {
+    const colorMap: Record<string, string> = {
+      'Food & Groceries': '#10b981', // emerald
+      'Transportation': '#3b82f6', // blue
+      'Housing & Utilities': '#f59e0b', // amber
+      'Health & Personal': '#8b5cf6', // violet
+      'Entertainment & Shopping': '#ef4444', // red
+      'Debt & Savings': '#06b6d4', // cyan
+      'Family & Others': '#6b7280', // gray
+    };
+    return colorMap[category] || '#6b7280';
+  };
+
+  // Transform expense summary to chart data
+  const chartData = expenseSummary.map(item => ({
+    category: item.category,
+    amount: item.total,
+    fill: getCategoryColor(item.category),
+  }));
+
+  if (loading) {
+    return (
+      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-full flex flex-col">
+        <CardContent className="flex-1 flex items-center justify-center p-6">
+          <div className="animate-pulse space-y-4 w-full">
+            <div className="flex items-center justify-center">
+              <div className="w-32 h-32 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {Array.from({ length: 6 }, (_, i) => (
+                <div key={i} className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
+                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded flex-1"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (chartData.length === 0 && !loading) {
+    return (
+      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-full flex flex-col">
+        <CardContent className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Pie className="w-8 h-8 text-slate-400" />
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">
+              No expense data available
+            </p>
+            <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">
+              Start tracking expenses with the AI chat!
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const chartConfig = {
     amount: {

@@ -62,10 +62,10 @@ const AVAILABLE_COMPONENTS = {
     description: 'Expense breakdown by category'
   },
   'trends-chart': {
-    name: 'Trends Chart',
+    name: 'Income vs Expenses',
     component: TrendsChart,
-    defaultSize: 'half' as const,
-    description: 'Interactive expense trends'
+    defaultSize: 'long' as const,
+    description: 'Income vs expense trends'
   },
   'ai-insights': {
     name: 'AI Insights',
@@ -214,12 +214,12 @@ export default function DashboardEditor() {
   const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>([
     { id: '1', componentKey: 'balance-overview', size: 'half', order: 1 },
     { id: '2', componentKey: 'financial-health', size: 'square', order: 2 },
-    { id: '3', componentKey: 'income-expense', size: 'square', order: 3 },
-    { id: '4', componentKey: 'category-breakdown', size: 'square', order: 4 },
-    { id: '5', componentKey: 'ai-insights', size: 'half', order: 5 },
-    { id: '6', componentKey: 'budget-tracking', size: 'medium', order: 6 },
-    { id: '7', componentKey: 'trends-chart', size: 'half', order: 7 },
-    { id: '8', componentKey: 'savings-goals', size: 'medium', order: 8 },
+    { id: '3', componentKey: 'category-breakdown', size: 'square', order: 3 },
+    { id: '4', componentKey: 'trends-chart', size: 'long', order: 4 },
+    { id: '5', componentKey: 'income-expense', size: 'half', order: 5 },
+    { id: '6', componentKey: 'ai-insights', size: 'half', order: 6 },
+    { id: '7', componentKey: 'budget-tracking', size: 'half', order: 7 },
+    { id: '8', componentKey: 'savings-goals', size: 'half', order: 8 },
     { id: '9', componentKey: 'recent-transactions', size: 'long', order: 9 },
   ]);
 
@@ -328,13 +328,17 @@ export default function DashboardEditor() {
 
   // Function to get available sizes for a component
   const getAvailableSizes = (componentKey: keyof typeof AVAILABLE_COMPONENTS): (keyof typeof WIDGET_SIZES)[] => {
-    // Only trends-chart and recent-transactions can use 'long' size
-    if (componentKey === 'trends-chart' || componentKey === 'recent-transactions') {
+    // Trends chart can only use 'long' size (4:2 - full width)
+    if (componentKey === 'trends-chart') {
+      return ['long'];
+    }
+    // Recent transactions can use 'long' size
+    if (componentKey === 'recent-transactions') {
       return ['square', 'half', 'long'];
     }
-    // Budget tracking and savings goals should only use medium and half (no square or long)
+    // Budget tracking and savings goals should only use half (no square, medium, or long)
     if (componentKey === 'budget-tracking' || componentKey === 'savings-goals') {
-      return ['medium', 'half'];
+      return ['half'];
     }
     // All other components can use square and half
     return ['square', 'half'];
