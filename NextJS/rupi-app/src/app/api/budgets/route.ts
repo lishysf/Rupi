@@ -1,32 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
+import { BudgetDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
 import pool from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
 let dbInitialized = false;
 async function ensureDbInitialized() {
   if (!dbInitialized) {
     await initializeDatabase();
-    
-    // Create budgets table if it doesn't exist
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS budgets (
-        id SERIAL PRIMARY KEY,
-        category VARCHAR(100) NOT NULL,
-        amount DECIMAL(10, 2) NOT NULL,
-        month INTEGER NOT NULL,
-        year INTEGER NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(category, month, year)
-      )
-    `);
-    
-    // Create index for faster queries
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_budgets_month_year ON budgets(month, year);
-    `);
-    
     dbInitialized = true;
   }
 }
@@ -35,6 +16,7 @@ async function ensureDbInitialized() {
 export async function GET(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
     
     const searchParams = request.nextUrl.searchParams;
     const month = parseInt(searchParams.get('month') || (new Date().getMonth() + 1).toString()); // Frontend already sends 1-based month
@@ -43,13 +25,8 @@ export async function GET(request: NextRequest) {
     console.log('API: Fetching budgets for month:', month, 'year:', year);
     
     // Get budgets for the specified month/year
-    const budgetsQuery = `
-      SELECT * FROM budgets 
-      WHERE month = $1 AND year = $2
-      ORDER BY category ASC
-    `;
-    const budgetsResult = await pool.query(budgetsQuery, [month, year]);
-    console.log('API: Found budgets:', budgetsResult.rows);
+    const budgets = await BudgetDatabase.getAllBudgets(user.id, month, year);
+    console.log('API: Found budgets:', budgets);
     
     // Get actual spending for each category in the same month
     const startDate = new Date(year, month - 1, 1); // First day of month
@@ -60,10 +37,10 @@ export async function GET(request: NextRequest) {
         category,
         SUM(amount) as spent
       FROM expenses 
-      WHERE date >= $1 AND date <= $2
+      WHERE user_id = $1 AND date >= $2 AND date <= $3
       GROUP BY category
     `;
-    const spendingResult = await pool.query(spendingQuery, [startDate, endDate]);
+    const spendingResult = await pool.query(spendingQuery, [user.id, startDate, endDate]);
     
     // Create a map of spending by category
     const spendingMap = new Map();
@@ -72,10 +49,10 @@ export async function GET(request: NextRequest) {
     });
     
     // Combine budget and spending data
-    const budgetData = budgetsResult.rows.map(budget => ({
+    const budgetData = budgets.map(budget => ({
       id: budget.id,
       category: budget.category,
-      budget: parseFloat(budget.amount),
+      budget: budget.budget,
       spent: spendingMap.get(budget.category) || 0,
       month: budget.month,
       year: budget.year
@@ -106,6 +83,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const body = await request.json();
     const { category, amount, month, year } = body;
@@ -148,24 +126,20 @@ export async function POST(request: NextRequest) {
     const budgetMonth = month || (new Date().getMonth() + 1);
     const budgetYear = year || new Date().getFullYear();
 
-    // Insert or update budget using ON CONFLICT
-    const query = `
-      INSERT INTO budgets (category, amount, month, year)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (category, month, year)
-      DO UPDATE SET 
-        amount = EXCLUDED.amount,
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING *
-    `;
-
-    console.log('API: Executing budget query with params:', [category, amount, budgetMonth, budgetYear]);
-    const result = await pool.query(query, [category, amount, budgetMonth, budgetYear]);
-    console.log('API: Budget query result:', result.rows[0]);
+    // Create or update budget
+    const budget = await BudgetDatabase.createOrUpdateBudget(
+      user.id,
+      category,
+      amount,
+      budgetMonth,
+      budgetYear
+    );
+    
+    console.log('API: Budget query result:', budget);
 
     return NextResponse.json({
       success: true,
-      data: result.rows[0],
+      data: budget,
       message: 'Budget saved successfully'
     }, { status: 201 });
 
@@ -186,6 +160,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
@@ -204,16 +179,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const query = `DELETE FROM budgets WHERE category = $1 AND month = $2 AND year = $3`;
-    console.log('API: Executing delete query with params:', [category, month, year]);
-    const result = await pool.query(query, [category, month, year]);
+    const success = await BudgetDatabase.deleteBudget(user.id, category, month, year);
     
-    console.log('API: Delete result rowCount:', result.rowCount);
+    console.log('API: Delete result:', success);
 
     return NextResponse.json({
       success: true,
       message: 'Budget deleted successfully',
-      deleted: result.rowCount || 0
+      deleted: success ? 1 : 0
     });
 
   } catch (error) {

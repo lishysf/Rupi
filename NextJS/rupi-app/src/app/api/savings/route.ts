@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
 import { initializeDatabase } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 // Database connection
 const pool = new Pool({
@@ -24,6 +25,7 @@ async function ensureDbInitialized() {
 export async function GET(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
     
     const searchParams = request.nextUrl.searchParams;
     const goalId = searchParams.get('goalId');
@@ -33,18 +35,19 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
 
     let query = `
-      SELECT s.*, sg.goal_name as goal_name_from_goal 
+      SELECT s.*, sg.goal_name as goal_name 
       FROM savings s 
       LEFT JOIN savings_goals sg ON s.goal_name = sg.goal_name
+      WHERE s.user_id = $1
     `;
-    const queryParams: any[] = [];
-    let paramCount = 0;
+    const queryParams: any[] = [user.id];
+    let paramCount = 1;
 
     const conditions: string[] = [];
 
     if (goalId) {
       paramCount++;
-      conditions.push(`sg.id = $${paramCount}`);
+      conditions.push(`s.goal_name = (SELECT goal_name FROM savings_goals WHERE id = $${paramCount})`);
       queryParams.push(parseInt(goalId));
     }
 
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (conditions.length > 0) {
-      query += ` WHERE ${conditions.join(' AND ')}`;
+      query += ` AND ${conditions.join(' AND ')}`;
     }
 
     query += ` ORDER BY s.date DESC, s.created_at DESC`;
@@ -101,6 +104,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const body = await request.json();
     const { description, amount, goalId, goalName, type = 'deposit' } = body;
@@ -146,12 +150,13 @@ export async function POST(request: NextRequest) {
 
       // Insert savings record
       const savingsQuery = `
-        INSERT INTO savings (description, amount, goal_name, date)
-        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        INSERT INTO savings (user_id, description, amount, goal_name, date)
+        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
         RETURNING *
       `;
       
       const savingsResult = await client.query(savingsQuery, [
+        user.id,
         description,
         amount,
         goalName || null
@@ -162,9 +167,9 @@ export async function POST(request: NextRequest) {
         const updateGoalQuery = `
           UPDATE savings_goals 
           SET current_amount = current_amount + $1, updated_at = CURRENT_TIMESTAMP
-          WHERE goal_name = $2
+          WHERE goal_name = $2 AND user_id = $3
         `;
-        await client.query(updateGoalQuery, [amount, goalName]);
+        await client.query(updateGoalQuery, [amount, goalName, user.id]);
       }
 
       await client.query('COMMIT');

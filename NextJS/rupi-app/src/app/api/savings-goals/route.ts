@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
 import { initializeDatabase } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 // Database connection
 const pool = new Pool({
@@ -24,18 +25,19 @@ async function ensureDbInitialized() {
 export async function GET(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
     
     const searchParams = request.nextUrl.searchParams;
     const active = searchParams.get('active') === 'true';
 
-    let query = 'SELECT * FROM savings_goals';
-    const queryParams: any[] = [];
+    let query = 'SELECT * FROM savings_goals WHERE user_id = $1';
+    const queryParams: any[] = [user.id];
 
     if (active) {
-      query += ' WHERE current_amount < target_amount';
+      query += ' AND current_amount < target_amount';
     }
 
-    query += ' ORDER BY deadline ASC, created_at DESC';
+    query += ' ORDER BY target_date ASC, created_at DESC';
 
     const result = await pool.query(query, queryParams);
 
@@ -62,9 +64,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const body = await request.json();
-    const { name, targetAmount, deadline, icon, color } = body;
+    const { name, targetAmount, targetDate } = body;
 
     // Validate required fields
     if (!name || !targetAmount) {
@@ -88,12 +91,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate deadline if provided
-    if (deadline && new Date(deadline) <= new Date()) {
+    // Validate target_date if provided
+    if (targetDate && new Date(targetDate) <= new Date()) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Deadline must be in the future'
+          error: 'Target date must be in the future'
         },
         { status: 400 }
       );
@@ -101,17 +104,16 @@ export async function POST(request: NextRequest) {
 
     // Create savings goal
     const query = `
-      INSERT INTO savings_goals (name, target_amount, deadline, icon, color)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO savings_goals (user_id, goal_name, target_amount, target_date)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
     `;
 
     const result = await pool.query(query, [
+      user.id,
       name,
       targetAmount,
-      deadline ? new Date(deadline) : null,
-      icon || null,
-      color || null
+      targetDate ? new Date(targetDate) : null
     ]);
 
     return NextResponse.json({
@@ -137,9 +139,10 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const body = await request.json();
-    const { id, name, targetAmount, deadline, icon, color } = body;
+    const { id, name, targetAmount, targetDate, currentAmount } = body;
 
     // Validate required fields
     if (!id) {
@@ -159,7 +162,7 @@ export async function PUT(request: NextRequest) {
 
     if (name !== undefined) {
       paramCount++;
-      updates.push(`name = $${paramCount}`);
+      updates.push(`goal_name = $${paramCount}`);
       queryParams.push(name);
     }
 
@@ -178,31 +181,34 @@ export async function PUT(request: NextRequest) {
       queryParams.push(targetAmount);
     }
 
-    if (deadline !== undefined) {
-      if (deadline && new Date(deadline) <= new Date()) {
+    if (currentAmount !== undefined) {
+      if (typeof currentAmount !== 'number' || currentAmount < 0) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Deadline must be in the future'
+            error: 'Current amount must be a non-negative number'
           },
           { status: 400 }
         );
       }
       paramCount++;
-      updates.push(`deadline = $${paramCount}`);
-      queryParams.push(deadline ? new Date(deadline) : null);
+      updates.push(`current_amount = $${paramCount}`);
+      queryParams.push(currentAmount);
     }
 
-    if (icon !== undefined) {
+    if (targetDate !== undefined) {
+      if (targetDate && new Date(targetDate) <= new Date()) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Target date must be in the future'
+          },
+          { status: 400 }
+        );
+      }
       paramCount++;
-      updates.push(`icon = $${paramCount}`);
-      queryParams.push(icon);
-    }
-
-    if (color !== undefined) {
-      paramCount++;
-      updates.push(`color = $${paramCount}`);
-      queryParams.push(color);
+      updates.push(`target_date = $${paramCount}`);
+      queryParams.push(targetDate ? new Date(targetDate) : null);
     }
 
     if (updates.length === 0) {
@@ -218,11 +224,12 @@ export async function PUT(request: NextRequest) {
     paramCount++;
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
     queryParams.push(id);
+    queryParams.push(user.id);
 
     const query = `
       UPDATE savings_goals 
       SET ${updates.join(', ')}
-      WHERE id = $${paramCount}
+      WHERE id = $${paramCount} AND user_id = $${paramCount + 1}
       RETURNING *
     `;
 
@@ -261,6 +268,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
@@ -280,16 +288,11 @@ export async function DELETE(request: NextRequest) {
     try {
       await client.query('BEGIN');
 
-      // Get the goal name first
-      const goalResult = await client.query('SELECT goal_name FROM savings_goals WHERE id = $1', [id]);
-      if (goalResult.rows.length > 0) {
-        const goalName = goalResult.rows[0].goal_name;
-        // Delete associated savings records
-        await client.query('DELETE FROM savings WHERE goal_name = $1', [goalName]);
-      }
+      // Delete associated savings records
+      await client.query('DELETE FROM savings WHERE goal_name = (SELECT goal_name FROM savings_goals WHERE id = $1 AND user_id = $2)', [id, user.id]);
 
       // Delete the goal
-      const result = await client.query('DELETE FROM savings_goals WHERE id = $1 RETURNING *', [id]);
+      const result = await client.query('DELETE FROM savings_goals WHERE id = $1 AND user_id = $2 RETURNING *', [id, user.id]);
 
       if (result.rows.length === 0) {
         await client.query('ROLLBACK');

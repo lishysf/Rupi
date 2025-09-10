@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GroqAIService } from '@/lib/groq-ai';
-import { ExpenseDatabase, IncomeDatabase, initializeDatabase } from '@/lib/database';
-import { Pool } from 'pg';
-
-// Database connection
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'rupi_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-});
+import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, InvestmentDatabase, initializeDatabase } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
 let dbInitialized = false;
@@ -21,18 +12,10 @@ async function ensureDbInitialized() {
   }
 }
 
-// Get default user ID for chat operations
-async function getDefaultUserId(): Promise<number> {
-  const result = await pool.query('SELECT id FROM users WHERE email = $1', ['default@example.com']);
-  if (result.rows.length === 0) {
-    throw new Error('Default user not found');
-  }
-  return result.rows[0].id;
-}
-
 export async function POST(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const body = await request.json();
     const { message, action, conversationHistory } = body;
@@ -65,67 +48,53 @@ export async function POST(request: NextRequest) {
           const createdTransactions = [];
           const failedTransactions = [];
           
-        // Get default user ID for transactions
-        const defaultUserId = await getDefaultUserId();
-        
-        // Process each transaction
-        for (const transaction of parsedMultipleTransactions.transactions) {
-          if (transaction.confidence >= 0.5 && transaction.amount > 0) {
-            try {
-              let createdTransaction = null;
-              
-              if (transaction.type === 'expense') {
-                createdTransaction = await ExpenseDatabase.createExpense(
-                  defaultUserId,
-                  transaction.description,
-                  transaction.amount,
-                  transaction.category!,
-                  new Date()
-                );
-              } else if (transaction.type === 'income') {
-                createdTransaction = await IncomeDatabase.createIncome(
-                  defaultUserId,
-                  transaction.description,
-                  transaction.amount,
-                  transaction.source!,
-                  new Date()
-                );
+          // Process each transaction
+          for (const transaction of parsedMultipleTransactions.transactions) {
+            if (transaction.confidence >= 0.5 && transaction.amount > 0) {
+              try {
+                let createdTransaction = null;
+                
+                if (transaction.type === 'expense') {
+                  createdTransaction = await ExpenseDatabase.createExpense(
+                    user.id,
+                    transaction.description,
+                    transaction.amount,
+                    transaction.category!,
+                    new Date()
+                  );
+                } else if (transaction.type === 'income') {
+                  createdTransaction = await IncomeDatabase.createIncome(
+                    user.id,
+                    transaction.description,
+                    transaction.amount,
+                    transaction.source!,
+                    new Date()
+                  );
                 } else if (transaction.type === 'savings') {
-                  // Create savings transaction
-                  const savingsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/savings`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      description: transaction.description,
-                      amount: transaction.amount,
-                      goalName: transaction.goalName,
-                      type: 'deposit'
-                    }),
-                  });
-
-                  if (savingsResponse.ok) {
-                    const savingsData = await savingsResponse.json();
-                    createdTransaction = savingsData.data;
+                  // Create savings transaction directly using database
+                  try {
+                    createdTransaction = await SavingsDatabase.createSavings(
+                      user.id,
+                      transaction.description,
+                      transaction.amount,
+                      transaction.goalName,
+                      new Date()
+                    );
+                  } catch (savingsError) {
+                    console.error('Error creating savings:', savingsError);
                   }
                 } else if (transaction.type === 'investment') {
-                  // Create investment transaction
-                  const investmentResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/investments`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      description: transaction.description,
-                      amount: transaction.amount,
-                      assetName: transaction.assetName
-                    }),
-                  });
-
-                  if (investmentResponse.ok) {
-                    const investmentData = await investmentResponse.json();
-                    createdTransaction = investmentData.data;
+                  // Create investment transaction directly using database
+                  try {
+                    createdTransaction = await InvestmentDatabase.createInvestment(
+                      user.id,
+                      transaction.description,
+                      transaction.amount,
+                      transaction.assetName,
+                      new Date()
+                    );
+                  } catch (investmentError) {
+                    console.error('Error creating investment:', investmentError);
                   }
                 }
                 
@@ -194,12 +163,9 @@ export async function POST(request: NextRequest) {
         
         // Only create transaction if confidence is high enough and amount is valid
         if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
-          // Get default user ID for transaction
-          const defaultUserId = await getDefaultUserId();
-          
           if (parsedTransaction.type === 'expense') {
             transactionCreated = await ExpenseDatabase.createExpense(
-              defaultUserId,
+              user.id,
               parsedTransaction.description,
               parsedTransaction.amount,
               parsedTransaction.category!,
@@ -209,7 +175,7 @@ export async function POST(request: NextRequest) {
             response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category. Your expense has been saved successfully!`;
           } else if (parsedTransaction.type === 'income') {
             transactionCreated = await IncomeDatabase.createIncome(
-              defaultUserId,
+              user.id,
               parsedTransaction.description,
               parsedTransaction.amount,
               parsedTransaction.source!,
@@ -218,46 +184,33 @@ export async function POST(request: NextRequest) {
 
             response = `Excellent! I've recorded your income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}. Your income has been saved successfully!`;
           } else if (parsedTransaction.type === 'savings') {
-            // Create savings transaction
-            const savingsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/savings`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                description: parsedTransaction.description,
-                amount: parsedTransaction.amount,
-                goalName: parsedTransaction.goalName,
-                type: 'deposit'
-              }),
-            });
-
-            if (savingsResponse.ok) {
-              const savingsData = await savingsResponse.json();
-              transactionCreated = savingsData.data;
+            // Create savings transaction directly using database
+            try {
+              transactionCreated = await SavingsDatabase.createSavings(
+                user.id,
+                parsedTransaction.description,
+                parsedTransaction.amount,
+                parsedTransaction.goalName,
+                new Date()
+              );
               response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your main account to your savings account. Your savings balance has been updated!`;
-            } else {
+            } catch (savingsError) {
+              console.error('Error creating savings:', savingsError);
               response = `I understood that you want to record savings, but there was an error saving it. Please try again.`;
             }
           } else if (parsedTransaction.type === 'investment') {
-            // Create investment transaction
-            const investmentResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/investments`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                description: parsedTransaction.description,
-                amount: parsedTransaction.amount,
-                assetName: parsedTransaction.assetName
-              }),
-            });
-
-            if (investmentResponse.ok) {
-              const investmentData = await investmentResponse.json();
-              transactionCreated = investmentData.data;
+            // Create investment transaction directly using database
+            try {
+              transactionCreated = await InvestmentDatabase.createInvestment(
+                user.id,
+                parsedTransaction.description,
+                parsedTransaction.amount,
+                parsedTransaction.assetName,
+                new Date()
+              );
               response = `Excellent! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your main account to your investment account. Your investment portfolio has been updated!`;
-            } else {
+            } catch (investmentError) {
+              console.error('Error creating investment:', investmentError);
               response = `I understood that you want to record an investment, but there was an error saving it. Please try again.`;
             }
           }
@@ -312,23 +265,16 @@ export async function POST(request: NextRequest) {
           dateFilter = { startDate: startOfMonth, endDate: now };
         }
         
-        // Get default user ID for data analysis
-        const defaultUserId = await getDefaultUserId();
-        
         // Get comprehensive financial data for analysis
         const [allExpenses, allIncome] = await Promise.all([
-          ExpenseDatabase.getAllExpenses(defaultUserId, 100, 0), // Get more data for analysis
-          IncomeDatabase.getAllIncome(defaultUserId, 100, 0)
+          ExpenseDatabase.getAllExpenses(user.id, 100, 0), // Get more data for analysis
+          IncomeDatabase.getAllIncome(user.id, 100, 0)
         ]);
 
         // Get savings data directly from database
         let allSavings = [];
         try {
-          const savingsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/savings`);
-          if (savingsResponse.ok) {
-            const savingsData = await savingsResponse.json();
-            allSavings = savingsData.data || [];
-          }
+          allSavings = await SavingsDatabase.getAllSavings(user.id, 100, 0);
         } catch (savingsError) {
           console.error('Error fetching savings:', savingsError);
         }
@@ -336,11 +282,7 @@ export async function POST(request: NextRequest) {
         // Get investments data directly from database
         let allInvestments = [];
         try {
-          const investmentsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/investments`);
-          if (investmentsResponse.ok) {
-            const investmentsData = await investmentsResponse.json();
-            allInvestments = investmentsData.data || [];
-          }
+          allInvestments = await InvestmentDatabase.getAllInvestments(user.id, 100, 0);
         } catch (investmentsError) {
           console.error('Error fetching investments:', investmentsError);
         }
@@ -389,10 +331,9 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Generate general chat response
-      const defaultUserId = await getDefaultUserId();
       const [recentExpenses, recentIncome] = await Promise.all([
-        ExpenseDatabase.getAllExpenses(defaultUserId, 3, 0),
-        IncomeDatabase.getAllIncome(defaultUserId, 3, 0)
+        ExpenseDatabase.getAllExpenses(3, 0),
+        IncomeDatabase.getAllIncome(3, 0)
       ]);
       
       const expenseContext = recentExpenses.length > 0 

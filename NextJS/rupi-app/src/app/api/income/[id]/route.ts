@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { IncomeDatabase, INCOME_SOURCES } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 // PUT - Update income
 export async function PUT(
@@ -7,6 +8,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth(request);
     const { id: idParam } = await params;
     const id = parseInt(idParam);
     if (isNaN(id)) {
@@ -46,6 +48,7 @@ export async function PUT(
 
     // Update income
     const income = await IncomeDatabase.updateIncome(
+      user.id,
       id,
       description,
       amount,
@@ -89,6 +92,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth(request);
     const { id: idParam } = await params;
     const id = parseInt(idParam);
     if (isNaN(id)) {
@@ -101,7 +105,7 @@ export async function DELETE(
       );
     }
 
-    const success = await IncomeDatabase.deleteIncome(id);
+    const success = await IncomeDatabase.deleteIncome(user.id, id);
 
     if (!success) {
       return NextResponse.json(

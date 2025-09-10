@@ -1,11 +1,45 @@
 'use client';
 
+import { useSession, signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import DashboardEditor from '@/app/components/DashboardEditor';
 import NotificationCenter from '@/app/components/NotificationCenter';
 import FloatingChat from '@/app/components/FloatingChat';
 import { FinancialDataProvider } from '@/contexts/FinancialDataContext';
 
 export default function Dashboard() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === 'loading') return; // Still loading
+    if (!session) {
+      router.push('/auth/signin');
+    }
+  }, [session, status, router]);
+
+  const handleSignOut = async () => {
+    await signOut({ callbackUrl: '/auth/signin' });
+  };
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
+            Rupi
+          </div>
+          <div className="text-slate-600 dark:text-slate-400">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null; // Will redirect to signin
+  }
+
   return (
     <FinancialDataProvider>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -21,7 +55,18 @@ export default function Dashboard() {
                   Smart Expense Tracker
                 </div>
               </div>
-              <NotificationCenter />
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-slate-600 dark:text-slate-400">
+                  Welcome, {session.user?.name}
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors"
+                >
+                  Sign out
+                </button>
+                <NotificationCenter />
+              </div>
             </div>
           </div>
         </header>

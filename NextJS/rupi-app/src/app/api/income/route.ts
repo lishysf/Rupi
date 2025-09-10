@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { IncomeDatabase, initializeDatabase, INCOME_SOURCES } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
 let dbInitialized = false;
@@ -14,6 +15,7 @@ async function ensureDbInitialized() {
 export async function GET(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
     
     const searchParams = request.nextUrl.searchParams;
     const source = searchParams.get('source');
@@ -29,19 +31,20 @@ export async function GET(request: NextRequest) {
       // Return income summary by source
       const start = startDate ? new Date(startDate) : undefined;
       const end = endDate ? new Date(endDate) : undefined;
-      income = await IncomeDatabase.getIncomeSummaryBySource(start, end);
+      income = await IncomeDatabase.getIncomeSummaryBySource(user.id, start, end);
     } else if (source && INCOME_SOURCES.includes(source as any)) {
       // Filter by source
-      income = await IncomeDatabase.getIncomeBySource(source as any);
+      income = await IncomeDatabase.getIncomeBySource(user.id, source as any);
     } else if (startDate && endDate) {
       // Filter by date range
       income = await IncomeDatabase.getIncomeByDateRange(
+        user.id,
         new Date(startDate),
         new Date(endDate)
       );
     } else {
       // Get all income with pagination
-      income = await IncomeDatabase.getAllIncome(limit, offset);
+      income = await IncomeDatabase.getAllIncome(user.id, limit, offset);
     }
 
     return NextResponse.json({
@@ -67,6 +70,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const body = await request.json();
     const { description, amount, source, date } = body;
@@ -106,6 +110,7 @@ export async function POST(request: NextRequest) {
 
     // Create income
     const income = await IncomeDatabase.createIncome(
+      user.id,
       description,
       amount,
       source,

@@ -43,7 +43,7 @@ export async function DELETE(
 
       // Fetch the savings record to know amount/goal/type
       const selectRes = await client.query(
-        'SELECT id, amount, goal_name FROM savings WHERE id = $1',
+        'SELECT id, amount, goal_id, type FROM savings WHERE id = $1',
         [id]
       );
 
@@ -58,16 +58,17 @@ export async function DELETE(
       const saving = selectRes.rows[0] as {
         id: number;
         amount: string | number;
-        goal_name: string | null;
+        goal_id: number | null;
+        type: string | null;
       };
 
       const numericAmount = typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount;
 
-      // If it was tied to a goal, reduce the goal's current_amount
-      if (saving.goal_name) {
+      // If it was a deposit tied to a goal, reduce the goal's current_amount
+      if (saving.goal_id && saving.type === 'deposit') {
         await client.query(
-          'UPDATE savings_goals SET current_amount = GREATEST(current_amount - $1, 0), updated_at = CURRENT_TIMESTAMP WHERE goal_name = $2',
-          [numericAmount, saving.goal_name]
+          'UPDATE savings_goals SET current_amount = GREATEST(current_amount - $1, 0), updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          [numericAmount, saving.goal_id]
         );
       }
 
@@ -133,7 +134,7 @@ export async function PUT(
 
       // Load existing saving for delta adjustments
       const existingRes = await client.query(
-        'SELECT id, amount, goal_name FROM savings WHERE id = $1',
+        'SELECT id, amount, goal_id, type FROM savings WHERE id = $1',
         [id]
       );
 
@@ -148,7 +149,8 @@ export async function PUT(
       const existing = existingRes.rows[0] as {
         id: number;
         amount: string | number;
-        goal_name: string | null;
+        goal_id: number | null;
+        type: string | null;
       };
 
       const updates: string[] = [];
@@ -178,14 +180,14 @@ export async function PUT(
       const updateQuery = `UPDATE savings SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
       const updateRes = await client.query(updateQuery, values);
 
-      // Adjust goal if needed when amount changed
-      if (amount !== undefined && existing.goal_name) {
+      // Adjust goal if needed when amount changed and is a deposit
+      if (amount !== undefined && existing.goal_id && existing.type === 'deposit') {
         const oldAmount = typeof existing.amount === 'string' ? parseFloat(existing.amount) : existing.amount;
         const delta = (amount as number) - oldAmount;
         if (delta !== 0) {
           await client.query(
-            'UPDATE savings_goals SET current_amount = GREATEST(current_amount + $1, 0), updated_at = CURRENT_TIMESTAMP WHERE goal_name = $2',
-            [delta, existing.goal_name]
+            'UPDATE savings_goals SET current_amount = GREATEST(current_amount + $1, 0), updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+            [delta, existing.goal_id]
           );
         }
       }

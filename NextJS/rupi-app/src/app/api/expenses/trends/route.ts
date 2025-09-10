@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initializeDatabase } from '@/lib/database';
-import pool from '@/lib/database';
+import { Pool } from 'pg';
+import { requireAuth } from '@/lib/auth-utils';
+
+// Database connection
+const pool = new Pool({
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'rupi_db',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'password',
+});
 
 // Initialize database on first request
 let dbInitialized = false;
@@ -14,6 +24,7 @@ async function ensureDbInitialized() {
 export async function GET(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
     
     const searchParams = request.nextUrl.searchParams;
     const timeRange = searchParams.get('range') || 'current_month';
@@ -54,7 +65,7 @@ export async function GET(request: NextRequest) {
            DATE(e.date) as expense_date,
            SUM(e.amount) as total_expenses
          FROM expenses e
-         WHERE e.date >= $1 AND e.date <= $2
+         WHERE e.user_id = $3 AND e.date >= $1 AND e.date <= $2
          GROUP BY DATE(e.date)
        ),
        daily_income AS (
@@ -62,7 +73,7 @@ export async function GET(request: NextRequest) {
            DATE(i.date) as income_date,
            SUM(i.amount) as total_income
          FROM income i
-         WHERE i.date >= $1 AND i.date <= $2
+         WHERE i.user_id = $3 AND i.date >= $1 AND i.date <= $2
          GROUP BY DATE(i.date)
        )
        SELECT 
@@ -76,7 +87,7 @@ export async function GET(request: NextRequest) {
        ORDER BY ds.date ASC
      `;
      
-     const result = await pool.query(query, [startDate, endDate]);
+     const result = await pool.query(query, [startDate, endDate, user.id]);
      
      // Transform the data to match the expected format
      const trendsData = result.rows.map(row => {

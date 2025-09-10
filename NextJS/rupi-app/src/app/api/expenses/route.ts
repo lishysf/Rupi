@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ExpenseDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
 let dbInitialized = false;
@@ -14,6 +15,7 @@ async function ensureDbInitialized() {
 export async function GET(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
     
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
@@ -29,19 +31,20 @@ export async function GET(request: NextRequest) {
       // Return expense summary by category
       const start = startDate ? new Date(startDate) : undefined;
       const end = endDate ? new Date(endDate) : undefined;
-      expenses = await ExpenseDatabase.getExpenseSummaryByCategory(start, end);
+      expenses = await ExpenseDatabase.getExpenseSummaryByCategory(user.id, start, end);
     } else if (category && EXPENSE_CATEGORIES.includes(category as any)) {
       // Filter by category
-      expenses = await ExpenseDatabase.getExpensesByCategory(category as any);
+      expenses = await ExpenseDatabase.getExpensesByCategory(user.id, category as any);
     } else if (startDate && endDate) {
       // Filter by date range
       expenses = await ExpenseDatabase.getExpensesByDateRange(
+        user.id,
         new Date(startDate),
         new Date(endDate)
       );
     } else {
       // Get all expenses with pagination
-      expenses = await ExpenseDatabase.getAllExpenses(limit, offset);
+      expenses = await ExpenseDatabase.getAllExpenses(user.id, limit, offset);
     }
 
     return NextResponse.json({
@@ -67,6 +70,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const body = await request.json();
     const { description, amount, category, date } = body;
@@ -106,6 +110,7 @@ export async function POST(request: NextRequest) {
 
     // Create expense
     const expense = await ExpenseDatabase.createExpense(
+      user.id,
       description,
       amount,
       category,

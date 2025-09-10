@@ -11,10 +11,10 @@ interface SavingsGoalsProps {
 
 interface SavingsGoal {
   id: number;
-  name: string;
+  goal_name: string;
   target_amount: number;
   current_amount: number;
-  deadline: string | null;
+  target_date: string | null;
   icon: string | null;
   color: string | null;
 }
@@ -290,15 +290,15 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
     const remaining = Math.max(0, goal.target_amount - goal.current_amount);
     if (remaining <= 0) return { monthlyAmount: 0, monthsToComplete: 0, estimatedDate: null };
 
-    if (goal.deadline) {
-      // If deadline is set, calculate monthly amount needed
-      const deadlineDate = new Date(goal.deadline);
+    if (goal.target_date) {
+      // If target_date is set, calculate monthly amount needed
+      const targetDate = new Date(goal.target_date);
       const now = new Date();
-      const monthsRemaining = Math.max(1, (deadlineDate.getFullYear() - now.getFullYear()) * 12 + (deadlineDate.getMonth() - now.getMonth()));
+      const monthsRemaining = Math.max(1, (targetDate.getFullYear() - now.getFullYear()) * 12 + (targetDate.getMonth() - now.getMonth()));
       const monthlyAmount = Math.ceil(remaining / monthsRemaining);
-      return { monthlyAmount, monthsToComplete: monthsRemaining, estimatedDate: goal.deadline };
+      return { monthlyAmount, monthsToComplete: monthsRemaining, estimatedDate: goal.target_date };
     } else {
-      // If no deadline, don't show monthly amount - just show remaining amount
+      // If no target_date, don't show monthly amount - just show remaining amount
       return { monthlyAmount: 0, monthsToComplete: 0, estimatedDate: null };
     }
   };
@@ -450,10 +450,10 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
                     </div>
                     <div>
                       <h3 className="text-sm font-medium text-slate-900 dark:text-white">
-                        {goal.name}
+                        {goal.goal_name}
                       </h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {goal.deadline ? `Target: ${formatDate(goal.deadline)}` : 'No deadline set'}
+                        {goal.target_date ? `Target: ${formatDate(goal.target_date)}` : 'No deadline set'}
                       </p>
                     </div>
                   </div>

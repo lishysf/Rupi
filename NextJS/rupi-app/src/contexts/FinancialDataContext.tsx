@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 
 // Types
 interface Transaction {
@@ -335,9 +336,12 @@ const FinancialDataContext = createContext<FinancialDataContextType | null>(null
 export function FinancialDataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(financialDataReducer, initialState);
   const isRefreshing = useRef(false);
+  const { data: session, status } = useSession();
 
   // Fetch functions
   const fetchTransactions = useCallback(async () => {
+    if (!session) return;
+    
     try {
       const [expensesResponse, incomeResponse] = await Promise.all([
         fetch('/api/expenses?limit=50'),
@@ -378,9 +382,11 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } catch (error) {
       console.error('Error fetching transactions:', error);
     }
-  }, []);
+  }, [session]);
 
   const fetchBudgets = useCallback(async () => {
+    if (!session) return;
+    
     try {
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
@@ -398,9 +404,11 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } catch (error) {
       console.error('Error fetching budgets:', error);
     }
-  }, []);
+  }, [session]);
 
   const fetchExpenses = useCallback(async () => {
+    if (!session) return;
+    
     try {
       const response = await fetch('/api/expenses?limit=100');
       
@@ -415,9 +423,11 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } catch (error) {
       console.error('Error fetching expenses:', error);
     }
-  }, []);
+  }, [session]);
 
   const fetchIncome = useCallback(async () => {
+    if (!session) return;
+    
     try {
       const response = await fetch('/api/income?limit=100');
       
@@ -432,9 +442,11 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } catch (error) {
       console.error('Error fetching income:', error);
     }
-  }, []);
+  }, [session]);
 
   const fetchSavings = useCallback(async () => {
+    if (!session) return;
+    
     try {
       const response = await fetch('/api/savings?limit=100');
       
@@ -449,9 +461,11 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } catch (error) {
       console.error('Error fetching savings:', error);
     }
-  }, []);
+  }, [session]);
 
   const fetchInvestments = useCallback(async () => {
+    if (!session) return;
+    
     try {
       const response = await fetch('/api/investments?limit=100');
       if (!response.ok) {
@@ -464,7 +478,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } catch (error) {
       console.error('Error fetching investments:', error);
     }
-  }, []);
+  }, [session]);
 
   const fetchTrends = useCallback(async (timeRange: string) => {
     try {
@@ -767,7 +781,20 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
 
   // Initial data load
   useEffect(() => {
+    if (status === 'loading') return; // Still loading session
+    
     const loadInitialData = async () => {
+      if (!session) {
+        // Clear data if user is not authenticated
+        dispatch({ type: 'SET_TRANSACTIONS', payload: [] });
+        dispatch({ type: 'SET_BUDGETS', payload: [] });
+        dispatch({ type: 'SET_EXPENSES', payload: [] });
+        dispatch({ type: 'SET_INCOME', payload: [] });
+        dispatch({ type: 'SET_SAVINGS', payload: [] });
+        dispatch({ type: 'SET_INVESTMENTS', payload: [] });
+        return;
+      }
+      
       dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: true } });
       
       try {
@@ -778,7 +805,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     };
 
     loadInitialData();
-  }, [refreshAll]);
+  }, [session, status, refreshAll]);
 
   const contextValue: FinancialDataContextType = {
     state,

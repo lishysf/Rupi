@@ -14,7 +14,7 @@ interface SavingsGoalModalProps {
 interface SavingsGoalData {
   name: string;
   targetAmount: number;
-  deadline: string | null;
+  targetDate: string | null;
   icon: string | null;
   color: string | null;
 }
@@ -38,7 +38,7 @@ export default function SavingsGoalModal({ isOpen, onClose, onSave }: SavingsGoa
   const [formData, setFormData] = useState<SavingsGoalData>({
     name: '',
     targetAmount: 0,
-    deadline: null,
+    targetDate: null,
     icon: 'target',
     color: 'blue',
   });
@@ -81,7 +81,7 @@ export default function SavingsGoalModal({ isOpen, onClose, onSave }: SavingsGoa
         setFormData({
           name: '',
           targetAmount: 0,
-          deadline: null,
+          targetDate: null,
           icon: 'target',
           color: 'blue',
         });
@@ -99,7 +99,7 @@ export default function SavingsGoalModal({ isOpen, onClose, onSave }: SavingsGoa
       setFormData({
         name: '',
         targetAmount: 0,
-        deadline: null,
+        targetDate: null,
         icon: 'target',
         color: 'blue',
       });
@@ -193,8 +193,8 @@ export default function SavingsGoalModal({ isOpen, onClose, onSave }: SavingsGoa
                 </label>
                 <input
                   type="date"
-                  value={formData.deadline || ''}
-                  onChange={(e) => setFormData({ ...formData, deadline: e.target.value || null })}
+                  value={formData.targetDate || ''}
+                  onChange={(e) => setFormData({ ...formData, targetDate: e.target.value || null })}
                   min={new Date().toISOString().split('T')[0]}
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   disabled={loading}
@@ -279,11 +279,11 @@ export default function SavingsGoalModal({ isOpen, onClose, onSave }: SavingsGoa
                         {formatCurrency(formData.targetAmount)}
                       </span>
                     </div>
-                    {formData.deadline && (
+                    {formData.targetDate && (
                       <div className="flex justify-between">
                         <span className="text-slate-600 dark:text-slate-400">Target date:</span>
                         <span className="font-medium text-slate-900 dark:text-white">
-                          {formatDate(formData.deadline)}
+                          {formatDate(formData.targetDate)}
                         </span>
                       </div>
                     )}
