@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowUpRight, ArrowDownLeft, Car, Coffee, ShoppingBag, Utensils, Home, Calendar, RefreshCw, Zap, Plane, Heart, GamepadIcon, CreditCard, Users, DollarSign, TrendingUp, Briefcase, Gift } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Car, Coffee, ShoppingBag, Utensils, Home, Calendar, Zap, Plane, Heart, GamepadIcon, CreditCard, Users, DollarSign, TrendingUp, Briefcase, Gift, Edit3, Trash2 } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import TransactionEditModal from './TransactionEditModal';
 
 interface Transaction {
   id: number;
@@ -12,7 +13,7 @@ interface Transaction {
   date: string;
   created_at: string;
   updated_at: string;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'savings';
 }
 
 interface Expense {
@@ -40,24 +41,92 @@ interface RecentTransactionsProps {
 }
 
 export default function RecentTransactions({ widgetSize = 'long' }: RecentTransactionsProps) {
-  const { state, refreshAll } = useFinancialData();
-  const { transactions } = state.data;
+  const { state, deleteTransaction, updateTransaction } = useFinancialData();
+  const { transactions, savings } = state.data;
   const loading = state.loading.initial && transactions.length === 0;
   const [error, setError] = useState<string | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<{
+    id: number;
+    description: string;
+    amount: number;
+    category: string;
+    date: string;
+    created_at: string;
+    updated_at: string;
+    type: 'income' | 'expense';
+  } | null>(null);
+  const [deleting, setDeleting] = useState<number | null>(null);
 
-  // Manual refresh function for the refresh button
-  const handleRefresh = async () => {
+  // Handle delete transaction
+  const handleDelete = async (transaction: Transaction) => {
+    if (deleting === transaction.id) return;
+    
+    try {
+      setDeleting(transaction.id);
+      setError(null);
+      // Only allow deletion of income and expense transactions through the context
+      if (transaction.type === 'savings') {
+        // Handle savings deletion separately
+        const response = await fetch(`/api/savings/${transaction.id}`, {
+          method: 'DELETE',
+        });
+        if (response.ok) {
+          // Refresh the data
+          window.location.reload();
+        } else {
+          setError('Failed to delete savings transaction');
+        }
+      } else {
+        const success = await deleteTransaction(transaction.id, transaction.type);
+        if (!success) {
+          setError('Failed to delete transaction');
+        }
+      }
+    } catch (err) {
+      console.error('Error deleting transaction:', err);
+      setError('Failed to delete transaction');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  // Handle edit transaction
+  const handleEdit = (transaction: Transaction) => {
+    // Only allow editing of income and expense transactions
+    if (transaction.type !== 'savings') {
+      // Convert to the expected type for the modal
+      const editableTransaction = {
+        ...transaction,
+        type: transaction.type as 'income' | 'expense'
+      };
+      setEditingTransaction(editableTransaction);
+    }
+  };
+
+  // Handle close edit modal
+  const handleCloseEdit = () => {
+    setEditingTransaction(null);
+  };
+
+  // Handle save edit from modal
+  const handleSaveEdit = async (id: number, type: 'income' | 'expense', data: any) => {
     try {
       setError(null);
-      await refreshAll();
+      const success = await updateTransaction(id, type, data);
+      if (!success) {
+        setError('Failed to update transaction');
+        return false;
+      }
+      return true;
     } catch (err) {
-      console.error('Error refreshing transactions:', err);
-      setError('Failed to refresh transactions');
+      console.error('Error updating transaction:', err);
+      setError('Failed to update transaction');
+      return false;
     }
   };
 
   // Get icon and color for category
-  const getCategoryInfo = (category: string, type: 'income' | 'expense') => {
+  const getCategoryInfo = (category: string, type: 'income' | 'expense' | 'savings') => {
     if (type === 'income') {
       const incomeCategories: Record<string, { icon: any; color: string }> = {
         'Salary': { icon: Briefcase, color: 'text-blue-600 dark:text-blue-400' },
@@ -69,6 +138,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         'Others': { icon: DollarSign, color: 'text-gray-600 dark:text-gray-400' },
       };
       return incomeCategories[category] || { icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400' };
+    } else if (type === 'savings') {
+      return { icon: TrendingUp, color: 'text-blue-600 dark:text-blue-400' };
     } else {
       const expenseCategories: Record<string, { icon: any; color: string }> = {
         'Housing & Utilities': { icon: Home, color: 'text-orange-600 dark:text-orange-400' },
@@ -76,7 +147,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         'Transportation': { icon: Car, color: 'text-blue-600 dark:text-blue-400' },
         'Health & Personal': { icon: Heart, color: 'text-red-600 dark:text-red-400' },
         'Entertainment & Shopping': { icon: ShoppingBag, color: 'text-purple-600 dark:text-purple-400' },
-        'Debt & Savings': { icon: CreditCard, color: 'text-cyan-600 dark:text-cyan-400' },
+        'Debt Payments': { icon: CreditCard, color: 'text-red-600 dark:text-red-400' },
+        'Savings & Investments': { icon: TrendingUp, color: 'text-cyan-600 dark:text-cyan-400' },
         'Family & Others': { icon: Users, color: 'text-gray-600 dark:text-gray-400' },
         // Fallbacks for old categories
         'Transport': { icon: Car, color: 'text-blue-600 dark:text-blue-400' },
@@ -126,7 +198,17 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     }).format(date);
   };
 
-  const limitedTransactions = transactions.slice(0, getTransactionLimit());
+  // Combine transactions and savings data
+  const allTransactions = [
+    ...transactions,
+    ...savings.map(saving => ({
+      ...saving,
+      type: 'savings' as const,
+      category: saving.goal_name || 'Savings'
+    }))
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const limitedTransactions = allTransactions.slice(0, getTransactionLimit());
 
   if (loading) {
     return (
@@ -135,7 +217,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           <h2 className={`${widgetSize === 'square' ? 'text-base' : 'text-lg'} font-semibold text-slate-900 dark:text-white`}>
             Recent Transactions
           </h2>
-          <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+          <div className="w-4 h-4 animate-spin border-2 border-slate-400 border-t-transparent rounded-full"></div>
         </div>
         <div className="flex-1 space-y-3">
           {Array.from({ length: getTransactionLimit() }, (_, i) => (
@@ -157,19 +239,12 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <h2 className={`${
           widgetSize === 'square' ? 'text-base' : 'text-lg'
         } font-semibold text-slate-900 dark:text-white`}>
           Recent Transactions
         </h2>
-        <button 
-          onClick={handleRefresh}
-          className="text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium flex items-center space-x-1"
-        >
-          <RefreshCw className="w-3 h-3" />
-          <span>Refresh</span>
-        </button>
       </div>
 
       {error && (
@@ -193,13 +268,15 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           const categoryInfo = getCategoryInfo(transaction.category, transaction.type);
           const IconComponent = categoryInfo.icon;
           const isIncome = transaction.type === 'income';
+          const isSavings = transaction.type === 'savings';
+          const isDeleting = deleting === transaction.id;
           
           return (
             <div
               key={transaction.id}
               className={`flex items-center justify-between ${
                 widgetSize === 'square' ? 'p-2' : 'p-3'
-              } rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors`}
+              } rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group`}
             >
               <div className="flex items-center min-w-0 flex-1">
                 <div className={`${
@@ -207,6 +284,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                 } rounded-lg mr-3 flex-shrink-0 ${
                   isIncome 
                     ? 'bg-emerald-100 dark:bg-emerald-900/30' 
+                    : isSavings
+                    ? 'bg-blue-100 dark:bg-blue-900/30'
                     : 'bg-slate-100 dark:bg-slate-700'
                 }`}>
                   <IconComponent className={`${
@@ -232,21 +311,52 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                 </div>
               </div>
 
-              <div className="text-right flex-shrink-0 ml-2">
-                <div className={`${
-                  widgetSize === 'square' ? 'text-sm' : 'text-base'
-                } font-semibold ${
-                  isIncome 
-                    ? 'text-emerald-600 dark:text-emerald-400' 
-                    : 'text-red-600 dark:text-red-400'
-                }`}>
-                  {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                {/* Action buttons - shown on hover or for square widgets */}
+                <div className={`flex gap-1 ${
+                  widgetSize === 'square' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                } transition-opacity`}>
+                  <button
+                    onClick={() => handleEdit(transaction)}
+                    disabled={transaction.type === 'savings'}
+                    className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={transaction.type === 'savings' ? 'Cannot edit savings transactions' : 'Edit transaction'}
+                  >
+                    <Edit3 className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(transaction)}
+                    disabled={isDeleting}
+                    className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
+                    title="Delete transaction"
+                  >
+                    {isDeleting ? (
+                      <div className="w-3 h-3 animate-spin border border-red-600 border-t-transparent rounded-full"></div>
+                    ) : (
+                      <Trash2 className="w-3 h-3" />
+                    )}
+                  </button>
                 </div>
-                {widgetSize === 'square' && (
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {formatDate(transaction.date)} • {formatTime(transaction.date)}
+                
+                {/* Amount */}
+                <div className="text-right">
+                  <div className={`${
+                    widgetSize === 'square' ? 'text-sm' : 'text-base'
+                  } font-semibold ${
+                    isIncome 
+                      ? 'text-emerald-600 dark:text-emerald-400' 
+                      : isSavings
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {isIncome ? '+' : isSavings ? '💎' : '-'}{formatCurrency(transaction.amount)}
                   </div>
-                )}
+                  {widgetSize === 'square' && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {formatDate(transaction.date)} • {formatTime(transaction.date)}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -272,6 +382,14 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           </div>
         </div>
       )}
+
+      {/* Transaction Edit Modal */}
+      <TransactionEditModal
+        transaction={editingTransaction}
+        isOpen={!!editingTransaction}
+        onClose={handleCloseEdit}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
 }

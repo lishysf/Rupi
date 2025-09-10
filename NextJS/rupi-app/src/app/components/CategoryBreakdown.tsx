@@ -75,7 +75,8 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
       'Housing & Utilities': '#f59e0b', // amber
       'Health & Personal': '#8b5cf6', // violet
       'Entertainment & Shopping': '#ef4444', // red
-      'Debt & Savings': '#06b6d4', // cyan
+      'Debt Payments': '#dc2626', // red-600
+      'Savings & Investments': '#06b6d4', // cyan
       'Family & Others': '#6b7280', // gray
     };
     return colorMap[category] || '#6b7280';

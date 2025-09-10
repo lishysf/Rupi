@@ -56,7 +56,7 @@ interface TrendsChartProps {
 }
 
 export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
-  const { fetchTrends } = useFinancialData()
+  const { fetchTrends, state } = useFinancialData()
   const [timeRange, setTimeRange] = React.useState("current_month")
   const [trendsData, setTrendsData] = React.useState<FinancialTrendData[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -87,10 +87,10 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
     }
   }, [timeRange, fetchTrends])
 
-  // Fetch data on component mount and when time range changes
+  // Fetch data on component mount, when time range changes, or when transactions are updated
   React.useEffect(() => {
     fetchTrendsData()
-  }, [fetchTrendsData])
+  }, [fetchTrendsData, state.data.lastUpdated.transactions])
 
   // Calculate totals for trend analysis
   const totalIncome = trendsData.reduce((sum, day) => sum + day.income, 0)

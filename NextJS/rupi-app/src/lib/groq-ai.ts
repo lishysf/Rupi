@@ -24,17 +24,18 @@ export interface ParsedIncome {
 
 // Interface for parsed transaction data
 export interface ParsedTransaction {
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'savings';
   description: string;
   amount: number;
   category?: ExpenseCategory;
   source?: IncomeSource;
+  goalName?: string;
   confidence: number;
 }
 
-// System prompt for transaction parsing (both income and expenses)
+// System prompt for transaction parsing (income, expenses, and savings)
 const TRANSACTION_PARSING_PROMPT = `
-You are an AI assistant that helps parse natural language income and expense descriptions into structured data.
+You are an AI assistant that helps parse natural language financial transaction descriptions into structured data.
 
 Available expense categories:
 1. Housing & Utilities (rent, electricity, internet, water, mortgage, home maintenance)
@@ -42,7 +43,7 @@ Available expense categories:
 3. Transportation (fuel, public transport, taxi, car maintenance, parking)
 4. Health & Personal (medical, fitness, self-care, pharmacy, doctor visits)
 5. Entertainment & Shopping (leisure, clothes, subscriptions, games, movies, hobbies)
-6. Debt & Savings (loan payments, savings, investments, credit card payments)
+6. Debt Payments (credit card payments, loan payments, debt repayment, mortgage payments)
 7. Family & Others (kids, pets, gifts, charity, unexpected expenses, miscellaneous)
 
 Available income sources:
@@ -54,7 +55,7 @@ Available income sources:
 6. Gift (gifts, allowance, money received)
 7. Others (other income sources, miscellaneous income)
 
-Your task is to determine if the input is income or expense, then parse accordingly. Return ONLY a valid JSON object with this exact structure:
+Your task is to determine if the input is income, expense, or savings, then parse accordingly. Return ONLY a valid JSON object with this exact structure:
 
 For EXPENSES:
 {
@@ -74,8 +75,18 @@ For INCOME:
   "confidence": number between 0 and 1
 }
 
+For SAVINGS:
+{
+  "type": "savings",
+  "description": "cleaned and formatted description",
+  "amount": number (extracted amount),
+  "goalName": "goal name if mentioned, otherwise null",
+  "confidence": number between 0 and 1
+}
+
 Rules:
-- Detect if input describes receiving money (income) or spending money (expense)
+- Detect if input describes receiving money (income), spending money (expense), or saving money (savings)
+- Savings include: deposits, investments, setting money aside, emergency funds, goal-based savings
 - Extract the amount as a positive number (remove currency symbols)
 - Choose the most appropriate category/source from the provided lists
 - Clean up the description but keep it informative
@@ -98,10 +109,26 @@ Output: {"type": "expense", "description": "Coffee purchase", "amount": 50000, "
 
 Input: "Bayar listrik bulan ini 200rb"
 Output: {"type": "expense", "description": "Monthly electricity bill", "amount": 200000, "category": "Housing & Utilities", "confidence": 0.95}
+
+Input: "Bayar cicilan motor 1.5 juta"
+Output: {"type": "expense", "description": "Motorcycle installment payment", "amount": 1500000, "category": "Debt Payments", "confidence": 0.95}
+
+Savings Examples:
+Input: "Tabung deposito 2 juta"
+Output: {"type": "savings", "description": "Deposit savings", "amount": 2000000, "goalName": null, "confidence": 0.9}
+
+Input: "Invest saham 500rb"
+Output: {"type": "savings", "description": "Stock investment", "amount": 500000, "goalName": null, "confidence": 0.9}
+
+Input: "Tabung untuk laptop 1 juta"
+Output: {"type": "savings", "description": "Savings for laptop", "amount": 1000000, "goalName": "laptop", "confidence": 0.9}
+
+Input: "Emergency fund 3 juta"
+Output: {"type": "savings", "description": "Emergency fund deposit", "amount": 3000000, "goalName": "emergency fund", "confidence": 0.9}
 `;
 
 export class GroqAIService {
-  // Parse transaction (income or expense) from natural language
+  // Parse transaction (income, expense, or savings) from natural language
   static async parseTransaction(userInput: string): Promise<ParsedTransaction> {
     try {
       const chatCompletion = await groq.chat.completions.create({
@@ -170,7 +197,7 @@ export class GroqAIService {
 
   // Validate parsed transaction data
   private static isValidParsedTransaction(transaction: any): transaction is ParsedTransaction {
-    const hasValidType = transaction.type === 'income' || transaction.type === 'expense';
+    const hasValidType = transaction.type === 'income' || transaction.type === 'expense' || transaction.type === 'savings';
     const hasValidBasics = (
       typeof transaction === 'object' &&
       typeof transaction.description === 'string' &&
@@ -187,12 +214,22 @@ export class GroqAIService {
         typeof transaction.category === 'string' &&
         EXPENSE_CATEGORIES.includes(transaction.category as ExpenseCategory)
       );
-    } else {
+    }
+
+    if (transaction.type === 'income') {
       return (
         typeof transaction.source === 'string' &&
         INCOME_SOURCES.includes(transaction.source as IncomeSource)
       );
     }
+
+    if (transaction.type === 'savings') {
+      return (
+        transaction.goalName === null || typeof transaction.goalName === 'string'
+      );
+    }
+
+    return false;
   }
 
   // Validate parsed expense data (legacy)
@@ -313,7 +350,8 @@ export class GroqAIService {
       'Transportation': ['bensin', 'gojek', 'grab', 'ojol', 'bus', 'kereta', 'parkir', 'tol'],
       'Health & Personal': ['dokter', 'obat', 'apotek', 'vitamin', 'gym', 'salon', 'potong rambut'],
       'Entertainment & Shopping': ['baju', 'sepatu', 'film', 'game', 'netflix', 'spotify', 'shopping', 'mall'],
-      'Debt & Savings': ['bayar hutang', 'cicilan', 'tabung', 'invest', 'kredit'],
+      'Debt Payments': ['bayar hutang', 'cicilan', 'kredit', 'kartu kredit', 'pinjaman', 'loan', 'debt'],
+      'Savings & Investments': ['tabung', 'invest', 'saham', 'reksadana', 'deposito', 'saving', 'investment'],
       'Family & Others': ['hadiah', 'anak', 'kucing', 'anjing', 'donasi', 'sedekah']
     };
 

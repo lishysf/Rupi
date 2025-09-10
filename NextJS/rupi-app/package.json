@@ -7,7 +7,10 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "setup-db": "node scripts/setup-database.js"
+    "setup-db": "node scripts/setup-database.js",
+    "setup-db-new": "node scripts/setup-database-new.js",
+    "test-budget": "node scripts/test-budget-api.js",
+    "fix-budget": "node scripts/fix-budget-table.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

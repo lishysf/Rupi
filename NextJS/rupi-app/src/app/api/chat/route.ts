@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
             );
 
             response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category. Your expense has been saved successfully!`;
-          } else {
+          } else if (parsedTransaction.type === 'income') {
             transactionCreated = await IncomeDatabase.createIncome(
               parsedTransaction.description,
               parsedTransaction.amount,
@@ -57,12 +57,36 @@ export async function POST(request: NextRequest) {
             );
 
             response = `Excellent! I've recorded your income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}. Your income has been saved successfully!`;
+          } else if (parsedTransaction.type === 'savings') {
+            // Create savings transaction
+            const savingsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/savings`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                description: parsedTransaction.description,
+                amount: parsedTransaction.amount,
+                goalName: parsedTransaction.goalName,
+                type: 'deposit'
+              }),
+            });
+
+            if (savingsResponse.ok) {
+              const savingsData = await savingsResponse.json();
+              transactionCreated = savingsData.data;
+              response = `Perfect! I've recorded your savings: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}. Your savings have been saved successfully!`;
+            } else {
+              response = `I understood that you want to record savings, but there was an error saving it. Please try again.`;
+            }
           }
         } else {
           if (parsedTransaction.type === 'expense') {
             response = `I understood that you want to record an expense, but I need more clarity. Could you please specify the amount and what you purchased? For example: "I bought coffee for 25,000" or "Paid electricity bill 200,000".`;
-          } else {
+          } else if (parsedTransaction.type === 'income') {
             response = `I understood that you want to record income, but I need more clarity. Could you please specify the amount and source? For example: "Got salary 8 million" or "Freelance payment 1.5 million".`;
+          } else if (parsedTransaction.type === 'savings') {
+            response = `I understood that you want to record savings, but I need more clarity. Could you please specify the amount and what you're saving for? For example: "Save 1 million for laptop" or "Deposit 2 million to emergency fund".`;
           }
         }
       } catch (error) {

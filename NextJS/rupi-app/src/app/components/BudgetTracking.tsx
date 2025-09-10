@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Target, TrendingUp, AlertCircle, Plus, Edit2, Trash2, Check, X } from 'lucide-react';
+import { Target, TrendingUp, AlertCircle, Plus, Edit2, Trash2 } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import BudgetEditModal from './BudgetEditModal';
 
 // Expense categories - duplicated here to avoid importing server-side modules
 const EXPENSE_CATEGORIES = [
@@ -11,7 +12,8 @@ const EXPENSE_CATEGORIES = [
   'Transportation',
   'Health & Personal',
   'Entertainment & Shopping',
-  'Debt & Savings',
+  'Debt Payments',
+  'Savings & Investments',
   'Family & Others'
 ] as const;
 
@@ -34,12 +36,9 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
   const loading = state.loading.initial && budgets.length === 0;
   
   const [error, setError] = useState<string | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingBudget, setEditingBudget] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    category: '',
-    amount: ''
-  });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
 
   // Enhanced delete with confirmation
   const handleDeleteBudget = async (category: string) => {
@@ -57,50 +56,39 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
     }
   };
 
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.category || !formData.amount) {
-      setError('Please fill in all fields');
-      return;
-    }
-
-    const amount = parseFloat(formData.amount);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Please enter a valid amount');
-      return;
-    }
-
+  // Handle modal save
+  const handleModalSave = async (category: string, amount: number) => {
     try {
-      const success = await saveBudget(formData.category, amount);
-      if (success) {
-        setFormData({ category: '', amount: '' });
-        setShowAddForm(false);
-        setEditingBudget(null);
-        setError(null);
-      } else {
+      setError(null);
+      const success = await saveBudget(category, amount);
+      if (!success) {
         setError('Failed to save budget');
+        return false;
       }
+      return true;
     } catch (err) {
       setError('Failed to save budget');
+      return false;
     }
   };
 
   // Handle edit
   const startEdit = (budget: Budget) => {
-    setEditingBudget(budget.category);
-    setFormData({
-      category: budget.category,
-      amount: budget.budget.toString()
-    });
-    setShowAddForm(false);
+    setEditingBudget(budget);
+    setModalMode('edit');
+    setModalOpen(true);
   };
 
-  // Cancel edit/add
-  const cancelForm = () => {
-    setFormData({ category: '', amount: '' });
-    setShowAddForm(false);
+  // Handle add
+  const startAdd = () => {
+    setEditingBudget(null);
+    setModalMode('add');
+    setModalOpen(true);
+  };
+
+  // Handle modal close
+  const handleModalClose = () => {
+    setModalOpen(false);
     setEditingBudget(null);
     setError(null);
   };
@@ -185,7 +173,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
             {new Date().toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
           </div>
           <button
-            onClick={() => setShowAddForm(true)}
+            onClick={startAdd}
             className="p-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
             title="Add Budget"
           >
@@ -200,56 +188,6 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
         </div>
       )}
 
-      {/* Add/Edit Form */}
-      {(showAddForm || editingBudget) && (
-        <form onSubmit={handleSubmit} className="mb-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600">
-          <div className="grid grid-cols-1 gap-2">
-            <select
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="text-xs p-2 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-              disabled={!!editingBudget}
-              required
-            >
-              <option value="">Select Category</option>
-              {editingBudget ? (
-                <option value={editingBudget}>{editingBudget}</option>
-              ) : (
-                availableCategories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))
-              )}
-            </select>
-            <input
-              type="number"
-              placeholder="Budget Amount (IDR)"
-              value={formData.amount}
-              onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-              className="text-xs p-2 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-              min="0"
-              step="1000"
-              required
-            />
-            <div className="flex gap-1">
-              <button
-                type="submit"
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-1.5 rounded text-xs flex items-center justify-center"
-              >
-                <Check className="w-3 h-3 mr-1" />
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={cancelForm}
-                className="flex-1 bg-slate-600 hover:bg-slate-700 text-white p-1.5 rounded text-xs flex items-center justify-center"
-              >
-                <X className="w-3 h-3 mr-1" />
-                Cancel
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
 
       {/* Overall Budget Summary */}
       {budgets.length > 0 && (
@@ -289,14 +227,14 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
       <div className={`flex-1 ${
         widgetSize === 'half' ? 'space-y-1' : 'space-y-2'
       } overflow-y-auto`}>
-        {budgets.length === 0 && !showAddForm ? (
+        {budgets.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
             <Target className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-4" />
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
               No budgets set for this month
             </p>
             <button
-              onClick={() => setShowAddForm(true)}
+              onClick={startAdd}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -397,6 +335,16 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
           </div>
         </div>
       )}
+
+      {/* Budget Edit Modal */}
+      <BudgetEditModal
+        budget={editingBudget}
+        isOpen={modalOpen}
+        onClose={handleModalClose}
+        onSave={handleModalSave}
+        availableCategories={availableCategories}
+        mode={modalMode}
+      />
     </div>
   );
 }

@@ -69,7 +69,8 @@ export const EXPENSE_CATEGORIES = [
   'Transportation',
   'Health & Personal',
   'Entertainment & Shopping',
-  'Debt & Savings',
+  'Debt Payments',
+  'Savings & Investments',
   'Family & Others'
 ] as const;
 

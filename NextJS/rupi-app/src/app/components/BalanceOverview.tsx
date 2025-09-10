@@ -1,15 +1,16 @@
 'use client';
 
 import { useMemo } from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 
 interface FinancialTotal {
   currentMonthExpenses: number;
   previousMonthExpenses: number;
   currentMonthIncome: number;
+  currentMonthSavings: number;
   totalExpenses: number;
   totalIncome: number;
+  totalSavings: number;
 }
 
 interface BalanceOverviewProps {
@@ -18,7 +19,7 @@ interface BalanceOverviewProps {
 
 export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverviewProps) {
   const { state } = useFinancialData();
-  const { expenses, income } = state.data;
+  const { expenses, income, savings } = state.data;
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
 
   // Calculate financial totals from context data
@@ -53,21 +54,34 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
       })
       .reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
 
+    // Filter savings for current month
+    const currentMonthSavings = savings
+      .filter(saving => {
+        const savingDate = new Date(saving.date);
+        return savingDate >= currentMonthStart && savingDate <= currentMonthEnd;
+      })
+      .reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
+
     // Calculate totals
     const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
     const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
+    const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
 
     return {
       currentMonthExpenses,
       previousMonthExpenses,
       currentMonthIncome,
+      currentMonthSavings,
       totalExpenses,
-      totalIncome
+      totalIncome,
+      totalSavings
     };
-  }, [expenses, income]);
+  }, [expenses, income, savings]);
 
-  // Calculate balance using real income and expense data
-  const currentBalance = financialData.totalIncome - financialData.totalExpenses;
+  // Calculate balance using real income, expense, and savings data
+  // Available balance = income - expenses - savings (money allocated to savings)
+  const currentBalance = financialData.totalIncome - financialData.totalExpenses - financialData.totalSavings;
+  const totalAssets = financialData.totalIncome - financialData.totalExpenses; // Total assets = income - expenses
   const monthChange = financialData.previousMonthExpenses - financialData.currentMonthExpenses; // Positive if spending less
   const isPositiveChange = monthChange > 0;
   
@@ -120,49 +134,51 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-          Balance Overview
-        </h2>
-        <div className="text-sm text-slate-500 dark:text-slate-400">
-          Current Month
-        </div>
-      </div>
+    <div className="relative h-full overflow-hidden rounded-2xl">
+      {/* Credit Card Style Background */}
+      <div className="absolute inset-0 bg-white rounded-2xl shadow-xl border border-slate-200">
+        {/* Card Content */}
+        <div className="relative z-10 p-4 h-full flex flex-col rounded-2xl">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-emerald-500 rounded-full mr-3 animate-pulse"></div>
+              <h2 className="text-slate-900 font-semibold text-lg">Rupi Card</h2>
+            </div>
+            <div className="text-slate-600 text-sm font-medium">
+              {currentMonthName} {new Date().getFullYear()}
+            </div>
+          </div>
 
-      {/* Main Balance */}
-      <div className="mb-6">
-        <div className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-          {formatCurrency(currentBalance)}
-        </div>
-        <div className={`flex items-center text-sm ${
-          isPositiveChange 
-            ? 'text-emerald-600 dark:text-emerald-400' 
-            : 'text-red-600 dark:text-red-400'
-        }`}>
-          {isPositiveChange ? (
-            <TrendingUp className="w-4 h-4 mr-1" />
-          ) : (
-            <TrendingDown className="w-4 h-4 mr-1" />
-          )}
-          {isPositiveChange ? '+' : ''}{formatCurrency(monthChange)} from last month
-        </div>
-      </div>
+          {/* Main Balance Display */}
+          <div className="mb-6">
+            <div className="text-slate-600 text-sm mb-2">Available Balance</div>
+            <div className="text-3xl font-bold text-slate-900 mb-1">
+              {formatCurrency(currentBalance)}
+            </div>
+            <div className="text-slate-500 text-xs">Spendable Amount</div>
+          </div>
 
-      {/* Month Progress */}
-      <div className="flex-1 flex flex-col justify-end space-y-3">
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-600 dark:text-slate-300">Month Progress</span>
-          <span className="font-medium text-slate-900 dark:text-white">{monthProgress}%</span>
-        </div>
-        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-          <div 
-            className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${monthProgress}%` }}
-          ></div>
-        </div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">
-          {remainingDays} days remaining in {currentMonthName}
+          {/* Financial Summary Cards */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {/* Total Assets Card */}
+            <div className="bg-slate-50/80 backdrop-blur-sm rounded-lg p-3 border border-slate-200">
+              <div className="text-slate-600 text-xs font-medium mb-1">Total Assets</div>
+              <div className="text-sm font-bold text-slate-900 mb-1 truncate">
+                {formatCurrency(totalAssets)}
+              </div>
+              <div className="text-emerald-600 text-xs">Net Worth</div>
+            </div>
+
+            {/* Savings Card */}
+            <div className="bg-slate-50/80 backdrop-blur-sm rounded-lg p-3 border border-slate-200">
+              <div className="text-slate-600 text-xs font-medium mb-1">Savings</div>
+              <div className="text-sm font-bold text-slate-900 mb-1 truncate">
+                {formatCurrency(financialData.totalSavings)}
+              </div>
+              <div className="text-blue-600 text-xs">Invested</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

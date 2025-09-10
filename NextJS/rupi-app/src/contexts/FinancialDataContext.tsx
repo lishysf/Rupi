@@ -28,11 +28,13 @@ interface FinancialData {
   budgets: Budget[];
   expenses: any[];
   income: any[];
+  savings: any[];
   lastUpdated: {
     transactions: number;
     budgets: number;
     expenses: number;
     income: number;
+    savings: number;
   };
 }
 
@@ -44,6 +46,7 @@ interface FinancialDataState {
     budgets: boolean;
     expenses: boolean;
     income: boolean;
+    savings: boolean;
   };
   error: string | null;
 }
@@ -56,7 +59,10 @@ type FinancialDataAction =
   | { type: 'SET_BUDGETS'; payload: Budget[] }
   | { type: 'SET_EXPENSES'; payload: any[] }
   | { type: 'SET_INCOME'; payload: any[] }
+  | { type: 'SET_SAVINGS'; payload: any[] }
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
+  | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
+  | { type: 'DELETE_TRANSACTION'; payload: number }
   | { type: 'ADD_BUDGET'; payload: Budget }
   | { type: 'UPDATE_BUDGET'; payload: Budget }
   | { type: 'DELETE_BUDGET'; payload: string }
@@ -69,11 +75,13 @@ const initialState: FinancialDataState = {
     budgets: [],
     expenses: [],
     income: [],
+    savings: [],
     lastUpdated: {
       transactions: 0,
       budgets: 0,
       expenses: 0,
       income: 0,
+      savings: 0,
     },
   },
   loading: {
@@ -82,6 +90,7 @@ const initialState: FinancialDataState = {
     budgets: false,
     expenses: false,
     income: false,
+    savings: false,
   },
   error: null,
 };
@@ -156,12 +165,53 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
         },
       };
 
+    case 'SET_SAVINGS':
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          savings: action.payload,
+          lastUpdated: {
+            ...state.data.lastUpdated,
+            savings: Date.now(),
+          },
+        },
+      };
+
     case 'ADD_TRANSACTION':
       return {
         ...state,
         data: {
           ...state.data,
           transactions: [action.payload, ...state.data.transactions],
+          lastUpdated: {
+            ...state.data.lastUpdated,
+            transactions: Date.now(),
+          },
+        },
+      };
+
+    case 'UPDATE_TRANSACTION':
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          transactions: state.data.transactions.map(transaction => 
+            transaction.id === action.payload.id ? action.payload : transaction
+          ),
+          lastUpdated: {
+            ...state.data.lastUpdated,
+            transactions: Date.now(),
+          },
+        },
+      };
+
+    case 'DELETE_TRANSACTION':
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          transactions: state.data.transactions.filter(transaction => transaction.id !== action.payload),
           lastUpdated: {
             ...state.data.lastUpdated,
             transactions: Date.now(),
@@ -220,6 +270,7 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
             budgets: Date.now(),
             expenses: Date.now(),
             income: Date.now(),
+            savings: Date.now(),
           },
         },
       };
@@ -238,13 +289,15 @@ interface FinancialDataContextType {
   fetchBudgets: () => Promise<void>;
   fetchExpenses: () => Promise<void>;
   fetchIncome: () => Promise<void>;
+  fetchSavings: () => Promise<void>;
   fetchTrends: (timeRange: string) => Promise<any>;
-  // Actions
+  // Transaction actions
+  deleteTransaction: (id: number, type: 'income' | 'expense') => Promise<boolean>;
+  updateTransaction: (id: number, type: 'income' | 'expense', data: any) => Promise<boolean>;
+  // Budget actions
   saveBudget: (category: string, amount: number) => Promise<boolean>;
   deleteBudget: (category: string) => Promise<boolean>;
-  // Auto-refresh controls
-  enableAutoRefresh: () => void;
-  disableAutoRefresh: () => void;
+  // Refresh function
   refreshAll: () => Promise<void>;
 }
 
@@ -253,7 +306,6 @@ const FinancialDataContext = createContext<FinancialDataContextType | null>(null
 // Provider component
 export function FinancialDataProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(financialDataReducer, initialState);
-  const autoRefreshInterval = useRef<NodeJS.Timeout | null>(null);
   const isRefreshing = useRef(false);
 
   // Fetch functions
@@ -354,6 +406,23 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }
   }, []);
 
+  const fetchSavings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/savings?limit=100');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch savings');
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        dispatch({ type: 'SET_SAVINGS', payload: data.data || [] });
+      }
+    } catch (error) {
+      console.error('Error fetching savings:', error);
+    }
+  }, []);
+
   const fetchTrends = useCallback(async (timeRange: string) => {
     try {
       const response = await fetch(`/api/expenses/trends?range=${timeRange}`);
@@ -376,6 +445,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
       
+      console.log('Context: Saving budget:', { category, amount, month: currentMonth, year: currentYear });
+      
       const response = await fetch('/api/budgets', {
         method: 'POST',
         headers: {
@@ -389,11 +460,30 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         }),
       });
 
+      console.log('Context: Budget API response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to save budget');
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          console.error('Context: Budget API error response:', errorData);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // If response is not JSON, try to get text
+          try {
+            const errorText = await response.text();
+            console.error('Context: Budget API error response (text):', errorText);
+            errorMessage = errorText || errorMessage;
+          } catch (textError) {
+            console.error('Context: Could not parse error response:', textError);
+          }
+        }
+        throw new Error(`Failed to save budget: ${errorMessage}`);
       }
 
       const data = await response.json();
+      console.log('Context: Budget API success response:', data);
+      
       if (data.success) {
         // Refresh budgets data
         await fetchBudgets();
@@ -401,7 +491,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
       return false;
     } catch (error) {
-      console.error('Error saving budget:', error);
+      console.error('Context: Error saving budget:', error);
       return false;
     }
   }, [fetchBudgets]);
@@ -411,15 +501,35 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
       
+      console.log('Context: Deleting budget:', { category, month: currentMonth, year: currentYear });
+      
       const response = await fetch(`/api/budgets?category=${encodeURIComponent(category)}&month=${currentMonth}&year=${currentYear}`, {
         method: 'DELETE',
       });
 
+      console.log('Context: Delete budget API response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to delete budget');
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          console.error('Context: Delete budget API error response:', errorData);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          try {
+            const errorText = await response.text();
+            console.error('Context: Delete budget API error response (text):', errorText);
+            errorMessage = errorText || errorMessage;
+          } catch (textError) {
+            console.error('Context: Could not parse delete error response:', textError);
+          }
+        }
+        throw new Error(`Failed to delete budget: ${errorMessage}`);
       }
 
       const data = await response.json();
+      console.log('Context: Delete budget API success response:', data);
+      
       if (data.success) {
         // Refresh budgets data
         await fetchBudgets();
@@ -427,12 +537,88 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
       return false;
     } catch (error) {
-      console.error('Error deleting budget:', error);
+      console.error('Context: Error deleting budget:', error);
       return false;
     }
   }, [fetchBudgets]);
 
-  // Auto-refresh system
+  // Transaction action functions
+  const deleteTransaction = useCallback(async (id: number, type: 'income' | 'expense') => {
+    try {
+      const endpoint = type === 'expense' ? `/api/expenses/${id}` : `/api/income/${id}`;
+      const response = await fetch(endpoint, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete ${type}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // Update local state immediately
+        dispatch({ type: 'DELETE_TRANSACTION', payload: id });
+        
+        // Refresh all related data to keep all components in sync
+        await Promise.all([
+          fetchTransactions(),
+          fetchExpenses(),
+          fetchIncome(),
+          fetchSavings()
+        ]);
+        
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`Error deleting ${type}:`, error);
+      return false;
+    }
+  }, [fetchTransactions, fetchExpenses, fetchIncome, fetchSavings]);
+
+  const updateTransaction = useCallback(async (id: number, type: 'income' | 'expense', data: any) => {
+    try {
+      const endpoint = type === 'expense' ? `/api/expenses/${id}` : `/api/income/${id}`;
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update ${type}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        // Update local state immediately
+        const updatedTransaction = {
+          ...result.data,
+          type,
+          category: type === 'expense' ? result.data.category : result.data.source
+        };
+        dispatch({ type: 'UPDATE_TRANSACTION', payload: updatedTransaction });
+        
+        // Refresh all related data to keep all components in sync
+        await Promise.all([
+          fetchTransactions(),
+          fetchExpenses(),
+          fetchIncome(),
+          fetchSavings()
+        ]);
+        
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`Error updating ${type}:`, error);
+      return false;
+    }
+  }, [fetchTransactions, fetchExpenses, fetchIncome, fetchSavings]);
+
+  // Refresh system
   const refreshAll = useCallback(async () => {
     if (isRefreshing.current) return;
     
@@ -444,7 +630,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         fetchTransactions(),
         fetchBudgets(),
         fetchExpenses(),
-        fetchIncome()
+        fetchIncome(),
+        fetchSavings()
       ]);
       
       dispatch({ type: 'REFRESH_ALL' });
@@ -453,23 +640,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } finally {
       isRefreshing.current = false;
     }
-  }, [fetchTransactions, fetchBudgets, fetchExpenses, fetchIncome]);
-
-  const enableAutoRefresh = useCallback(() => {
-    if (autoRefreshInterval.current) return;
-    
-    // Refresh every 30 seconds
-    autoRefreshInterval.current = setInterval(() => {
-      refreshAll();
-    }, 30000);
-  }, [refreshAll]);
-
-  const disableAutoRefresh = useCallback(() => {
-    if (autoRefreshInterval.current) {
-      clearInterval(autoRefreshInterval.current);
-      autoRefreshInterval.current = null;
-    }
-  }, []);
+  }, [fetchTransactions, fetchBudgets, fetchExpenses, fetchIncome, fetchSavings]);
 
   // Initial data load
   useEffect(() => {
@@ -484,12 +655,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     };
 
     loadInitialData();
-    enableAutoRefresh();
-
-    return () => {
-      disableAutoRefresh();
-    };
-  }, [refreshAll, enableAutoRefresh, disableAutoRefresh]);
+  }, [refreshAll]);
 
   const contextValue: FinancialDataContextType = {
     state,
@@ -498,11 +664,12 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     fetchBudgets,
     fetchExpenses,
     fetchIncome,
+    fetchSavings,
     fetchTrends,
+    deleteTransaction,
+    updateTransaction,
     saveBudget,
     deleteBudget,
-    enableAutoRefresh,
-    disableAutoRefresh,
     refreshAll,
   };
 

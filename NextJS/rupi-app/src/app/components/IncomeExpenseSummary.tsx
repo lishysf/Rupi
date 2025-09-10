@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowUpCircle, ArrowDownCircle, PiggyBank } from 'lucide-react';
+import { useFinancialData } from '@/contexts/FinancialDataContext';
 
 interface FinancialData {
   weeklyExpenses: number;
@@ -15,81 +16,64 @@ interface IncomeExpenseSummaryProps {
 }
 
 export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeExpenseSummaryProps) {
-  const [financialData, setFinancialData] = useState<FinancialData>({
-    weeklyExpenses: 0,
-    monthlyExpenses: 0,
-    weeklyIncome: 0,
-    monthlyIncome: 0
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { state } = useFinancialData();
+  const { expenses, income } = state.data;
+  const loading = state.loading.initial && (expenses.length === 0 && income.length === 0);
 
-  // Fetch financial data from database
-  const fetchFinancialData = async () => {
-    try {
-      setLoading(true);
-      
-      const now = new Date();
-      
-      // Get this week's data (Monday to Sunday)
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
-      weekStart.setHours(0, 0, 0, 0);
-      
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6); // Sunday
-      weekEnd.setHours(23, 59, 59, 999);
-      
-      // Get this month's data
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  // Calculate financial data from context
+  const financialData = useMemo(() => {
+    const now = new Date();
+    
+    // Get this week's data (Monday to Sunday)
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
+    weekStart.setHours(0, 0, 0, 0);
+    
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6); // Sunday
+    weekEnd.setHours(23, 59, 59, 999);
+    
+    // Get this month's data
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-      const [weekExpenseResponse, monthExpenseResponse, weekIncomeResponse, monthIncomeResponse] = await Promise.all([
-        fetch(`/api/expenses?startDate=${weekStart.toISOString()}&endDate=${weekEnd.toISOString()}`),
-        fetch(`/api/expenses?startDate=${monthStart.toISOString()}&endDate=${monthEnd.toISOString()}`),
-        fetch(`/api/income?startDate=${weekStart.toISOString()}&endDate=${weekEnd.toISOString()}`),
-        fetch(`/api/income?startDate=${monthStart.toISOString()}&endDate=${monthEnd.toISOString()}`)
-      ]);
+    // Filter expenses for current week and month
+    const weeklyExpenses = expenses
+      .filter(expense => {
+        const expenseDate = new Date(expense.date);
+        return expenseDate >= weekStart && expenseDate <= weekEnd;
+      })
+      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
 
-      if (!weekExpenseResponse.ok || !monthExpenseResponse.ok || !weekIncomeResponse.ok || !monthIncomeResponse.ok) {
-        throw new Error('Failed to fetch financial data');
-      }
+    const monthlyExpenses = expenses
+      .filter(expense => {
+        const expenseDate = new Date(expense.date);
+        return expenseDate >= monthStart && expenseDate <= monthEnd;
+      })
+      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
 
-      const [weekExpenseData, monthExpenseData, weekIncomeData, monthIncomeData] = await Promise.all([
-        weekExpenseResponse.json(),
-        monthExpenseResponse.json(),
-        weekIncomeResponse.json(),
-        monthIncomeResponse.json()
-      ]);
+    // Filter income for current week and month
+    const weeklyIncome = income
+      .filter(incomeItem => {
+        const incomeDate = new Date(incomeItem.date);
+        return incomeDate >= weekStart && incomeDate <= weekEnd;
+      })
+      .reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
 
-      if (weekExpenseData.success && monthExpenseData.success && weekIncomeData.success && monthIncomeData.success) {
-        const weeklyExpenses = weekExpenseData.data.reduce((sum: number, expense: any) => sum + parseFloat(expense.amount), 0);
-        const monthlyExpenses = monthExpenseData.data.reduce((sum: number, expense: any) => sum + parseFloat(expense.amount), 0);
-        const weeklyIncome = weekIncomeData.data.reduce((sum: number, income: any) => sum + parseFloat(income.amount), 0);
-        const monthlyIncome = monthIncomeData.data.reduce((sum: number, income: any) => sum + parseFloat(income.amount), 0);
+    const monthlyIncome = income
+      .filter(incomeItem => {
+        const incomeDate = new Date(incomeItem.date);
+        return incomeDate >= monthStart && incomeDate <= monthEnd;
+      })
+      .reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
 
-        setFinancialData({
-          weeklyExpenses,
-          monthlyExpenses,
-          weeklyIncome,
-          monthlyIncome
-        });
-      } else {
-        throw new Error('Failed to load financial data');
-      }
-      setError(null);
-    } catch (err) {
-      console.error('Error fetching financial data:', err);
-      setError('Failed to load data');
-      // Keep default values if API fails
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchFinancialData();
-  }, []);
+    return {
+      weeklyExpenses,
+      monthlyExpenses,
+      weeklyIncome,
+      monthlyIncome
+    };
+  }, [expenses, income]);
 
   // Calculate net savings from real data
   const netSavings = financialData.monthlyIncome - financialData.monthlyExpenses;

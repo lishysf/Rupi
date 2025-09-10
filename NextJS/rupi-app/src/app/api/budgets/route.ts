@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeDatabase } from '@/lib/database';
+import { initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
 import pool from '@/lib/database';
 
 // Initialize database on first request
@@ -12,7 +12,7 @@ async function ensureDbInitialized() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS budgets (
         id SERIAL PRIMARY KEY,
-        category VARCHAR(100) NOT NULL UNIQUE,
+        category VARCHAR(100) NOT NULL,
         amount DECIMAL(10, 2) NOT NULL,
         month INTEGER NOT NULL,
         year INTEGER NOT NULL,
@@ -109,6 +109,8 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { category, amount, month, year } = body;
+    
+    console.log('API: Budget POST request received:', { category, amount, month, year });
 
     // Validate required fields
     if (!category || !amount) {
@@ -132,6 +134,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate category
+    if (!EXPENSE_CATEGORIES.includes(category)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Invalid category. Must be one of: ${EXPENSE_CATEGORIES.join(', ')}`
+        },
+        { status: 400 }
+      );
+    }
+
     const budgetMonth = month || (new Date().getMonth() + 1);
     const budgetYear = year || new Date().getFullYear();
 
@@ -146,7 +159,9 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
+    console.log('API: Executing budget query with params:', [category, amount, budgetMonth, budgetYear]);
     const result = await pool.query(query, [category, amount, budgetMonth, budgetYear]);
+    console.log('API: Budget query result:', result.rows[0]);
 
     return NextResponse.json({
       success: true,
