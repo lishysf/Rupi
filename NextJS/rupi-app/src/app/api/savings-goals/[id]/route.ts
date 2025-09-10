@@ -20,137 +20,25 @@ async function ensureDbInitialized() {
   }
 }
 
-// GET - Fetch savings goals
-export async function GET(request: NextRequest) {
+// PUT - Update savings goal by ID
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     await ensureDbInitialized();
-    
-    const searchParams = request.nextUrl.searchParams;
-    const active = searchParams.get('active') === 'true';
 
-    let query = 'SELECT * FROM savings_goals';
-    const queryParams: any[] = [];
-
-    if (active) {
-      query += ' WHERE current_amount < target_amount';
+    const { id: idParam } = await params;
+    const id = parseInt(idParam, 10);
+    if (Number.isNaN(id)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid savings goal ID' },
+        { status: 400 }
+      );
     }
-
-    query += ' ORDER BY deadline ASC, created_at DESC';
-
-    const result = await pool.query(query, queryParams);
-
-    return NextResponse.json({
-      success: true,
-      data: result.rows,
-      message: 'Savings goals retrieved successfully'
-    });
-
-  } catch (error) {
-    console.error('GET /api/savings-goals error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to retrieve savings goals',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
-  }
-}
-
-// POST - Create new savings goal
-export async function POST(request: NextRequest) {
-  try {
-    await ensureDbInitialized();
 
     const body = await request.json();
-    const { name, targetAmount, deadline, icon, color } = body;
-
-    // Validate required fields
-    if (!name || !targetAmount) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required fields: name, targetAmount'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate target amount
-    if (typeof targetAmount !== 'number' || targetAmount <= 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Target amount must be a positive number'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate deadline if provided
-    if (deadline && new Date(deadline) <= new Date()) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Deadline must be in the future'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Create savings goal
-    const query = `
-      INSERT INTO savings_goals (name, target_amount, deadline, icon, color)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `;
-
-    const result = await pool.query(query, [
-      name,
-      targetAmount,
-      deadline ? new Date(deadline) : null,
-      icon || null,
-      color || null
-    ]);
-
-    return NextResponse.json({
-      success: true,
-      data: result.rows[0],
-      message: 'Savings goal created successfully'
-    }, { status: 201 });
-
-  } catch (error) {
-    console.error('POST /api/savings-goals error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to create savings goal',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
-  }
-}
-
-// PUT - Update savings goal
-export async function PUT(request: NextRequest) {
-  try {
-    await ensureDbInitialized();
-
-    const body = await request.json();
-    const { id, name, targetAmount, deadline, icon, color } = body;
-
-    // Validate required fields
-    if (!id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required field: id'
-        },
-        { status: 400 }
-      );
-    }
+    const { name, targetAmount, deadline, icon, color, currentAmount } = body;
 
     // Build dynamic update query
     const updates: string[] = [];
@@ -176,6 +64,21 @@ export async function PUT(request: NextRequest) {
       paramCount++;
       updates.push(`target_amount = $${paramCount}`);
       queryParams.push(targetAmount);
+    }
+
+    if (currentAmount !== undefined) {
+      if (typeof currentAmount !== 'number' || currentAmount < 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Current amount must be a non-negative number'
+          },
+          { status: 400 }
+        );
+      }
+      paramCount++;
+      updates.push(`current_amount = $${paramCount}`);
+      queryParams.push(currentAmount);
     }
 
     if (deadline !== undefined) {
@@ -245,7 +148,7 @@ export async function PUT(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('PUT /api/savings-goals error:', error);
+    console.error('PUT /api/savings-goals/[id] error:', error);
     return NextResponse.json(
       {
         success: false,
@@ -257,20 +160,19 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - Delete savings goal
-export async function DELETE(request: NextRequest) {
+// DELETE - Delete savings goal by ID
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     await ensureDbInitialized();
 
-    const searchParams = request.nextUrl.searchParams;
-    const id = searchParams.get('id');
-
-    if (!id) {
+    const { id: idParam } = await params;
+    const id = parseInt(idParam, 10);
+    if (Number.isNaN(id)) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required parameter: id'
-        },
+        { success: false, error: 'Invalid savings goal ID' },
         { status: 400 }
       );
     }
@@ -318,7 +220,7 @@ export async function DELETE(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('DELETE /api/savings-goals error:', error);
+    console.error('DELETE /api/savings-goals/[id] error:', error);
     return NextResponse.json(
       {
         success: false,

@@ -10,7 +10,9 @@ interface ChatMessage {
   timestamp: Date;
   isUser: boolean;
   transactionCreated?: boolean;
-  transactionType?: 'income' | 'expense';
+  transactionType?: 'income' | 'expense' | 'savings' | 'investment';
+  multipleTransactionsCreated?: boolean;
+  transactionCount?: number;
   isLoading?: boolean;
 }
 
@@ -22,7 +24,7 @@ export default function FloatingChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      text: 'Hello! I\'m your AI assistant. Tell me about your income and expenses and I\'ll help you track them. Try saying something like "Aku beli kopi 50.000", "Bayar listrik 200rb", or "Gajian bulan ini 8 juta".',
+      text: 'Hello! I\'m your AI financial assistant. I can help you with:\n\n**📝 Recording Transactions**\n• Single: "Gajian 8 juta" or "Beli kopi 50k"\n• Multiple: "hari ini aku beli kopi 50k, makan di warteg 10k, terus dapat gaji 1 juta"\n\n**📊 Data Analysis**\n• Time-based: "Analisis pengeluaran hari ini" or "Breakdown minggu ini" or "Ringkasan bulan ini"\n• Category-specific: "Analisis pengeluaran makanan saya" or "Breakdown transportasi"\n• General: "Berapa total pengeluaran?" or "Tampilkan breakdown kategori belanja"\n\n**⏰ Time Periods Supported**\n• Today: "hari ini", "today", "sekarang"\n• Weekly: "minggu ini", "this week", "seminggu"\n• Monthly: "bulan ini", "this month", "sebulan"\n• All-time: No time keywords (default)\n\n**💡 Financial Tips**\n• Budget recommendations\n• Spending insights\n• Savings advice\n\n**🔄 Follow-up Questions**\nI remember our conversation context, so you can ask follow-up questions like "Bagaimana dengan kategori lain?" or "Bandingkan dengan bulan lalu"\n\nTry asking me anything about your finances!',
       timestamp: new Date(),
       isUser: false
     }
@@ -64,6 +66,12 @@ export default function FloatingChat() {
     setMessages(prev => [...prev, loadingMessage]);
 
     try {
+      // Prepare conversation history (last 2 exchanges for context)
+      const conversationHistory = messages
+        .slice(-4) // Get last 4 messages (2 exchanges)
+        .map(msg => `${msg.isUser ? 'User' : 'Assistant'}: ${msg.text}`)
+        .join(' | ');
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -71,7 +79,8 @@ export default function FloatingChat() {
         },
         body: JSON.stringify({
           message: userMessage,
-          action: 'chat'
+          action: 'chat',
+          conversationHistory: conversationHistory || undefined
         }),
       });
 
@@ -84,8 +93,11 @@ export default function FloatingChat() {
           timestamp: new Date(),
           isUser: false,
           transactionCreated: !!data.data.transactionCreated,
-          transactionType: data.data.transactionCreated?.amount ? 
-            (data.data.transactionCreated.category ? 'expense' : 'income') : undefined
+          transactionType: data.data.transactionCreated?.type || 
+            (data.data.transactionCreated?.amount ? 
+              (data.data.transactionCreated.category ? 'expense' : 'income') : undefined),
+          multipleTransactionsCreated: !!data.data.multipleTransactionsCreated,
+          transactionCount: data.data.multipleTransactionsCreated?.successCount
         };
 
         // Replace loading message with actual response
@@ -93,16 +105,16 @@ export default function FloatingChat() {
           msg.isLoading ? aiResponse : msg
         ));
 
-        // If a transaction was created, refresh all dashboard data
-        if (data.data.transactionCreated) {
-          console.log('AI created transaction, refreshing dashboard data...');
+        // If transactions were created, refresh all dashboard data
+        if (data.data.transactionCreated || data.data.multipleTransactionsCreated) {
+          console.log('AI created transaction(s), refreshing dashboard data...');
           
           // Add a brief delay to let the user see the success message, then refresh
           setTimeout(() => {
             refreshAll().then(() => {
-              console.log('Dashboard data refreshed after AI transaction');
+              console.log('Dashboard data refreshed after AI transaction(s)');
             }).catch((error) => {
-              console.error('Error refreshing data after AI transaction:', error);
+              console.error('Error refreshing data after AI transaction(s):', error);
             });
           }, 500);
         }
@@ -142,6 +154,64 @@ export default function FloatingChat() {
   const handleClose = () => {
     setIsExpanded(false);
     inputRef.current?.blur();
+  };
+
+  // Format message text with better styling
+  const formatMessageText = (text: string) => {
+    // Split text into lines and process each line
+    const lines = text.split('\n');
+    
+    return lines.map((line, index) => {
+      // Handle empty lines
+      if (line.trim() === '') {
+        return <br key={index} />;
+      }
+      
+      // Handle headers (lines starting with **)
+      if (line.startsWith('**') && line.endsWith('**')) {
+        return (
+          <div key={index} className="font-semibold text-slate-900 dark:text-white mb-2 mt-3 first:mt-0">
+            {line.slice(2, -2)}
+          </div>
+        );
+      }
+      
+      // Handle bullet points
+      if (line.startsWith('- ') || line.startsWith('• ')) {
+        return (
+          <div key={index} className="flex items-start mb-1">
+            <span className="text-slate-600 dark:text-slate-400 mr-2 mt-0.5">•</span>
+            <span className="flex-1">{line.slice(2)}</span>
+          </div>
+        );
+      }
+      
+      // Handle numbered lists
+      if (/^\d+\.\s/.test(line)) {
+        return (
+          <div key={index} className="flex items-start mb-1">
+            <span className="text-slate-600 dark:text-slate-400 mr-2 mt-0.5 font-medium">
+              {line.match(/^\d+/)?.[0]}.
+            </span>
+            <span className="flex-1">{line.replace(/^\d+\.\s/, '')}</span>
+          </div>
+        );
+      }
+      
+      // Handle currency formatting (Rp X,XXX,XXX)
+      const formattedLine = line.replace(/Rp\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/g, (match, amount) => {
+        const cleanAmount = amount.replace(/[.,]/g, '');
+        const formattedAmount = new Intl.NumberFormat('id-ID').format(parseInt(cleanAmount));
+        return `Rp ${formattedAmount}`;
+      });
+      
+      // Regular paragraph
+      return (
+        <div key={index} className="mb-2 last:mb-0">
+          {formattedLine}
+        </div>
+      );
+    });
   };
 
   return (
@@ -187,25 +257,36 @@ export default function FloatingChat() {
                     message.isUser
                       ? 'bg-emerald-500 text-white rounded-br-md'
                       : `bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-bl-md border border-slate-200 dark:border-slate-600 ${
-                          message.transactionCreated ? 'border-green-300 dark:border-green-600' : ''
+                          (message.transactionCreated || message.multipleTransactionsCreated) ? 'border-green-300 dark:border-green-600' : ''
                         }`
                   }`}
                 >
                   <div className="flex items-start space-x-2">
                     <div className="flex-1">
-                      <p className={`text-xs sm:text-sm leading-relaxed ${message.isLoading ? 'animate-pulse' : ''}`}>
-                        {message.text}
-                      </p>
+                      <div className={`text-xs sm:text-sm leading-relaxed ${message.isLoading ? 'animate-pulse' : ''}`}>
+                        {formatMessageText(message.text)}
+                      </div>
                       {message.transactionCreated && (
                         <div className="flex items-center space-x-1 mt-1">
                           <CheckCircle className="w-3 h-3 text-green-500" />
                           <span className="text-xs text-green-600 dark:text-green-400">
-                            {message.transactionType === 'income' ? 'Income saved' : 'Expense saved'}
+                            {message.transactionType === 'income' ? 'Income added' : 
+                             message.transactionType === 'expense' ? 'Expense recorded' :
+                             message.transactionType === 'savings' ? 'Transferred to savings' :
+                             message.transactionType === 'investment' ? 'Transferred to investment' : 'Transaction saved'}
+                          </span>
+                        </div>
+                      )}
+                      {message.multipleTransactionsCreated && (
+                        <div className="flex items-center space-x-1 mt-1">
+                          <CheckCircle className="w-3 h-3 text-green-500" />
+                          <span className="text-xs text-green-600 dark:text-green-400">
+                            {message.transactionCount} transaction(s) processed successfully
                           </span>
                         </div>
                       )}
                     </div>
-                    {message.transactionCreated && (
+                    {(message.transactionCreated || message.multipleTransactionsCreated) && (
                       <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                     )}
                   </div>
@@ -236,7 +317,7 @@ export default function FloatingChat() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
               onFocus={handleInputFocus}
-              placeholder="Tell me about your income/expenses..."
+              placeholder="Tell me about your income, expenses, or transfers..."
               className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-transparent text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none text-sm sm:text-base"
             />
             <button

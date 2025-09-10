@@ -11,7 +11,7 @@ interface Transaction {
   date: string;
   created_at: string;
   updated_at: string;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'savings';
 }
 
 interface Budget {
@@ -29,12 +29,14 @@ interface FinancialData {
   expenses: any[];
   income: any[];
   savings: any[];
+  investments: any[];
   lastUpdated: {
     transactions: number;
     budgets: number;
     expenses: number;
     income: number;
     savings: number;
+    investments: number;
   };
 }
 
@@ -47,6 +49,7 @@ interface FinancialDataState {
     expenses: boolean;
     income: boolean;
     savings: boolean;
+    investments: boolean;
   };
   error: string | null;
 }
@@ -60,6 +63,7 @@ type FinancialDataAction =
   | { type: 'SET_EXPENSES'; payload: any[] }
   | { type: 'SET_INCOME'; payload: any[] }
   | { type: 'SET_SAVINGS'; payload: any[] }
+  | { type: 'SET_INVESTMENTS'; payload: any[] }
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
   | { type: 'DELETE_TRANSACTION'; payload: number }
@@ -76,12 +80,14 @@ const initialState: FinancialDataState = {
     expenses: [],
     income: [],
     savings: [],
+    investments: [],
     lastUpdated: {
       transactions: 0,
       budgets: 0,
       expenses: 0,
       income: 0,
       savings: 0,
+      investments: 0,
     },
   },
   loading: {
@@ -91,6 +97,7 @@ const initialState: FinancialDataState = {
     expenses: false,
     income: false,
     savings: false,
+    investments: false,
   },
   error: null,
 };
@@ -174,6 +181,19 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           lastUpdated: {
             ...state.data.lastUpdated,
             savings: Date.now(),
+          },
+        },
+      };
+
+    case 'SET_INVESTMENTS':
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          investments: action.payload,
+          lastUpdated: {
+            ...state.data.lastUpdated,
+            investments: Date.now(),
           },
         },
       };
@@ -271,6 +291,7 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
             expenses: Date.now(),
             income: Date.now(),
             savings: Date.now(),
+            investments: Date.now(),
           },
         },
       };
@@ -290,10 +311,17 @@ interface FinancialDataContextType {
   fetchExpenses: () => Promise<void>;
   fetchIncome: () => Promise<void>;
   fetchSavings: () => Promise<void>;
+  fetchInvestments: () => Promise<void>;
   fetchTrends: (timeRange: string) => Promise<any>;
   // Transaction actions
   deleteTransaction: (id: number, type: 'income' | 'expense') => Promise<boolean>;
   updateTransaction: (id: number, type: 'income' | 'expense', data: any) => Promise<boolean>;
+  // Savings actions
+  deleteSavings: (id: number) => Promise<boolean>;
+  updateSavings: (id: number, data: { description?: string; amount?: number; goalName?: string }) => Promise<boolean>;
+  // Investment actions
+  deleteInvestment: (id: number) => Promise<boolean>;
+  updateInvestment: (id: number, data: { description?: string; amount?: number; assetName?: string }) => Promise<boolean>;
   // Budget actions
   saveBudget: (category: string, amount: number) => Promise<boolean>;
   deleteBudget: (category: string) => Promise<boolean>;
@@ -420,6 +448,21 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
     } catch (error) {
       console.error('Error fetching savings:', error);
+    }
+  }, []);
+
+  const fetchInvestments = useCallback(async () => {
+    try {
+      const response = await fetch('/api/investments?limit=100');
+      if (!response.ok) {
+        throw new Error('Failed to fetch investments');
+      }
+      const data = await response.json();
+      if (data.success) {
+        dispatch({ type: 'SET_INVESTMENTS', payload: data.data || [] });
+      }
+    } catch (error) {
+      console.error('Error fetching investments:', error);
     }
   }, []);
 
@@ -564,7 +607,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
           fetchTransactions(),
           fetchExpenses(),
           fetchIncome(),
-          fetchSavings()
+          fetchSavings(),
+          fetchInvestments()
         ]);
         
         return true;
@@ -606,7 +650,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
           fetchTransactions(),
           fetchExpenses(),
           fetchIncome(),
-          fetchSavings()
+          fetchSavings(),
+          fetchInvestments()
         ]);
         
         return true;
@@ -617,6 +662,83 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       return false;
     }
   }, [fetchTransactions, fetchExpenses, fetchIncome, fetchSavings]);
+
+  // Savings action functions
+  const deleteSavings = useCallback(async (id: number) => {
+    try {
+      const response = await fetch(`/api/savings/${id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error('Failed to delete savings');
+      }
+      const data = await response.json();
+      if (data.success) {
+        await fetchSavings();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error deleting savings:', error);
+      return false;
+    }
+  }, [fetchSavings]);
+
+  const updateSavings = useCallback(async (id: number, data: { description?: string; amount?: number; goalName?: string }) => {
+    try {
+      const response = await fetch(`/api/savings/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update savings');
+      }
+      const result = await response.json();
+      if (result.success) {
+        await fetchSavings();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error updating savings:', error);
+      return false;
+    }
+  }, [fetchSavings]);
+
+  const deleteInvestment = useCallback(async (id: number) => {
+    try {
+      const response = await fetch(`/api/investments/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete investment');
+      const data = await response.json();
+      if (data.success) {
+        await fetchInvestments();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error deleting investment:', error);
+      return false;
+    }
+  }, [fetchInvestments]);
+
+  const updateInvestment = useCallback(async (id: number, data: { description?: string; amount?: number; assetName?: string }) => {
+    try {
+      const response = await fetch(`/api/investments/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update investment');
+      const result = await response.json();
+      if (result.success) {
+        await fetchInvestments();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error updating investment:', error);
+      return false;
+    }
+  }, [fetchInvestments]);
 
   // Refresh system
   const refreshAll = useCallback(async () => {
@@ -631,7 +753,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         fetchBudgets(),
         fetchExpenses(),
         fetchIncome(),
-        fetchSavings()
+        fetchSavings(),
+        fetchInvestments()
       ]);
       
       dispatch({ type: 'REFRESH_ALL' });
@@ -665,9 +788,14 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     fetchExpenses,
     fetchIncome,
     fetchSavings,
+    fetchInvestments,
     fetchTrends,
     deleteTransaction,
     updateTransaction,
+    deleteInvestment,
+    updateInvestment,
+    deleteSavings,
+    updateSavings,
     saveBudget,
     deleteBudget,
     refreshAll,

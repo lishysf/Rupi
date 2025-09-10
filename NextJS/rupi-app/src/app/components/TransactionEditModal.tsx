@@ -14,7 +14,7 @@ interface Transaction {
   date: string;
   created_at: string;
   updated_at: string;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'savings' | 'investment';
 }
 
 // Props interface
@@ -92,10 +92,13 @@ export default function TransactionEditModal({
       const updateData = {
         description: formData.description.trim(),
         amount: formData.amount,
-        [transaction.type === 'expense' ? 'category' : 'source']: formData.category
+        [transaction.type === 'income' ? 'source' : transaction.type === 'expense' ? 'category' : 'category']:
+          formData.category
       };
-      
-      const success = await onSave(transaction.id, transaction.type, updateData);
+
+      // onSave only accepts 'income' | 'expense'. Map other types to 'expense'.
+      const saveType: 'income' | 'expense' = transaction.type === 'income' ? 'income' : 'expense';
+      const success = await onSave(transaction.id, saveType, updateData);
       if (success) {
         onClose();
       } else {
@@ -128,6 +131,9 @@ export default function TransactionEditModal({
   if (!isOpen || !transaction) return null;
 
   const isIncome = transaction.type === 'income';
+  const isExpense = transaction.type === 'expense';
+  const isSavings = transaction.type === 'savings';
+  const isInvestment = transaction.type === 'investment';
   const availableOptions = isIncome ? INCOME_SOURCES : EXPENSE_CATEGORIES;
 
   const modalContent = (
@@ -145,9 +151,9 @@ export default function TransactionEditModal({
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <DollarSign className={`w-5 h-5 ${
-                  isIncome ? 'text-emerald-600' : 'text-red-600'
+                  isIncome ? 'text-emerald-600' : isSavings ? 'text-blue-600' : isInvestment ? 'text-purple-600' : 'text-red-600'
                 }`} />
-                Edit {isIncome ? 'Income' : 'Expense'}
+                Edit {isIncome ? 'Income' : isExpense ? 'Expense' : isSavings ? 'Savings' : 'Investment'}
               </CardTitle>
               <button
                 onClick={handleCancel}
@@ -205,23 +211,34 @@ export default function TransactionEditModal({
                 )}
               </div>
 
-              {/* Category/Source Field */}
+              {/* Category/Source/Name Field */}
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                   <Tag className="w-4 h-4" />
-                  {isIncome ? 'Source' : 'Category'}
+                  {isIncome ? 'Source' : isExpense ? 'Category' : isSavings ? 'Goal Name' : 'Investment Name'}
                 </label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                >
-                  <option value="">Select {isIncome ? 'source' : 'category'}...</option>
-                  {availableOptions.map(option => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
+                {isIncome || isExpense ? (
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  >
+                    <option value="">Select {isIncome ? 'source' : 'category'}...</option>
+                    {availableOptions.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder={isSavings ? 'e.g., Emergency Fund' : 'e.g., Index Fund'}
+                    required
+                  />
+                )}
               </div>
 
               {/* Transaction Info */}

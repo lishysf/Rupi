@@ -13,7 +13,7 @@ interface Transaction {
   date: string;
   created_at: string;
   updated_at: string;
-  type: 'income' | 'expense' | 'savings';
+  type: 'income' | 'expense' | 'savings' | 'investment';
 }
 
 interface Expense {
@@ -41,10 +41,11 @@ interface RecentTransactionsProps {
 }
 
 export default function RecentTransactions({ widgetSize = 'long' }: RecentTransactionsProps) {
-  const { state, deleteTransaction, updateTransaction } = useFinancialData();
-  const { transactions, savings } = state.data;
+  const { state, deleteTransaction, updateTransaction, deleteSavings, updateSavings, fetchSavings, deleteInvestment, updateInvestment, fetchInvestments } = useFinancialData();
+  const { transactions, savings, investments } = state.data as any;
   const loading = state.loading.initial && transactions.length === 0;
   const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'txn' | 'savings' | 'investment'>('all');
   const [editingTransaction, setEditingTransaction] = useState<{
     id: number;
     description: string;
@@ -53,7 +54,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     date: string;
     created_at: string;
     updated_at: string;
-    type: 'income' | 'expense';
+    type: 'income' | 'expense' | 'savings' | 'investment';
   } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
@@ -66,15 +67,18 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       setError(null);
       // Only allow deletion of income and expense transactions through the context
       if (transaction.type === 'savings') {
-        // Handle savings deletion separately
-        const response = await fetch(`/api/savings/${transaction.id}`, {
-          method: 'DELETE',
-        });
-        if (response.ok) {
-          // Refresh the data
-          window.location.reload();
-        } else {
+        const success = await deleteSavings(transaction.id);
+        if (!success) {
           setError('Failed to delete savings transaction');
+        } else {
+          await fetchSavings();
+        }
+      } else if (transaction.type === 'investment') {
+        const success = await deleteInvestment(transaction.id);
+        if (!success) {
+          setError('Failed to delete investment');
+        } else {
+          await fetchInvestments();
         }
       } else {
         const success = await deleteTransaction(transaction.id, transaction.type);
@@ -92,15 +96,13 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
   // Handle edit transaction
   const handleEdit = (transaction: Transaction) => {
-    // Only allow editing of income and expense transactions
-    if (transaction.type !== 'savings') {
-      // Convert to the expected type for the modal
-      const editableTransaction = {
-        ...transaction,
-        type: transaction.type as 'income' | 'expense'
-      };
-      setEditingTransaction(editableTransaction);
-    }
+    // Keep original type so modal can render correctly
+    const editable = {
+      ...transaction,
+      category: transaction.category || (transaction.type === 'savings' ? 'Savings' : transaction.type === 'investment' ? 'Investment' : ''),
+      type: (transaction.type as 'income' | 'expense' | 'savings' | 'investment')
+    };
+    setEditingTransaction(editable);
   };
 
   // Handle close edit modal
@@ -112,7 +114,32 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   const handleSaveEdit = async (id: number, type: 'income' | 'expense', data: any) => {
     try {
       setError(null);
-      const success = await updateTransaction(id, type, data);
+      const original = allTransactions.find(t => t.id === id);
+      let success = false;
+      if (original?.type === 'savings') {
+        // Map modal data to savings fields
+        const payload = {
+          description: data.description,
+          amount: data.amount,
+          goalName: data.category,
+        };
+        success = await updateSavings(id, payload);
+        if (success) {
+          await fetchSavings();
+        }
+      } else if (original?.type === 'investment') {
+        const payload = {
+          description: data.description,
+          amount: data.amount,
+          assetName: data.category,
+        };
+        success = await updateInvestment(id, payload);
+        if (success) {
+          await fetchInvestments();
+        }
+      } else {
+        success = await updateTransaction(id, type, data);
+      }
       if (!success) {
         setError('Failed to update transaction');
         return false;
@@ -126,7 +153,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   };
 
   // Get icon and color for category
-  const getCategoryInfo = (category: string, type: 'income' | 'expense' | 'savings') => {
+  const getCategoryInfo = (category: string, type: 'income' | 'expense' | 'savings' | 'investment') => {
     if (type === 'income') {
       const incomeCategories: Record<string, { icon: any; color: string }> = {
         'Salary': { icon: Briefcase, color: 'text-blue-600 dark:text-blue-400' },
@@ -140,6 +167,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       return incomeCategories[category] || { icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400' };
     } else if (type === 'savings') {
       return { icon: TrendingUp, color: 'text-blue-600 dark:text-blue-400' };
+    } else if (type === 'investment') {
+      return { icon: TrendingUp, color: 'text-purple-600 dark:text-purple-400' };
     } else {
       const expenseCategories: Record<string, { icon: any; color: string }> = {
         'Housing & Utilities': { icon: Home, color: 'text-orange-600 dark:text-orange-400' },
@@ -198,17 +227,36 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     }).format(date);
   };
 
-  // Combine transactions and savings data
+  // Combine transactions, savings, and investments with unique keys
   const allTransactions = [
-    ...transactions,
-    ...savings.map(saving => ({
+    ...transactions.map((txn: any) => ({
+      ...txn,
+      uniqueKey: `txn_${txn.id}`,
+      type: txn.type as 'income' | 'expense'
+    })),
+    ...savings.map((saving: any) => ({
       ...saving,
+      uniqueKey: `savings_${saving.id}`,
       type: 'savings' as const,
       category: saving.goal_name || 'Savings'
+    })),
+    ...(investments || []).map((inv: any) => ({
+      ...inv,
+      uniqueKey: `investment_${inv.id}`,
+      type: 'investment' as const,
+      category: inv.asset_name || 'Investment'
     }))
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const limitedTransactions = allTransactions.slice(0, getTransactionLimit());
+  const filtered = allTransactions.filter(t => {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'txn') return t.type === 'income' || t.type === 'expense';
+    if (activeFilter === 'savings') return t.type === 'savings';
+    if (activeFilter === 'investment') return t.type === 'investment';
+    return true;
+  });
+
+  const limitedTransactions = filtered.slice(0, getTransactionLimit());
 
   if (loading) {
     return (
@@ -253,6 +301,28 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         </div>
       )}
 
+      {/* Filter Tabs */}
+      <div className="mb-3 flex gap-2">
+        {[
+          { key: 'all', label: 'All' },
+          { key: 'txn', label: 'Expense/Income' },
+          { key: 'savings', label: 'Savings' },
+          { key: 'investment', label: 'Investment' },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveFilter(tab.key as any)}
+            className={`px-3 py-1.5 rounded-lg text-sm border ${
+              activeFilter === tab.key
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div className={`flex-1 overflow-y-auto ${
         widgetSize === 'square' ? 'space-y-2' : 'space-y-3'
       }`}>
@@ -269,11 +339,12 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           const IconComponent = categoryInfo.icon;
           const isIncome = transaction.type === 'income';
           const isSavings = transaction.type === 'savings';
+          const isInvestment = transaction.type === 'investment';
           const isDeleting = deleting === transaction.id;
           
           return (
             <div
-              key={transaction.id}
+              key={transaction.uniqueKey}
               className={`flex items-center justify-between ${
                 widgetSize === 'square' ? 'p-2' : 'p-3'
               } rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group`}
@@ -286,6 +357,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                     ? 'bg-emerald-100 dark:bg-emerald-900/30' 
                     : isSavings
                     ? 'bg-blue-100 dark:bg-blue-900/30'
+                    : isInvestment
+                    ? 'bg-purple-100 dark:bg-purple-900/30'
                     : 'bg-slate-100 dark:bg-slate-700'
                 }`}>
                   <IconComponent className={`${
@@ -318,9 +391,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                 } transition-opacity`}>
                   <button
                     onClick={() => handleEdit(transaction)}
-                    disabled={transaction.type === 'savings'}
                     className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={transaction.type === 'savings' ? 'Cannot edit savings transactions' : 'Edit transaction'}
+                    title={'Edit transaction'}
                   >
                     <Edit3 className="w-3 h-3" />
                   </button>
@@ -347,9 +419,11 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                       ? 'text-emerald-600 dark:text-emerald-400' 
                       : isSavings
                       ? 'text-blue-600 dark:text-blue-400'
+                      : isInvestment
+                      ? 'text-purple-600 dark:text-purple-400'
                       : 'text-red-600 dark:text-red-400'
                   }`}>
-                    {isIncome ? '+' : isSavings ? '💎' : '-'}{formatCurrency(transaction.amount)}
+                    {isIncome ? '+' : isSavings ? '💎' : isInvestment ? '📈' : '-'}{formatCurrency(transaction.amount)}
                   </div>
                   {widgetSize === 'square' && (
                     <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -363,22 +437,37 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         }))}
       </div>
 
-      {/* Quick Actions - Conditional based on widget size */}
+      {/* Quick Action - Add Activity chooser */}
       {widgetSize !== 'square' && (
         <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
-          <div className={`flex gap-3 ${
-            widgetSize === 'half' ? 'flex-col' : 'flex-row'
-          }`}>
-            <button className={`${
-              widgetSize === 'half' ? 'w-full' : 'flex-1'
-            } bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm`}>
-              - Add Expense
-            </button>
-            <button className={`${
-              widgetSize === 'half' ? 'w-full' : 'flex-1'
-            } bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm`}>
-              + Add Income
-            </button>
+          <div className={`${widgetSize === 'half' ? 'w-full' : ''}`}>
+            <details className="group">
+              <summary className={`list-none cursor-pointer ${
+                widgetSize === 'half' ? 'w-full' : 'inline-flex'
+              } bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center justify-between`}>
+                <span>Add Activity</span>
+                <span className="ml-2 transition-transform group-open:rotate-180">▾</span>
+              </summary>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {[
+                  { key: 'expense', label: 'Expense', color: 'bg-red-600 hover:bg-red-700' },
+                  { key: 'income', label: 'Income', color: 'bg-emerald-600 hover:bg-emerald-700' },
+                  { key: 'savings', label: 'Savings', color: 'bg-blue-600 hover:bg-blue-700' },
+                  { key: 'investment', label: 'Investment', color: 'bg-purple-600 hover:bg-purple-700' },
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    className={`${opt.color} text-white font-medium py-2 px-3 rounded-lg text-sm`}
+                    onClick={() => {
+                      // TODO: open the appropriate add modal/form
+                      alert(`Add ${opt.label} - coming soon`);
+                    }}
+                  >
+                    + {opt.label}
+                  </button>
+                ))}
+              </div>
+            </details>
           </div>
         </div>
       )}

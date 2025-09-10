@@ -1,6 +1,6 @@
 'use client';
 
-import { Target, Laptop, Car, Home, Plane, Plus } from 'lucide-react';
+import { Target, Laptop, Car, Home, Plane, Plus, Trash2 } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import { useState, useEffect } from 'react';
 import SavingsGoalModal from './SavingsGoalModal';
@@ -26,6 +26,14 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDistribution, setShowDistribution] = useState(false);
+  const [allocations, setAllocations] = useState<Record<number, number>>({});
+
+  // Calculate total saved money from savings transactions
+  const totalSaved = savings.reduce((sum: number, saving: any) => {
+    const amount = parseFloat(saving.amount) || 0;
+    return sum + amount;
+  }, 0);
 
   // Fetch savings goals from API
   useEffect(() => {
@@ -36,6 +44,12 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           const data = await response.json();
           if (data.success) {
             setGoals(data.data || []);
+            // Initialize allocations with current amounts
+            const initialAllocations: Record<number, number> = {};
+            (data.data || []).forEach((goal: SavingsGoal) => {
+              initialAllocations[goal.id] = goal.current_amount || 0;
+            });
+            setAllocations(initialAllocations);
           }
         }
       } catch (error) {
@@ -48,6 +62,26 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
 
     fetchGoals();
   }, []);
+
+  // Refresh goals when savings data changes (when new savings are added)
+  useEffect(() => {
+    if (savings.length > 0) {
+      const refreshGoals = async () => {
+        try {
+          const response = await fetch('/api/savings-goals');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              setGoals(data.data || []);
+            }
+          }
+        } catch (error) {
+          console.error('Error refreshing savings goals:', error);
+        }
+      };
+      refreshGoals();
+    }
+  }, [savings.length]); // Trigger when savings count changes
 
   // Handle creating new savings goal
   const handleCreateGoal = async (goalData: any) => {
@@ -89,6 +123,139 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
     setError(null);
   };
 
+  // Handle delete goal
+  const handleDeleteGoal = async (goalId: number, goalName: string) => {
+    if (!confirm(`Are you sure you want to delete the goal "${goalName}"? This will also delete all associated savings records.`)) {
+      return;
+    }
+
+    try {
+      setError(null);
+      const response = await fetch(`/api/savings-goals/${goalId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Refresh goals list
+        const refreshResponse = await fetch('/api/savings-goals');
+        if (refreshResponse.ok) {
+          const refreshData = await refreshResponse.json();
+          if (refreshData.success) {
+            setGoals(refreshData.data || []);
+            // Update allocations to remove deleted goal
+            setAllocations(prev => {
+              const newAllocations = { ...prev };
+              delete newAllocations[goalId];
+              return newAllocations;
+            });
+          }
+        }
+      } else {
+        const errorData = await response.json();
+        setError(`Failed to delete goal: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting goal:', error);
+      setError('Failed to delete goal');
+    }
+  };
+
+  // Handle allocation changes
+  const handleAllocationChange = (goalId: number, amount: number) => {
+    // Ensure amount is non-negative
+    const validAmount = Math.max(0, amount || 0);
+    
+    // Find the goal to get its target amount
+    const goal = goals.find(g => g.id === goalId);
+    const goalTarget = goal?.target_amount || 0;
+    
+    // Calculate current total allocation excluding this goal
+    const currentTotalExcludingThis = Object.entries(allocations)
+      .filter(([id]) => Number(id) !== goalId)
+      .reduce((sum, [, allocAmount]) => sum + (allocAmount || 0), 0);
+    
+    // Calculate maximum allowed: min of (goal target, remaining total savings)
+    const maxFromTotalSavings = totalSaved - currentTotalExcludingThis;
+    const maxAllowed = Math.min(goalTarget, maxFromTotalSavings);
+    const finalAmount = Math.min(validAmount, maxAllowed);
+    
+    // Debug logging
+    console.log('Allocation change:', {
+      goalId,
+      goalTarget,
+      requestedAmount: validAmount,
+      maxFromTotalSavings,
+      maxAllowed,
+      finalAmount,
+      currentTotalExcludingThis,
+      totalSaved
+    });
+    
+    setAllocations(prev => ({
+      ...prev,
+      [goalId]: finalAmount
+    }));
+  };
+
+  // Calculate total allocated amount
+  const totalAllocated = Object.values(allocations).reduce((sum, amount) => {
+    const validAmount = isNaN(amount) ? 0 : amount;
+    return sum + validAmount;
+  }, 0);
+  const remainingToAllocate = totalSaved - totalAllocated;
+
+  // Debug logging
+  console.log('SavingsGoals Debug:', {
+    savings: savings,
+    totalSaved: totalSaved,
+    allocations: allocations,
+    totalAllocated: totalAllocated,
+    remainingToAllocate: remainingToAllocate
+  });
+
+  // Handle save allocations
+  const handleSaveAllocations = async () => {
+    try {
+      setError(null);
+      console.log('Saving allocations:', allocations);
+      
+      // Update each goal's current_amount
+      for (const [goalId, amount] of Object.entries(allocations)) {
+        const validAmount = Math.max(0, Number(amount) || 0);
+        console.log(`Updating goal ${goalId} with amount ${validAmount}`);
+        const response = await fetch(`/api/savings-goals/${goalId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ currentAmount: validAmount }),
+        });
+        
+        const responseData = await response.json();
+        console.log(`Response for goal ${goalId}:`, responseData);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to update goal ${goalId}: ${responseData.error || 'Unknown error'}`);
+        }
+      }
+      
+      // Refresh goals
+      const refreshResponse = await fetch('/api/savings-goals');
+      if (refreshResponse.ok) {
+        const refreshData = await refreshResponse.json();
+        if (refreshData.success) {
+          setGoals(refreshData.data || []);
+          console.log('Goals refreshed:', refreshData.data);
+        }
+      }
+      
+      setShowDistribution(false);
+    } catch (error) {
+      console.error('Error saving allocations:', error);
+      setError(`Failed to save allocations: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
   // Get icon component based on icon name
   const getIconComponent = (iconName: string | null) => {
     const icons: Record<string, any> = {
@@ -101,12 +268,13 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
   };
 
   const formatCurrency = (amount: number) => {
+    const validAmount = isNaN(amount) ? 0 : amount;
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(validAmount);
   };
 
   const formatDate = (dateString: string) => {
@@ -119,7 +287,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
 
   // Calculate monthly savings needed and estimated completion
   const calculateMonthlySavings = (goal: SavingsGoal) => {
-    const remaining = goal.target_amount - goal.current_amount;
+    const remaining = Math.max(0, goal.target_amount - goal.current_amount);
     if (remaining <= 0) return { monthlyAmount: 0, monthsToComplete: 0, estimatedDate: null };
 
     if (goal.deadline) {
@@ -130,12 +298,8 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
       const monthlyAmount = Math.ceil(remaining / monthsRemaining);
       return { monthlyAmount, monthsToComplete: monthsRemaining, estimatedDate: goal.deadline };
     } else {
-      // If no deadline, assume 1 million per month and calculate estimated completion
-      const monthlyAmount = 1000000; // Default monthly savings
-      const monthsToComplete = Math.ceil(remaining / monthlyAmount);
-      const estimatedDate = new Date();
-      estimatedDate.setMonth(estimatedDate.getMonth() + monthsToComplete);
-      return { monthlyAmount, monthsToComplete, estimatedDate: estimatedDate.toISOString().split('T')[0] };
+      // If no deadline, don't show monthly amount - just show remaining amount
+      return { monthlyAmount: 0, monthsToComplete: 0, estimatedDate: null };
     }
   };
 
@@ -205,13 +369,55 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
             Savings Goals
           </h2>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
-        >
-          <Plus className="w-3 h-3 inline mr-1" />
-          Add
-        </button>
+        <div className="flex gap-2">
+          {totalSaved > 0 && goals.length > 0 && (
+            <button 
+              onClick={() => {
+                if (!showDistribution) {
+                  // Reset allocations to current amounts when entering distribution mode
+                  const resetAllocations: Record<number, number> = {};
+                  goals.forEach(goal => {
+                    resetAllocations[goal.id] = goal.current_amount;
+                  });
+                  setAllocations(resetAllocations);
+                }
+                setShowDistribution(!showDistribution);
+              }}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+            >
+              {showDistribution ? 'Cancel' : 'Distribute'}
+            </button>
+          )}
+          <button 
+            onClick={() => setShowModal(true)}
+            className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
+          >
+            <Plus className="w-3 h-3 inline mr-1" />
+            Add Goal
+          </button>
+        </div>
+      </div>
+
+      {/* Total Saved Money Display */}
+      <div className="mb-3 p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Total Money Saved</div>
+            <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+              {formatCurrency(totalSaved)}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+              {totalAllocated > 0 ? `${formatCurrency(totalAllocated)} allocated` : 'Not allocated'}
+            </div>
+            {remainingToAllocate !== 0 && (
+              <div className={`text-xs ${remainingToAllocate > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                {remainingToAllocate > 0 ? `${formatCurrency(remainingToAllocate)} remaining` : `${formatCurrency(Math.abs(remainingToAllocate))} over-allocated`}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto">
@@ -224,11 +430,13 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           </div>
         ) : (
           goals.slice(0, 2).map((goal) => {
-            const percentage = (goal.current_amount / goal.target_amount) * 100;
-            const remaining = goal.target_amount - goal.current_amount;
+            const currentAmount = showDistribution ? (allocations[goal.id] || 0) : (goal.current_amount || 0);
+            const targetAmount = goal.target_amount || 0;
+            const percentage = targetAmount > 0 ? Math.min(100, (currentAmount / targetAmount) * 100) : 0;
+            const remaining = Math.max(0, targetAmount - currentAmount);
             const IconComponent = getIconComponent(goal.icon);
             const colors = getColorClasses(goal.color || 'blue');
-            const { monthlyAmount, monthsToComplete, estimatedDate } = calculateMonthlySavings(goal);
+            const { monthlyAmount, monthsToComplete, estimatedDate } = calculateMonthlySavings({...goal, current_amount: currentAmount});
             
             return (
               <div
@@ -245,48 +453,104 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
                         {goal.name}
                       </h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {goal.deadline ? formatDate(goal.deadline) : `Est. ${estimatedDate ? formatDate(estimatedDate) : 'N/A'}`}
+                        {goal.deadline ? `Target: ${formatDate(goal.deadline)}` : 'No deadline set'}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className={`text-sm font-bold ${colors.text}`}>
-                      {percentage.toFixed(0)}%
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <div className={`text-sm font-bold ${colors.text}`}>
+                        {percentage.toFixed(0)}%
+                      </div>
                     </div>
+                    {!showDistribution && (
+                      <button
+                        onClick={() => handleDeleteGoal(goal.id, goal.name)}
+                        className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                        title="Delete goal"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="mb-2">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-600 dark:text-slate-300">
-                      {formatCurrency(goal.current_amount)}
-                    </span>
-                    <span className="text-slate-600 dark:text-slate-300">
-                      {formatCurrency(goal.target_amount)}
-                    </span>
+                {showDistribution ? (
+                  // Distribution mode - show slider and quick buttons
+                  <div className="mb-2">
+                    <div className="mb-2">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs text-slate-600 dark:text-slate-300">
+                          {formatCurrency(allocations[goal.id] || 0)}
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          Target: {formatCurrency(goal.target_amount)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        Max: {formatCurrency(Math.min(goal.target_amount, totalSaved - (totalAllocated - (allocations[goal.id] || 0))))}
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max={Math.min(goal.target_amount, totalSaved - (totalAllocated - (allocations[goal.id] || 0)))}
+                        step="100000"
+                        value={allocations[goal.id] || 0}
+                        onChange={(e) => handleAllocationChange(goal.id, parseInt(e.target.value))}
+                        className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer slider"
+                      />
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleAllocationChange(goal.id, 0)}
+                        className="flex-1 px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        onClick={() => {
+                          const currentAllocation = allocations[goal.id] || 0;
+                          const maxFromTotalSavings = totalSaved - (totalAllocated - currentAllocation);
+                          const fillAmount = Math.min(goal.target_amount, maxFromTotalSavings);
+                          handleAllocationChange(goal.id, fillAmount);
+                        }}
+                        className="flex-1 px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors"
+                      >
+                        Fill Goal
+                      </button>
+                      <button
+                        onClick={() => handleAllocationChange(goal.id, Math.floor(remainingToAllocate / goals.length) + (allocations[goal.id] || 0))}
+                        className="flex-1 px-2 py-1 text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded hover:bg-emerald-200 dark:hover:bg-emerald-800/50 transition-colors"
+                      >
+                        Equal Split
+                      </button>
+                    </div>
                   </div>
-                  <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1.5">
-                    <div 
-                      className={`h-1.5 rounded-full transition-all duration-300 ${colors.progress}`}
-                      style={{ width: `${Math.min(percentage, 100)}%` }}
-                    ></div>
+                ) : (
+                  // Normal mode - show progress bar
+                  <div className="mb-2">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-600 dark:text-slate-300">
+                        {formatCurrency(currentAmount)}
+                      </span>
+                      <span className="text-slate-600 dark:text-slate-300">
+                        {formatCurrency(goal.target_amount)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1.5">
+                      <div 
+                        className={`h-1.5 rounded-full transition-all duration-300 ${colors.progress}`}
+                        style={{ width: `${Math.min(percentage, 100)}%` }}
+                      ></div>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-1">
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       {formatCurrency(remaining)} left
                     </span>
-                    <button 
-                      onClick={() => setShowModal(true)}
-                      className={`text-xs px-2 py-1 rounded ${colors.text} hover:opacity-80 transition-opacity font-medium`}
-                    >
-                      Add
-                    </button>
-                  </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    💰 {formatCurrency(monthlyAmount)}/month • {monthsToComplete} months left
                   </div>
                 </div>
               </div>
@@ -295,21 +559,51 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
         )}
       </div>
 
+      {/* Distribution Controls */}
+      {showDistribution && (
+        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveAllocations}
+              disabled={remainingToAllocate < 0}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-medium py-2 px-3 rounded-lg text-sm transition-colors"
+            >
+              Save Allocations
+            </button>
+            <button
+              onClick={() => setShowDistribution(false)}
+              className="flex-1 bg-slate-600 hover:bg-slate-700 text-white font-medium py-2 px-3 rounded-lg text-sm transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+          {remainingToAllocate < 0 && (
+            <div className="mt-2 text-xs text-red-600 dark:text-red-400 text-center">
+              You've allocated more than your total savings. Please adjust the amounts.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Summary Stats */}
-      {goals.length > 0 && (
+      {goals.length > 0 && !showDistribution && (
         <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
           <div className="grid grid-cols-2 gap-2">
             <div className="text-center">
               <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                {formatCurrency(goals.reduce((sum, goal) => sum + goal.current_amount, 0))}
+                {formatCurrency(goals.reduce((sum, goal) => sum + (goal.current_amount || 0), 0))}
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                Total Saved
+                Allocated
               </div>
             </div>
             <div className="text-center">
               <div className="text-sm font-bold text-blue-600 dark:text-blue-400">
-                {goals.length > 0 ? ((goals.reduce((sum, goal) => sum + (goal.current_amount / goal.target_amount), 0) / goals.length) * 100).toFixed(0) : 0}%
+                {goals.length > 0 ? ((goals.reduce((sum, goal) => {
+                  const current = goal.current_amount || 0;
+                  const target = goal.target_amount || 0;
+                  return sum + (target > 0 ? (current / target) : 0);
+                }, 0) / goals.length) * 100).toFixed(0) : 0}%
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 Avg Progress

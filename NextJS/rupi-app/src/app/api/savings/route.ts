@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
 
     let query = `
-      SELECT s.*, sg.name as goal_name 
+      SELECT s.*, sg.goal_name as goal_name_from_goal 
       FROM savings s 
-      LEFT JOIN savings_goals sg ON s.goal_id = sg.id
+      LEFT JOIN savings_goals sg ON s.goal_name = sg.goal_name
     `;
     const queryParams: any[] = [];
     let paramCount = 0;
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     if (goalId) {
       paramCount++;
-      conditions.push(`s.goal_id = $${paramCount}`);
+      conditions.push(`sg.id = $${paramCount}`);
       queryParams.push(parseInt(goalId));
     }
 
@@ -146,27 +146,25 @@ export async function POST(request: NextRequest) {
 
       // Insert savings record
       const savingsQuery = `
-        INSERT INTO savings (description, amount, goal_id, goal_name, type, date)
-        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+        INSERT INTO savings (description, amount, goal_name, date)
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
         RETURNING *
       `;
       
       const savingsResult = await client.query(savingsQuery, [
         description,
         amount,
-        goalId || null,
-        goalName || null,
-        type
+        goalName || null
       ]);
 
       // If this is a deposit and has a goal, update the goal's current amount
-      if (type === 'deposit' && goalId) {
+      if (type === 'deposit' && goalName) {
         const updateGoalQuery = `
           UPDATE savings_goals 
           SET current_amount = current_amount + $1, updated_at = CURRENT_TIMESTAMP
-          WHERE id = $2
+          WHERE goal_name = $2
         `;
-        await client.query(updateGoalQuery, [amount, goalId]);
+        await client.query(updateGoalQuery, [amount, goalName]);
       }
 
       await client.query('COMMIT');

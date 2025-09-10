@@ -79,12 +79,20 @@ export async function GET(request: NextRequest) {
      const result = await pool.query(query, [startDate, endDate]);
      
      // Transform the data to match the expected format
-     const trendsData = result.rows.map(row => ({
-       date: row.date.toISOString().split('T')[0], // Format as YYYY-MM-DD
-       income: parseFloat(row.income) || 0,
-       expenses: parseFloat(row.expenses) || 0,
-       net: parseFloat(row.net) || 0
-     }));
+     const trendsData = result.rows.map(row => {
+       // Handle date formatting consistently - use local date to avoid timezone issues
+       const date = new Date(row.date);
+       const year = date.getFullYear();
+       const month = String(date.getMonth() + 1).padStart(2, '0');
+       const day = String(date.getDate()).padStart(2, '0');
+       
+       return {
+         date: `${year}-${month}-${day}`, // Format as YYYY-MM-DD in local timezone
+         income: parseFloat(row.income) || 0,
+         expenses: parseFloat(row.expenses) || 0,
+         net: parseFloat(row.net) || 0
+       };
+     });
 
     return NextResponse.json({
       success: true,

@@ -20,10 +20,11 @@ interface BalanceOverviewProps {
 export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverviewProps) {
   const { state } = useFinancialData();
   const { expenses, income, savings } = state.data;
+  const investments: any[] = (state.data as any).investments || [];
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
 
   // Calculate financial totals from context data
-  const financialData: FinancialTotal = useMemo(() => {
+  const financialData: FinancialTotal & { totalInvestments: number } = useMemo(() => {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -66,6 +67,7 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
     const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
     const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
     const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
+    const totalInvestments = (investments || []).reduce((sum: number, inv: any) => sum + parseFloat(inv.amount), 0);
 
     return {
       currentMonthExpenses,
@@ -74,14 +76,16 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
       currentMonthSavings,
       totalExpenses,
       totalIncome,
-      totalSavings
+      totalSavings,
+      totalInvestments
     };
-  }, [expenses, income, savings]);
+  }, [expenses, income, savings, investments]);
 
-  // Calculate balance using real income, expense, and savings data
-  // Available balance = income - expenses - savings (money allocated to savings)
-  const currentBalance = financialData.totalIncome - financialData.totalExpenses - financialData.totalSavings;
-  const totalAssets = financialData.totalIncome - financialData.totalExpenses; // Total assets = income - expenses
+  // Calculate balances with transfer-based approach
+  // Main/Spending Card = income - expenses - savings transfers - investment transfers
+  const currentBalance = financialData.totalIncome - financialData.totalExpenses - financialData.totalSavings - financialData.totalInvestments;
+  // Total assets across all cards = spendable (main) + savings + investments
+  const totalAssets = currentBalance + financialData.totalSavings + financialData.totalInvestments;
   const monthChange = financialData.previousMonthExpenses - financialData.currentMonthExpenses; // Positive if spending less
   const isPositiveChange = monthChange > 0;
   
@@ -152,15 +156,15 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
 
           {/* Main Balance Display */}
           <div className="mb-6">
-            <div className="text-slate-600 text-sm mb-2">Available Balance</div>
+            <div className="text-slate-600 text-sm mb-2">Main Card Balance</div>
             <div className="text-3xl font-bold text-slate-900 mb-1">
               {formatCurrency(currentBalance)}
             </div>
-            <div className="text-slate-500 text-xs">Spendable Amount</div>
+            <div className="text-slate-500 text-xs">Available for Spending</div>
           </div>
 
           {/* Financial Summary Cards */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             {/* Total Assets Card */}
             <div className="bg-slate-50/80 backdrop-blur-sm rounded-lg p-3 border border-slate-200">
               <div className="text-slate-600 text-xs font-medium mb-1">Total Assets</div>
@@ -172,11 +176,20 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
 
             {/* Savings Card */}
             <div className="bg-slate-50/80 backdrop-blur-sm rounded-lg p-3 border border-slate-200">
-              <div className="text-slate-600 text-xs font-medium mb-1">Savings</div>
+              <div className="text-slate-600 text-xs font-medium mb-1">Savings Card</div>
               <div className="text-sm font-bold text-slate-900 mb-1 truncate">
                 {formatCurrency(financialData.totalSavings)}
               </div>
-              <div className="text-blue-600 text-xs">Invested</div>
+              <div className="text-blue-600 text-xs">Transferred</div>
+            </div>
+
+            {/* Investments Card */}
+            <div className="bg-slate-50/80 backdrop-blur-sm rounded-lg p-3 border border-slate-200">
+              <div className="text-slate-600 text-xs font-medium mb-1">Investment Card</div>
+              <div className="text-sm font-bold text-slate-900 mb-1 truncate">
+                {formatCurrency(financialData.totalInvestments || 0)}
+              </div>
+              <div className="text-purple-600 text-xs">Transferred</div>
             </div>
           </div>
         </div>

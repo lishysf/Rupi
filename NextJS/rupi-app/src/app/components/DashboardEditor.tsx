@@ -218,8 +218,8 @@ export default function DashboardEditor() {
     { id: '4', componentKey: 'trends-chart', size: 'long', order: 4 },
     { id: '5', componentKey: 'income-expense', size: 'half', order: 5 },
     { id: '6', componentKey: 'ai-insights', size: 'half', order: 6 },
-    { id: '7', componentKey: 'budget-tracking', size: 'half', order: 7 },
-    { id: '8', componentKey: 'savings-goals', size: 'half', order: 8 },
+    { id: '7', componentKey: 'budget-tracking', size: 'medium', order: 7 },
+    { id: '8', componentKey: 'savings-goals', size: 'medium', order: 8 },
     { id: '9', componentKey: 'recent-transactions', size: 'long', order: 9 },
   ]);
 
@@ -336,9 +336,9 @@ export default function DashboardEditor() {
     if (componentKey === 'recent-transactions') {
       return ['square', 'half', 'long'];
     }
-    // Budget tracking and savings goals should only use half (no square, medium, or long)
+    // Budget tracking and savings goals should use medium (2:2 ratio)
     if (componentKey === 'budget-tracking' || componentKey === 'savings-goals') {
-      return ['half'];
+      return ['medium'];
     }
     // All other components can use square and half
     return ['square', 'half'];

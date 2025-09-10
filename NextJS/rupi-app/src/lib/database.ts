@@ -55,6 +55,22 @@ export async function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_income_source ON income(source);
     `);
 
+    // Create investments table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS investments (
+        id SERIAL PRIMARY KEY,
+        description TEXT NOT NULL,
+        amount DECIMAL(10, 2) NOT NULL,
+        asset_name VARCHAR(150),
+        date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_investments_date ON investments(date);
+    `);
+
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Database initialization error:', error);

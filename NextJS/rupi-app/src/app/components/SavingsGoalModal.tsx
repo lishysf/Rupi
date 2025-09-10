@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Target, Laptop, Car, Home, Plane, Calendar, DollarSign, TrendingUp, Check } from 'lucide-react';
+import { X, Target, Laptop, Car, Home, Plane, Calendar, DollarSign, Check } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 
 interface SavingsGoalModalProps {
@@ -44,46 +44,7 @@ export default function SavingsGoalModal({ isOpen, onClose, onSave }: SavingsGoa
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [calculations, setCalculations] = useState({
-    monthlyAmount: 0,
-    monthsToComplete: 0,
-    estimatedDate: null as string | null,
-  });
-
-  // Calculate monthly savings needed and estimated completion
-  useEffect(() => {
-    if (formData.targetAmount > 0) {
-      if (formData.deadline) {
-        // If deadline is set, calculate monthly amount needed
-        const deadlineDate = new Date(formData.deadline);
-        const now = new Date();
-        const monthsRemaining = Math.max(1, (deadlineDate.getFullYear() - now.getFullYear()) * 12 + (deadlineDate.getMonth() - now.getMonth()));
-        const monthlyAmount = Math.ceil(formData.targetAmount / monthsRemaining);
-        setCalculations({
-          monthlyAmount,
-          monthsToComplete: monthsRemaining,
-          estimatedDate: formData.deadline,
-        });
-      } else {
-        // If no deadline, assume 1 million per month and calculate estimated completion
-        const monthlyAmount = 1000000; // Default monthly savings
-        const monthsToComplete = Math.ceil(formData.targetAmount / monthlyAmount);
-        const estimatedDate = new Date();
-        estimatedDate.setMonth(estimatedDate.getMonth() + monthsToComplete);
-        setCalculations({
-          monthlyAmount,
-          monthsToComplete,
-          estimatedDate: estimatedDate.toISOString().split('T')[0],
-        });
-      }
-    } else {
-      setCalculations({
-        monthlyAmount: 0,
-        monthsToComplete: 0,
-        estimatedDate: null,
-      });
-    }
-  }, [formData.targetAmount, formData.deadline]);
+  // No need for calculations since users manually distribute savings
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -302,38 +263,33 @@ export default function SavingsGoalModal({ isOpen, onClose, onSave }: SavingsGoa
                 </div>
               </div>
 
-              {/* Auto Calculation Display */}
+              {/* Goal Preview */}
               {formData.targetAmount > 0 && (
                 <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600">
                   <div className="flex items-center mb-3">
-                    <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mr-2" />
+                    <Target className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mr-2" />
                     <h3 className="text-sm font-medium text-slate-900 dark:text-white">
-                      Savings Plan
+                      Goal Preview
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-slate-600 dark:text-slate-400">Monthly savings needed:</span>
+                      <span className="text-slate-600 dark:text-slate-400">Target amount:</span>
                       <span className="font-medium text-slate-900 dark:text-white">
-                        {formatCurrency(calculations.monthlyAmount)}
+                        {formatCurrency(formData.targetAmount)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-600 dark:text-slate-400">Time to complete:</span>
-                      <span className="font-medium text-slate-900 dark:text-white">
-                        {calculations.monthsToComplete} months
-                      </span>
-                    </div>
-                    {calculations.estimatedDate && (
+                    {formData.deadline && (
                       <div className="flex justify-between">
-                        <span className="text-slate-600 dark:text-slate-400">
-                          {formData.deadline ? 'Target date:' : 'Estimated completion:'}
-                        </span>
+                        <span className="text-slate-600 dark:text-slate-400">Target date:</span>
                         <span className="font-medium text-slate-900 dark:text-white">
-                          {formatDate(calculations.estimatedDate)}
+                          {formatDate(formData.deadline)}
                         </span>
                       </div>
                     )}
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                      💡 You'll manually distribute your savings to this goal using the allocation feature.
+                    </div>
                   </div>
                 </div>
               )}

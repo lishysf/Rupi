@@ -195,7 +195,8 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
               stroke="#64748b"
               fontSize={10}
               tickFormatter={(value) => {
-                const date = new Date(value)
+                // Handle date formatting consistently - value should be YYYY-MM-DD format
+                const date = new Date(value + 'T00:00:00'); // Add time to avoid timezone issues
                 return date.toLocaleDateString("id-ID", {
                   month: "short",
                   day: "numeric",
@@ -233,7 +234,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3 min-w-[200px]">
                     <div className="font-medium text-slate-900 dark:text-white mb-2">
-                      {new Date(label).toLocaleDateString("id-ID", {
+                      {new Date(label + 'T00:00:00').toLocaleDateString("id-ID", {
                         weekday: "short",
                         month: "short", 
                         day: "numeric",
