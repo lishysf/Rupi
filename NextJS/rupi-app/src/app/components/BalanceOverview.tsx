@@ -147,7 +147,7 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center">
               <div className="w-3 h-3 bg-emerald-500 rounded-full mr-3 animate-pulse"></div>
-              <h2 className="text-slate-900 font-semibold text-lg">Rupi Card</h2>
+              <h2 className="text-slate-900 font-semibold text-lg">Fundy Card</h2>
             </div>
             <div className="text-slate-600 text-sm font-medium">
               {currentMonthName} {new Date().getFullYear()}

@@ -10,7 +10,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Rupi - Smart Expense Tracker",
+  title: "Fundy - AI Finance App",
   description: "AI-powered expense tracking and financial management app",
 };
 

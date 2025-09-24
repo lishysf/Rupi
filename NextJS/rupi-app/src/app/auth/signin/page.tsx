@@ -47,7 +47,7 @@ export default function SignIn() {
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-8">
           <div className="text-center">
             <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
-              Rupi
+              Fundy
             </div>
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
               Sign in to your account

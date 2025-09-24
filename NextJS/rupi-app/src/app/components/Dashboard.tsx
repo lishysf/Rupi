@@ -28,7 +28,7 @@ export default function Dashboard() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
         <div className="text-center">
           <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
-            Rupi
+            Fundy
           </div>
           <div className="text-slate-600 dark:text-slate-400">Loading...</div>
         </div>
@@ -49,10 +49,10 @@ export default function Dashboard() {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-4">
                 <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                  Rupi
+                  Fundy
                 </div>
                 <div className="text-sm text-slate-500 dark:text-slate-400">
-                  Smart Expense Tracker
+                  AI Finance App
                 </div>
               </div>
               <div className="flex items-center space-x-4">
