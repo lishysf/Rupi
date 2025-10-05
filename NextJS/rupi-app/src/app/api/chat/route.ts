@@ -3,6 +3,64 @@ import { GroqAIService } from '@/lib/groq-ai';
 import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, InvestmentDatabase, initializeDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
+// Helper function to handle expense creation with balance validation
+async function handleExpenseCreation(userId: number, description: string, amount: number, category: string) {
+  // Check if main balance is sufficient for expense
+  const [allExpenses, allIncome, allSavings] = await Promise.all([
+    ExpenseDatabase.getAllExpenses(userId, 100, 0),
+    IncomeDatabase.getAllIncome(userId, 100, 0),
+    SavingsDatabase.getAllSavings(userId, 100, 0)
+  ]);
+  
+  const totalIncome = allIncome.reduce((sum, income) => sum + (typeof income.amount === 'string' ? parseFloat(income.amount) : income.amount), 0);
+  const totalExpenses = allExpenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
+  const totalSavings = allSavings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
+  const mainBalance = totalIncome - totalExpenses - totalSavings;
+  
+  if (mainBalance < amount) {
+    throw new Error(`Insufficient main balance. Current balance: Rp${mainBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+  }
+  
+  return await ExpenseDatabase.createExpense(userId, description, amount, category as any, new Date());
+}
+
+// Helper function to handle savings transfers with balance validation
+async function handleSavingsTransfer(userId: number, description: string, amount: number, goalName?: string) {
+  const isTransferToSavings = description.toLowerCase().includes('transfer to') || 
+                             description.toLowerCase().includes('tabung') ||
+                             description.toLowerCase().includes('simpan');
+  
+  if (isTransferToSavings) {
+    // Transfer TO savings: Check if main balance is sufficient
+    const [allExpenses, allIncome, allSavings] = await Promise.all([
+      ExpenseDatabase.getAllExpenses(userId, 100, 0),
+      IncomeDatabase.getAllIncome(userId, 100, 0),
+      SavingsDatabase.getAllSavings(userId, 100, 0)
+    ]);
+    
+    const totalIncome = allIncome.reduce((sum, income) => sum + (typeof income.amount === 'string' ? parseFloat(income.amount) : income.amount), 0);
+    const totalExpenses = allExpenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
+    const totalSavings = allSavings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
+    const mainBalance = totalIncome - totalExpenses - totalSavings;
+    
+    if (mainBalance < amount) {
+      throw new Error(`Insufficient main balance. Current balance: Rp${mainBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+    }
+    
+    return await SavingsDatabase.createSavings(userId, description, amount, goalName, new Date());
+  } else {
+    // Transfer FROM savings: Check if savings balance is sufficient
+    const allSavings = await SavingsDatabase.getAllSavings(userId, 100, 0);
+    const totalSavings = allSavings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
+    
+    if (totalSavings < amount) {
+      throw new Error(`Insufficient savings balance. Current savings: Rp${totalSavings.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+    }
+    
+    return await SavingsDatabase.createSavings(userId, description, -amount, goalName, new Date());
+  }
+}
+
 // Initialize database on first request
 let dbInitialized = false;
 async function ensureDbInitialized() {
@@ -55,13 +113,22 @@ export async function POST(request: NextRequest) {
                 let createdTransaction = null;
                 
                 if (transaction.type === 'expense') {
-                  createdTransaction = await ExpenseDatabase.createExpense(
-                    user.id,
-                    transaction.description,
-                    transaction.amount,
-                    transaction.category!,
-                    new Date()
-                  );
+                  // Handle expense creation with balance validation
+                  try {
+                    createdTransaction = await handleExpenseCreation(
+                      user.id,
+                      transaction.description,
+                      transaction.amount,
+                      transaction.category!
+                    );
+                  } catch (expenseError) {
+                    console.error('Error creating expense:', expenseError);
+                    // Add to failed transactions with specific error message
+                    failedTransactions.push({
+                      transaction,
+                      error: expenseError instanceof Error ? expenseError.message : 'Unknown error'
+                    });
+                  }
                 } else if (transaction.type === 'income') {
                   createdTransaction = await IncomeDatabase.createIncome(
                     user.id,
@@ -71,22 +138,26 @@ export async function POST(request: NextRequest) {
                     new Date()
                   );
                 } else if (transaction.type === 'savings') {
-                  // Create savings transaction directly using database
+                  // Handle savings transfer with balance validation
                   try {
-                    createdTransaction = await SavingsDatabase.createSavings(
+                    createdTransaction = await handleSavingsTransfer(
                       user.id,
                       transaction.description,
                       transaction.amount,
-                      transaction.goalName,
-                      new Date()
+                      transaction.goalName
                     );
                   } catch (savingsError) {
                     console.error('Error creating savings:', savingsError);
+                    // Add to failed transactions with specific error message
+                    failedTransactions.push({
+                      transaction,
+                      error: savingsError instanceof Error ? savingsError.message : 'Unknown error'
+                    });
                   }
                 } else if (transaction.type === 'investment') {
-                  // Create investment transaction directly using database
+                  // Replace investment portfolio value using database
                   try {
-                    createdTransaction = await InvestmentDatabase.createInvestment(
+                    createdTransaction = await InvestmentDatabase.replaceInvestmentPortfolio(
                       user.id,
                       transaction.description,
                       transaction.amount,
@@ -94,7 +165,7 @@ export async function POST(request: NextRequest) {
                       new Date()
                     );
                   } catch (investmentError) {
-                    console.error('Error creating investment:', investmentError);
+                    console.error('Error updating investment portfolio:', investmentError);
                   }
                 }
                 
@@ -126,7 +197,7 @@ export async function POST(request: NextRequest) {
               } else if (transaction.type === 'savings') {
                 return `Transfer to savings: ${transaction.description} (Rp${amount})`;
               } else if (transaction.type === 'investment') {
-                return `Transfer to investment: ${transaction.description} (Rp${amount})`;
+                return `Investment portfolio updated to Rp${amount}`;
               }
               return `${transaction.description} (Rp${amount})`;
             });
@@ -164,15 +235,20 @@ export async function POST(request: NextRequest) {
         // Only create transaction if confidence is high enough and amount is valid
         if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
           if (parsedTransaction.type === 'expense') {
-            transactionCreated = await ExpenseDatabase.createExpense(
-              user.id,
-              parsedTransaction.description,
-              parsedTransaction.amount,
-              parsedTransaction.category!,
-              new Date()
-            );
-
-            response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category. Your expense has been saved successfully!`;
+            // Handle expense creation with balance validation
+            try {
+              transactionCreated = await handleExpenseCreation(
+                user.id,
+                parsedTransaction.description,
+                parsedTransaction.amount,
+                parsedTransaction.category!
+              );
+              
+              response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category. Your expense has been saved successfully!`;
+            } catch (expenseError) {
+              console.error('Error creating expense:', expenseError);
+              response = expenseError instanceof Error ? expenseError.message : 'Unknown error';
+            }
           } else if (parsedTransaction.type === 'income') {
             transactionCreated = await IncomeDatabase.createIncome(
               user.id,
@@ -184,34 +260,42 @@ export async function POST(request: NextRequest) {
 
             response = `Excellent! I've recorded your income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}. Your income has been saved successfully!`;
           } else if (parsedTransaction.type === 'savings') {
-            // Create savings transaction directly using database
+            // Handle savings transfer with balance validation
             try {
-              transactionCreated = await SavingsDatabase.createSavings(
+              transactionCreated = await handleSavingsTransfer(
                 user.id,
                 parsedTransaction.description,
                 parsedTransaction.amount,
-                parsedTransaction.goalName,
-                new Date()
+                parsedTransaction.goalName
               );
-              response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your main account to your savings account. Your savings balance has been updated!`;
+              
+              const isTransferToSavings = parsedTransaction.description.toLowerCase().includes('transfer to') || 
+                                         parsedTransaction.description.toLowerCase().includes('tabung') ||
+                                         parsedTransaction.description.toLowerCase().includes('simpan');
+              
+              if (isTransferToSavings) {
+                response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your main account to your savings account. Your savings balance has been updated!`;
+              } else {
+                response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your savings account to your main account. Your main balance has been updated!`;
+              }
             } catch (savingsError) {
               console.error('Error creating savings:', savingsError);
-              response = `I understood that you want to record savings, but there was an error saving it. Please try again.`;
+              response = savingsError instanceof Error ? savingsError.message : 'Unknown error';
             }
           } else if (parsedTransaction.type === 'investment') {
-            // Create investment transaction directly using database
+            // Replace investment portfolio value using database
             try {
-              transactionCreated = await InvestmentDatabase.createInvestment(
+              transactionCreated = await InvestmentDatabase.replaceInvestmentPortfolio(
                 user.id,
                 parsedTransaction.description,
                 parsedTransaction.amount,
                 parsedTransaction.assetName,
                 new Date()
               );
-              response = `Excellent! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your main account to your investment account. Your investment portfolio has been updated!`;
+              response = `Your investment portfolio value has been updated to Rp${parsedTransaction.amount.toLocaleString()}!`;
             } catch (investmentError) {
-              console.error('Error creating investment:', investmentError);
-              response = `I understood that you want to record an investment, but there was an error saving it. Please try again.`;
+              console.error('Error updating investment portfolio:', investmentError);
+              response = `I understood that you want to update your investment portfolio, but there was an error saving it. Please try again.`;
             }
           }
         } else {
@@ -272,7 +356,7 @@ export async function POST(request: NextRequest) {
         ]);
 
         // Get savings data directly from database
-        let allSavings = [];
+        let allSavings: any[] = [];
         try {
           allSavings = await SavingsDatabase.getAllSavings(user.id, 100, 0);
         } catch (savingsError) {
@@ -280,7 +364,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Get investments data directly from database
-        let allInvestments = [];
+        let allInvestments: any[] = [];
         try {
           allInvestments = await InvestmentDatabase.getAllInvestments(user.id, 100, 0);
         } catch (investmentsError) {

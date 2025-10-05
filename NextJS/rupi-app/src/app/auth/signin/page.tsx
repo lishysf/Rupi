@@ -29,8 +29,8 @@ export default function SignIn() {
       } else {
         // Check if session was created successfully
         const session = await getSession();
-        if (session) {
-          router.push('/');
+        if (session && session.user?.name) {
+          router.push(`/${session.user.name}/dashboard`);
           router.refresh();
         }
       }

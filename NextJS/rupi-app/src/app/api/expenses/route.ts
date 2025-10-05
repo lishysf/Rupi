@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ExpenseDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
+import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
@@ -103,6 +103,28 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: `Invalid category. Must be one of: ${EXPENSE_CATEGORIES.join(', ')}`
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if main balance is sufficient for expense
+    const [allExpenses, allIncome, allSavings] = await Promise.all([
+      ExpenseDatabase.getAllExpenses(user.id, 100, 0),
+      IncomeDatabase.getAllIncome(user.id, 100, 0),
+      SavingsDatabase.getAllSavings(user.id, 100, 0)
+    ]);
+    
+    const totalIncome = allIncome.reduce((sum, income) => sum + (typeof income.amount === 'string' ? parseFloat(income.amount) : income.amount), 0);
+    const totalExpenses = allExpenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
+    const totalSavings = allSavings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
+    const mainBalance = totalIncome - totalExpenses - totalSavings;
+    
+    if (mainBalance < amount) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Insufficient main balance. Current balance: Rp${mainBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`
         },
         { status: 400 }
       );

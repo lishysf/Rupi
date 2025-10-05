@@ -227,47 +227,56 @@ export default function FloatingChat() {
       <div className="fixed bottom-4 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-sm sm:max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl px-3 sm:px-4 md:px-0">
         {/* Chat History Bubble */}
         {isExpanded && (
-        <div className="mb-4 w-full bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
+        <div className="mb-4 w-full bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200/50 dark:border-slate-700/50 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200 backdrop-blur-xl">
           {/* Chat Header */}
-          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-emerald-500 to-blue-500">
-            <div className="flex items-center space-x-2">
-              <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              <h3 className="text-sm sm:text-base font-semibold text-white">AI Assistant</h3>
+          <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-700/50 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center shadow-sm">
+                <MessageCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">AI Assistant</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Online</p>
+              </div>
             </div>
             <button
               onClick={handleClose}
-              className="p-1 hover:bg-white/20 rounded-full transition-colors"
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"
             >
-              <X className="w-4 h-4 text-white" />
+              <X className="w-4 h-4 text-slate-500 dark:text-slate-400" />
             </button>
           </div>
 
           {/* Chat Messages */}
           <div 
             ref={chatHistoryRef}
-            className="h-48 sm:h-64 md:h-72 overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 bg-slate-50 dark:bg-slate-900/50"
+            className="h-48 sm:h-64 md:h-72 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/30"
           >
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-              >
+            {messages.map((message, index) => {
+              const prevMessage = index > 0 ? messages[index - 1] : null;
+              const isDifferentSender = prevMessage && prevMessage.isUser !== message.isUser;
+              
+              return (
                 <div
-                  className={`max-w-[85%] sm:max-w-[80%] p-2 sm:p-3 rounded-2xl ${
+                  key={message.id}
+                  className={`flex ${message.isUser ? 'justify-end' : 'justify-start'} ${isDifferentSender ? 'mt-6' : 'mt-1'}`}
+                >
+                <div
+                  className={`max-w-[85%] sm:max-w-[80%] ${
                     message.isUser
-                      ? 'bg-emerald-500 text-white rounded-br-md'
-                      : `bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-bl-md border border-slate-200 dark:border-slate-600 ${
+                      ? 'bg-emerald-500 text-white rounded-2xl rounded-br-md shadow-sm'
+                      : `bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl rounded-bl-md shadow-sm border border-slate-200/50 dark:border-slate-600/50 ${
                           (message.transactionCreated || message.multipleTransactionsCreated) ? 'border-green-300 dark:border-green-600' : ''
                         }`
                   }`}
                 >
-                  <div className="flex items-start space-x-2">
+                  <div className="px-4 py-3">
                     <div className="flex-1">
-                      <div className={`text-xs sm:text-sm leading-relaxed ${message.isLoading ? 'animate-pulse' : ''}`}>
+                      <div className={`text-sm leading-relaxed ${message.isLoading ? 'animate-pulse' : ''}`}>
                         {formatMessageText(message.text)}
                       </div>
                       {message.transactionCreated && (
-                        <div className="flex items-center space-x-1 mt-1">
+                        <div className="flex items-center space-x-1 mt-2">
                           <CheckCircle className="w-3 h-3 text-green-500" />
                           <span className="text-xs text-green-600 dark:text-green-400">
                             {message.transactionType === 'income' ? 'Income added' : 
@@ -278,7 +287,7 @@ export default function FloatingChat() {
                         </div>
                       )}
                       {message.multipleTransactionsCreated && (
-                        <div className="flex items-center space-x-1 mt-1">
+                        <div className="flex items-center space-x-1 mt-2">
                           <CheckCircle className="w-3 h-3 text-green-500" />
                           <span className="text-xs text-green-600 dark:text-green-400">
                             {message.transactionCount} transaction(s) processed successfully
@@ -286,30 +295,34 @@ export default function FloatingChat() {
                         </div>
                       )}
                     </div>
-                    {(message.transactionCreated || message.multipleTransactionsCreated) && (
-                      <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                    )}
                   </div>
-                  <p className={`text-xs mt-1 ${
+                  <div className={`px-4 pb-2 ${
                     message.isUser 
-                      ? 'text-emerald-100' 
-                      : 'text-slate-500 dark:text-slate-400'
+                      ? 'text-right' 
+                      : 'text-left'
                   }`}>
-                    {message.timestamp.toLocaleTimeString([], { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    })}
-                  </p>
+                    <p className={`text-xs ${
+                      message.isUser 
+                        ? 'text-emerald-100' 
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}>
+                      {message.timestamp.toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </p>
+                  </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
         )}
 
         {/* Chat Input */}
         <div className="relative">
-          <div className="flex items-center bg-white dark:bg-slate-800 rounded-full shadow-2xl border border-slate-200 dark:border-slate-700 p-2 w-full">
+          <div className="flex items-center bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-slate-200/50 dark:border-slate-700/50 p-3 w-full backdrop-blur-sm">
             <input
               ref={inputRef}
               type="text"
@@ -317,13 +330,13 @@ export default function FloatingChat() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
               onFocus={handleInputFocus}
-              placeholder="Tell me about your income, expenses, or transfers..."
-              className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-transparent text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none text-sm sm:text-base"
+              placeholder="Message..."
+              className="flex-1 px-3 py-2 bg-transparent text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none text-sm"
             />
             <button
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || isLoading}
-              className="p-2 sm:p-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 dark:disabled:bg-slate-600 text-white rounded-full transition-colors disabled:cursor-not-allowed flex-shrink-0"
+              className="p-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 dark:disabled:bg-slate-600 text-white rounded-full transition-all duration-200 disabled:cursor-not-allowed flex-shrink-0 shadow-sm hover:shadow-md disabled:shadow-none"
             >
               <Send className="w-4 h-4" />
             </button>

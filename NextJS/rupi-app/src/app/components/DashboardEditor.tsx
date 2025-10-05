@@ -1,29 +1,7 @@
 'use client';
-
-import { useState } from 'react';
-import { Plus, Settings, X } from 'lucide-react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-  pointerWithin,
-  rectIntersection,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  rectSortingStrategy,
-} from '@dnd-kit/sortable';
-import {
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { useState, useEffect } from 'react';
 import BalanceOverview from '@/app/components/BalanceOverview';
+import FinancialSummary from '@/app/components/FinancialSummary';
 import IncomeExpenseSummary from '@/app/components/IncomeExpenseSummary';
 import CategoryBreakdown from '@/app/components/CategoryBreakdown';
 import TrendsChart from '@/app/components/TrendsChart';
@@ -32,482 +10,293 @@ import RecentTransactions from '@/app/components/RecentTransactions';
 import BudgetTracking from '@/app/components/BudgetTracking';
 import SavingsGoals from '@/app/components/SavingsGoals';
 import FinancialHealthScore from '@/app/components/FinancialHealthScore';
+import LoadingSkeleton from '@/app/components/LoadingSkeleton';
 
-// Widget size definitions
-const WIDGET_SIZES = {
-  'square': { cols: 3, name: '1:1', icon: '⬜' },
-  'half': { cols: 6, name: '1:2', icon: '▬' },
-  'medium': { cols: 6, name: '2:2', icon: '⬛' },
-  'long': { cols: 12, name: '2:1', icon: '▭' }
+// Dashboard components mapping
+const DASHBOARD_COMPONENTS = {
+  'balance-overview': BalanceOverview,
+  'financial-summary': FinancialSummary,
+  'income-expense': IncomeExpenseSummary,
+  'category-breakdown': CategoryBreakdown,
+  'trends-chart': TrendsChart,
+  'ai-insights': AIInsights,
+  'recent-transactions': RecentTransactions,
+  'budget-tracking': BudgetTracking,
+  'savings-goals': SavingsGoals,
+  'financial-health': FinancialHealthScore,
 } as const;
 
-// Available components
-const AVAILABLE_COMPONENTS = {
-  'balance-overview': {
-    name: 'Balance Overview',
-    component: BalanceOverview,
-    defaultSize: 'half' as const,
-    description: 'Current balance and monthly progress'
-  },
-  'income-expense': {
-    name: 'Income & Expense',
-    component: IncomeExpenseSummary,
-    defaultSize: 'square' as const,
-    description: 'Weekly and monthly summaries'
-  },
-  'category-breakdown': {
-    name: 'Category Breakdown',
-    component: CategoryBreakdown,
-    defaultSize: 'square' as const,
-    description: 'Expense breakdown by category'
-  },
-  'trends-chart': {
-    name: 'Income vs Expenses',
-    component: TrendsChart,
-    defaultSize: 'long' as const,
-    description: 'Income vs expense trends'
-  },
-  'ai-insights': {
-    name: 'AI Insights',
-    component: AIInsights,
-    defaultSize: 'half' as const,
-    description: 'Smart suggestions and summaries'
-  },
-  'recent-transactions': {
-    name: 'Recent Transactions',
-    component: RecentTransactions,
-    defaultSize: 'long' as const,
-    description: 'Latest transaction history'
-  },
-  'budget-tracking': {
-    name: 'Budget Tracking',
-    component: BudgetTracking,
-    defaultSize: 'medium' as const,
-    description: 'Monthly budget progress'
-  },
-  'savings-goals': {
-    name: 'Savings Goals',
-    component: SavingsGoals,
-    defaultSize: 'medium' as const,
-    description: 'Track your saving targets'
-  },
-  'financial-health': {
-    name: 'Financial Health',
-    component: FinancialHealthScore,
-    defaultSize: 'square' as const,
-    description: 'Overall financial score'
-  }
-} as const;
-
-interface DashboardItem {
-  id: string;
-  componentKey: keyof typeof AVAILABLE_COMPONENTS;
-  size: keyof typeof WIDGET_SIZES;
-  order: number;
-}
-
-// Sortable component wrapper
-function SortableWidget({ 
-  item, 
-  isEditing, 
-  getColSpanClass, 
-  getAvailableSizes, 
-  updateComponentSize, 
-  removeComponent 
+// Dashboard widget component
+function DashboardWidget({ 
+  componentKey,
+  getColSpanClass,
+  getHeightClass
 }: {
-  item: DashboardItem;
-  isEditing: boolean;
-  getColSpanClass: (size: keyof typeof WIDGET_SIZES) => string;
-  getAvailableSizes: (componentKey: keyof typeof AVAILABLE_COMPONENTS) => (keyof typeof WIDGET_SIZES)[];
-  updateComponentSize: (id: string, newSize: keyof typeof WIDGET_SIZES) => void;
-  removeComponent: (id: string) => void;
+  componentKey: keyof typeof DASHBOARD_COMPONENTS;
+  getColSpanClass: (componentKey: keyof typeof DASHBOARD_COMPONENTS) => string;
+  getHeightClass: (componentKey: keyof typeof DASHBOARD_COMPONENTS) => string;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.3 : 1,
-    zIndex: isDragging ? 1000 : 1,
-  };
-
-  const Component = AVAILABLE_COMPONENTS[item.componentKey].component;
-  const componentInfo = AVAILABLE_COMPONENTS[item.componentKey];
+  const Component = DASHBOARD_COMPONENTS[componentKey];
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...(isEditing ? { ...attributes, ...listeners } : {})}
-      className={`${getColSpanClass(item.size)} relative group ${
-        isEditing ? 'cursor-grab active:cursor-grabbing' : ''
-      }`}
-    >
-      {/* Edit Controls */}
-      {isEditing && (
-        <div className="absolute -top-3 -right-3 z-10 flex gap-2">
-          <button
-            onClick={() => removeComponent(item.id)}
-            className="p-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
-            title="Remove"
-          >
-            <X className="w-3 h-3" />
-          </button>
-        </div>
-      )}
-
-      {/* Size Controls */}
-      {isEditing && (
-        <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 z-10 flex gap-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-1">
-          {getAvailableSizes(item.componentKey).map((sizeKey) => {
-            const sizeInfo = WIDGET_SIZES[sizeKey];
-            return (
-              <button
-                key={sizeKey}
-                onClick={() => updateComponentSize(item.id, sizeKey)}
-                className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
-                  item.size === sizeKey
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                }`}
-                title={`${sizeInfo.name} - ${sizeKey === 'square' ? '2 per row (mobile), 4 per row (desktop)' : sizeKey === 'half' ? '1 per row (mobile), 2 per row (desktop)' : 'Full width'}`}
-              >
-                <span>{sizeInfo.icon}</span>
-                <span>{sizeInfo.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Component Label in Edit Mode */}
-      {isEditing && (
-        <div className="absolute top-2 right-2 z-10 bg-slate-900 text-white text-xs px-2 py-1 rounded">
-          {componentInfo.name}
-        </div>
-      )}
-
-      {/* Actual Component */}
-      <div className={`${isEditing ? 'ring-2 ring-emerald-300 dark:ring-emerald-600 ring-opacity-50' : ''} ${
-        item.size === 'square' ? 'aspect-square' : 
-        item.size === 'half' ? 'h-64 md:h-72' : 
-        item.size === 'medium' ? 'aspect-square' :
-        'h-80 md:h-96 lg:h-[36rem]'
-      }`}>
-        <div className={`h-full ${isEditing ? 'pointer-events-none' : ''}`}>
-          <Component widgetSize={item.size} />
-        </div>
+    <div className={`${getColSpanClass(componentKey)}`}>
+      <div className={`${getHeightClass(componentKey)} w-full`}>
+        <Component widgetSize={'half'} />
       </div>
     </div>
   );
 }
 
 export default function DashboardEditor() {
-  const [isEditing, setIsEditing] = useState(false);
-  const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>([
-    { id: '1', componentKey: 'balance-overview', size: 'half', order: 1 },
-    { id: '2', componentKey: 'financial-health', size: 'square', order: 2 },
-    { id: '3', componentKey: 'category-breakdown', size: 'square', order: 3 },
-    { id: '4', componentKey: 'trends-chart', size: 'long', order: 4 },
-    { id: '5', componentKey: 'income-expense', size: 'half', order: 5 },
-    { id: '6', componentKey: 'ai-insights', size: 'half', order: 6 },
-    { id: '7', componentKey: 'budget-tracking', size: 'medium', order: 7 },
-    { id: '8', componentKey: 'savings-goals', size: 'medium', order: 8 },
-    { id: '9', componentKey: 'recent-transactions', size: 'long', order: 9 },
-  ]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  const [showAddMenu, setShowAddMenu] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
-
-  // Drag and drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  // Custom collision detection that respects grid layout
-  const customCollisionDetection = (args: any) => {
-    const { droppableContainers, droppableRects, active, collisionRect } = args;
+  // Add a small delay to ensure smooth transition
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoaded(true);
+    }, 100);
     
-    // Use rectIntersection as base
-    const rectIntersectionCollisions = rectIntersection(args);
-    
-    // If we have collisions, return them
-    if (rectIntersectionCollisions.length > 0) {
-      return rectIntersectionCollisions;
-    }
-    
-    // Fallback to pointer detection for better grid awareness
-    return pointerWithin(args);
-  };
+    return () => clearTimeout(timer);
+  }, []);
 
-  const addComponent = (componentKey: keyof typeof AVAILABLE_COMPONENTS) => {
-    const defaultSize = AVAILABLE_COMPONENTS[componentKey].defaultSize;
-    const availableSizes = getAvailableSizes(componentKey);
-    
-    // Ensure the default size is allowed for this component, fallback to first available
-    const finalSize = availableSizes.includes(defaultSize) ? defaultSize : availableSizes[0];
-    
-    const newItem: DashboardItem = {
-      id: Date.now().toString(),
-      componentKey,
-      size: finalSize,
-      order: dashboardItems.length + 1
-    };
-    setDashboardItems([...dashboardItems, newItem]);
-    setShowAddMenu(false);
-  };
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6 pb-32 animate-fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
+          {/* Left Side - 4 column grid */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Top Row: Balance Overview, Financial Summary, Income/Expense */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              <div className="lg:col-span-2">
+                <div className="h-56 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6">
+                  <LoadingSkeleton lines={4} showAvatar={true} />
+                </div>
+              </div>
+              <div className="lg:col-span-1">
+                <div className="h-56 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-4">
+                  <LoadingSkeleton lines={3} showTable={true} />
+                </div>
+              </div>
+              <div className="lg:col-span-1">
+                <div className="h-56 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-4">
+                  <LoadingSkeleton lines={3} showAvatar={true} />
+                </div>
+              </div>
+            </div>
+            
+            {/* Analytics Row: Analytics + Category Breakdown */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              <div className="lg:col-span-3">
+                <div className="h-80 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6">
+                  <LoadingSkeleton lines={2} showChart={true} />
+                </div>
+              </div>
+              <div className="lg:col-span-1">
+                <div className="h-80 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-4">
+                  <LoadingSkeleton lines={2} showChart={true} />
+                </div>
+              </div>
+            </div>
+            
+            {/* Recent Transactions */}
+            <div>
+              <div className="h-80 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6">
+                <LoadingSkeleton lines={2} showTable={true} />
+              </div>
+            </div>
+          </div>
+          
+          {/* Right Side - 2 column grid */}
+          <div className="lg:col-span-2 space-y-6">
+            <div>
+              <div className="h-56 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-4">
+                <LoadingSkeleton lines={4} showAvatar={true} />
+              </div>
+            </div>
+            
+            <div>
+              <div className="h-80 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-4">
+                <LoadingSkeleton lines={3} showTable={true} />
+              </div>
+            </div>
+            
+            <div>
+              <div className="h-80 bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-4">
+                <LoadingSkeleton lines={3} showTable={true} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const removeComponent = (id: string) => {
-    setDashboardItems(dashboardItems.filter(item => item.id !== id));
-  };
-
-  const updateComponentSize = (id: string, newSize: keyof typeof WIDGET_SIZES) => {
-    setDashboardItems(dashboardItems.map(item => {
-      if (item.id === id) {
-        const availableSizes = getAvailableSizes(item.componentKey);
-        // Only update if the new size is allowed for this component
-        if (availableSizes.includes(newSize)) {
-          return { ...item, size: newSize };
-        }
-      }
-      return item;
-    }));
-  };
-
-
-
-  // Handle drag start event
-  const handleDragStart = (event: any) => {
-    setActiveId(event.active.id);
-  };
-
-  // Handle drag over event for real-time reordering
-  const handleDragOver = (event: any) => {
-    const { active, over } = event;
-    
-    if (active.id !== over?.id && over) {
-      const oldIndex = dashboardItems.findIndex(item => item.id === active.id);
-      const newIndex = dashboardItems.findIndex(item => item.id === over.id);
-      
-      if (oldIndex !== newIndex) {
-        setDashboardItems(arrayMove(dashboardItems, oldIndex, newIndex));
-      }
-    }
-  };
-
-  // Handle drag end event
-  const handleDragEnd = (event: any) => {
-    setActiveId(null);
-  };
-
-  // Handle drag cancel event
-  const handleDragCancel = () => {
-    setActiveId(null);
-  };
-
-  const usedComponents = new Set(dashboardItems.map(item => item.componentKey));
-  const availableToAdd = Object.entries(AVAILABLE_COMPONENTS).filter(
-    ([key]) => !usedComponents.has(key as keyof typeof AVAILABLE_COMPONENTS)
-  );
-
-  const visibleItems = dashboardItems;
-
-  // Function to get available sizes for a component
-  const getAvailableSizes = (componentKey: keyof typeof AVAILABLE_COMPONENTS): (keyof typeof WIDGET_SIZES)[] => {
-    // Trends chart can only use 'long' size (4:2 - full width)
-    if (componentKey === 'trends-chart') {
-      return ['long'];
-    }
-    // Recent transactions can use 'long' size
-    if (componentKey === 'recent-transactions') {
-      return ['square', 'half', 'long'];
-    }
-    // Budget tracking and savings goals should use medium (2:2 ratio)
-    if (componentKey === 'budget-tracking' || componentKey === 'savings-goals') {
-      return ['medium'];
-    }
-    // All other components can use square and half
-    return ['square', 'half'];
-  };
+  // Fixed dashboard layout - no editing functionality
 
   // Get proper Tailwind class for grid column span
-  const getColSpanClass = (size: keyof typeof WIDGET_SIZES) => {
-    switch (size) {
-      case 'square':
-        return 'col-span-1'; // 1 column: 2 per row on mobile, 4 per row on desktop
-      case 'half':
-        return 'col-span-2'; // 2 columns: 1 per row on mobile, 2 per row on desktop
-      case 'medium':
-        return 'col-span-2'; // 2 columns: 1 per row on mobile, 2 per row on desktop (2:2 ratio)
-      case 'long':
-        return 'col-span-2 md:col-span-4'; // 2 columns on mobile, 4 columns on desktop (full width)
+  const getColSpanClass = (componentKey: keyof typeof DASHBOARD_COMPONENTS) => {
+    switch (componentKey) {
+      // Row 1: Summary cards
+      case 'balance-overview':
+        return 'col-span-2 md:col-span-2'; // Total Balance - 2x1
+      case 'financial-summary':
+        return 'col-span-1 md:col-span-1'; // Financial Summary - 1x1
+      case 'income-expense':
+        return 'col-span-1 md:col-span-1'; // Income/Expense - 1x1
+      // Row 2: Analytics (3 columns) and Category Breakdown (1 column)
+      case 'trends-chart':
+        return 'col-span-3 md:col-span-3'; // Analytics Chart - 3x1
+      case 'category-breakdown':
+        return 'col-span-1 md:col-span-1'; // Category Breakdown - 1x1
+      // Row 3: Recent Transactions (4 columns full width)
+      case 'recent-transactions':
+        return 'col-span-4 md:col-span-4'; // Recent Transactions - 4x1
+      case 'ai-insights':
+        return 'col-span-2 md:col-span-2'; // AI Insights - 2x1
+      // Right side components
+      case 'financial-health':
+        return 'col-span-2 md:col-span-2'; // Financial Health - 2x1
+      case 'savings-goals':
+        return 'col-span-2 md:col-span-2'; // Savings Goals - 2x1
+      case 'budget-tracking':
+        return 'col-span-2 md:col-span-2'; // Budget Tracking - 2x1
       default:
-        return 'col-span-1';
+        return 'col-span-2';
+    }
+  };
+
+  // Natural heights for better visual appeal
+  const getHeightClass = (componentKey: keyof typeof DASHBOARD_COMPONENTS) => {
+    switch (componentKey) {
+      // Top Row: Summary cards - increased heights to prevent overflow
+      case 'financial-summary':
+      case 'income-expense':
+        return 'h-56'; // Increased height to prevent overflow
+      case 'balance-overview':
+        return 'h-56'; // Same height as other cards but wider
+      // Row 2: Analytics and Category Breakdown
+      case 'trends-chart':
+        return 'h-80'; // Large height for analytics chart
+      case 'category-breakdown':
+        return 'h-80'; // Same height as analytics
+      // Right side components
+      case 'financial-health':
+        return 'h-56'; // Same height as other top row cards
+      case 'budget-tracking':
+        return 'h-80'; // Same height as analytics
+      case 'savings-goals':
+        return 'h-80'; // Same height as analytics
+      // Bottom Row: Recent Transactions
+      case 'recent-transactions':
+        return 'h-80'; // Same height as analytics
+      case 'ai-insights':
+        return 'h-80'; // Same height as other cards
+      default:
+        return 'h-80';
     }
   };
 
   return (
-    <div className="relative">
-      {/* Edit Toggle Button */}
-      <div className="fixed top-20 right-4 z-50">
-        <button
-          onClick={() => setIsEditing(!isEditing)}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            isEditing 
-              ? 'bg-red-600 hover:bg-red-700 text-white' 
-              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          }`}
-        >
-          <Settings className="w-4 h-4 mr-2 inline" />
-          {isEditing ? 'Exit Edit' : 'Edit Dashboard'}
-        </button>
-      </div>
-
-      {/* Add Component Menu */}
-      {isEditing && (
-        <div className="mb-6 p-4 bg-slate-100 dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Customize Dashboard
-            </h3>
-            <button
-              onClick={() => setShowAddMenu(!showAddMenu)}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
-            >
-              <Plus className="w-4 h-4 mr-2 inline" />
-              Add Component
-            </button>
-          </div>
-
-          {/* Available Components to Add */}
-          {showAddMenu && availableToAdd.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-              {availableToAdd.map(([key, component]) => (
-                <button
-                  key={key}
-                  onClick={() => addComponent(key as keyof typeof AVAILABLE_COMPONENTS)}
-                  className="p-3 bg-white dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 hover:border-emerald-300 dark:hover:border-emerald-600 transition-colors text-left"
-                >
-                  <div className="font-medium text-slate-900 dark:text-white text-sm">
-                    {component.name}
-                  </div>
-                  <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                    {component.description}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {showAddMenu && availableToAdd.length === 0 && (
-            <div className="text-center py-4 text-slate-600 dark:text-slate-400">
-              All components are already added to your dashboard
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Dashboard Grid with Drag and Drop */}
-      <DndContext 
-        sensors={sensors}
-        collisionDetection={customCollisionDetection}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
-      >
-        <SortableContext 
-          items={visibleItems.map(item => item.id)}
-          strategy={rectSortingStrategy}
-        >
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 auto-rows-max pb-32">
-            {visibleItems.map((item) => (
-              <SortableWidget
-                key={item.id}
-                item={item}
-                isEditing={isEditing}
+    <div className="space-y-6 pb-32 animate-fade-in">
+      <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
+        {/* Left Side - 4 column grid */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* Top Row: Balance Overview, Financial Summary, Income/Expense (2:1:1) */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-slide-up">
+            {/* Balance Overview - takes 2 columns */}
+            <div className="lg:col-span-2 hover-lift">
+              <DashboardWidget 
+                componentKey="balance-overview" 
                 getColSpanClass={getColSpanClass}
-                getAvailableSizes={getAvailableSizes}
-                updateComponentSize={updateComponentSize}
-                removeComponent={removeComponent}
+                getHeightClass={getHeightClass}
               />
-            ))}
-          </div>
-        </SortableContext>
-        
-        <DragOverlay adjustScale={false}>
-          {activeId ? (
-            <div className="opacity-90 transform rotate-2 shadow-2xl pointer-events-none">
-              {(() => {
-                const activeItem = dashboardItems.find(item => item.id === activeId);
-                if (!activeItem) return null;
-                
-                const Component = AVAILABLE_COMPONENTS[activeItem.componentKey].component;
-                
-                // Fixed width based on component size to prevent size changes during drag
-                const getFixedWidth = (size: keyof typeof WIDGET_SIZES) => {
-                  switch (size) {
-                    case 'square':
-                      return 'w-40 md:w-60'; // 1/2 width on mobile, 1/4 width on desktop
-                    case 'half':
-                      return 'w-80 md:w-[30rem]'; // Full width on mobile, 1/2 width on desktop
-                    case 'medium':
-                      return 'w-80 md:w-[30rem]'; // Full width on mobile, 1/2 width on desktop (2:2 ratio)
-                    case 'long':
-                      return 'w-80 md:w-full md:max-w-4xl'; // Full width on both mobile and desktop
-                    default:
-                      return 'w-40 md:w-60';
-                  }
-                };
-                
-                return (
-                  <div className={`${getFixedWidth(activeItem.size)} relative`}>
-                    <div className={`${
-                      activeItem.size === 'square' ? 'aspect-square' : 
-                      activeItem.size === 'half' ? 'h-64 md:h-72' : 
-                      activeItem.size === 'medium' ? 'aspect-square' :
-                      'h-80 md:h-96 lg:h-[36rem]'
-                    } ring-4 ring-emerald-400 rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-xl`}>
-                      <div className="h-full">
-                        <Component widgetSize={activeItem.size} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
-
-      {/* Instructions */}
-      {isEditing && (
-        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800">
-          <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
-            💡 How to Customize:
-          </h4>
-          <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-            <li>• <strong>Add:</strong> Click "Add Component" to add new widgets</li>
-            <li>• <strong>Remove:</strong> Click the X button to remove a component</li>
-            <li>• <strong>Resize:</strong> Use widget size buttons (⬜ 1:1: Small widget, ▬ 1:2: Medium widget, ▭ 2:1: Full width)</li>
-            <li>• <strong>Reorder:</strong> Click and drag any component to rearrange the layout</li>
-          </ul>
+            {/* Financial Summary - takes 1 column */}
+            <div className="lg:col-span-1 hover-lift">
+              <DashboardWidget 
+                componentKey="financial-summary" 
+                getColSpanClass={getColSpanClass}
+                getHeightClass={getHeightClass}
+              />
+            </div>
+            {/* Income/Expense - takes 1 column */}
+            <div className="lg:col-span-1 hover-lift">
+              <DashboardWidget 
+                componentKey="income-expense" 
+                getColSpanClass={getColSpanClass}
+                getHeightClass={getHeightClass}
+              />
+            </div>
+          </div>
+          
+          {/* Analytics Row: Analytics (3 columns) + Category Breakdown (1 column) */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            {/* Analytics - takes 3 columns */}
+            <div className="lg:col-span-3 hover-lift">
+              <DashboardWidget 
+                componentKey="trends-chart" 
+                getColSpanClass={getColSpanClass}
+                getHeightClass={getHeightClass}
+              />
+            </div>
+            {/* Category Breakdown - takes 1 column */}
+            <div className="lg:col-span-1 hover-lift">
+              <DashboardWidget 
+                componentKey="category-breakdown" 
+                getColSpanClass={getColSpanClass}
+                getHeightClass={getHeightClass}
+              />
+            </div>
+          </div>
+          
+          {/* Recent Transactions - takes 4 columns (full width) */}
+          <div className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <div className="hover-lift">
+              <DashboardWidget 
+                componentKey="recent-transactions" 
+                getColSpanClass={getColSpanClass}
+                getHeightClass={getHeightClass}
+              />
+            </div>
+          </div>
         </div>
-      )}
+        
+        {/* Right Side - 2 column grid */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Financial Health - takes 2 columns (full width) */}
+          <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <div className="hover-lift">
+              <DashboardWidget 
+                componentKey="financial-health" 
+                getColSpanClass={getColSpanClass}
+                getHeightClass={getHeightClass}
+              />
+            </div>
+          </div>
+          
+          {/* Savings Goals - takes 2 columns (full width) */}
+          <div className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <div className="hover-lift">
+              <DashboardWidget 
+                componentKey="savings-goals" 
+                getColSpanClass={getColSpanClass}
+                getHeightClass={getHeightClass}
+              />
+            </div>
+          </div>
+          
+          {/* Budget Tracking - takes 2 columns (full width) */}
+          <div className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
+            <div className="hover-lift">
+              <DashboardWidget 
+                componentKey="budget-tracking" 
+                getColSpanClass={getColSpanClass}
+                getHeightClass={getHeightClass}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowUpCircle, ArrowDownCircle, PiggyBank } from 'lucide-react';
+import { ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 
 interface FinancialData {
@@ -89,7 +89,7 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 h-full flex flex-col overflow-hidden">
+      <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 h-full flex flex-col overflow-hidden">
         <div className={`${
           widgetSize === 'square' ? 'p-3' : 
           widgetSize === 'half' ? 'p-4' : 'p-6'
@@ -119,143 +119,128 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
     );
   }
 
+  // Calculate progress percentages for circular indicators
+  // Both circles: show remaining amount after expenses (same calculation)
+  const totalIncome = financialData.monthlyIncome;
+  const totalExpenses = financialData.monthlyExpenses;
+  
+  // Both circles: fill percentage based on remaining after expenses
+  const remainingAfterExpenses = Math.max(0, totalIncome - totalExpenses);
+  const incomeProgress = totalIncome > 0 ? (remainingAfterExpenses / totalIncome) * 100 : 0;
+  const expenseProgress = totalIncome > 0 ? (remainingAfterExpenses / totalIncome) * 100 : 0;
+
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 h-full flex flex-col overflow-hidden">
-      <div className={`${
+    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-600 h-full flex flex-col overflow-hidden group hover:shadow-2xl transition-all duration-300">
+      {/* Header */}
+      <div className={`flex items-center ${
         widgetSize === 'square' ? 'p-3' : 
-        widgetSize === 'half' ? 'p-4' : 'p-6'
+        widgetSize === 'half' ? 'p-3' : 'p-4'
       } flex-shrink-0`}>
         <h2 className={`${
-          widgetSize === 'square' ? 'text-sm' :
-          widgetSize === 'half' ? 'text-base' : 'text-lg'
-        } font-semibold text-slate-900 dark:text-white`}>
-          Income & Expense Summary
+          widgetSize === 'square' ? 'text-xs' :
+          widgetSize === 'half' ? 'text-xs' : 'text-sm'
+        } font-bold text-slate-900 dark:text-white`}>
+          Expense & Incomes
         </h2>
       </div>
 
-      <div className={`flex-1 flex flex-col overflow-y-auto ${
-        widgetSize === 'square' ? 'px-3 pb-3 space-y-2' :
-        widgetSize === 'half' ? 'px-4 pb-4 space-y-3' : 'px-6 pb-6 space-y-4'
-      }`}>
-        {/* Weekly Stats */}
-        <div className="flex-1 min-h-0">
-          <div className={`${
-            widgetSize === 'square' ? 'text-xs' :
-            widgetSize === 'half' ? 'text-sm' : 'text-sm'
-          } font-medium text-slate-600 dark:text-slate-300 mb-1`}>
-            This Week
+      <div className="flex-1 flex flex-col px-3 pb-2 pt-2 space-y-4">
+        {/* Income Section */}
+        <div className="flex items-center space-x-3">
+          {/* Circular Progress for Income - Fills up */}
+          <div className="relative flex-shrink-0">
+            <svg className="w-12 h-12" viewBox="0 0 24 24">
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                stroke="#e5e7eb"
+                strokeWidth="2"
+                fill="none"
+                className="text-slate-200"
+              />
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                stroke="#10b981"
+                strokeWidth="2"
+                fill="none"
+                strokeDasharray={`${2 * Math.PI * 9} ${2 * Math.PI * 9}`}
+                strokeDashoffset={`${2 * Math.PI * 9 * (1 - incomeProgress / 100)}`}
+                transform="rotate(-90 12 12)"
+                className="transition-all duration-300"
+                style={{ strokeLinecap: 'round' }}
+              />
+            </svg>
           </div>
-          <div className={`${widgetSize === 'square' ? 'space-y-1' : 'space-y-2'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center min-w-0">
-                <ArrowUpCircle className={`${
-                  widgetSize === 'square' ? 'w-3 h-3' : 'w-4 h-4'
-                } text-emerald-500 mr-1 flex-shrink-0`} />
-                <span className={`${
-                  widgetSize === 'square' ? 'text-xs' : 'text-xs'
-                } text-slate-600 dark:text-slate-300`}>Income</span>
-              </div>
-              <span className={`${
-                widgetSize === 'square' ? 'text-xs' : 'text-sm'
-              } font-semibold text-emerald-600 dark:text-emerald-400 ml-2 flex-shrink-0`}>
-                {widgetSize === 'square' ? 
-                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(financialData.weeklyIncome) :
-                  formatCurrency(financialData.weeklyIncome)
-                }
-              </span>
+          
+          {/* Income Details */}
+          <div className="flex-1 min-w-0">
+            <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+              +{formatCurrency(financialData.monthlyIncome)}
             </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center min-w-0">
-                <ArrowDownCircle className={`${
-                  widgetSize === 'square' ? 'w-3 h-3' : 'w-4 h-4'
-                } text-red-500 mr-1 flex-shrink-0`} />
-                <span className={`${
-                  widgetSize === 'square' ? 'text-xs' : 'text-xs'
-                } text-slate-600 dark:text-slate-300`}>Expenses</span>
-              </div>
-              <span className={`${
-                widgetSize === 'square' ? 'text-xs' : 'text-sm'
-              } font-semibold text-red-600 dark:text-red-400 ml-2 flex-shrink-0`}>
-                {widgetSize === 'square' ? 
-                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(financialData.weeklyExpenses) :
-                  formatCurrency(financialData.weeklyExpenses)
-                }
-              </span>
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              Total incomes this month
             </div>
           </div>
         </div>
 
-        {/* Monthly Stats */}
-        <div className="flex-1 min-h-0">
-          <div className={`${
-            widgetSize === 'square' ? 'text-xs' :
-            widgetSize === 'half' ? 'text-sm' : 'text-sm'
-          } font-medium text-slate-600 dark:text-slate-300 mb-1`}>
-            This Month
+        {/* Expense Section */}
+        <div className="flex items-center space-x-3">
+          {/* Circular Progress for Expenses - Grey progress on red background */}
+          <div className="relative flex-shrink-0">
+            <svg className="w-12 h-12" viewBox="0 0 24 24">
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                stroke="#f97316"
+                strokeWidth="2"
+                fill="none"
+                className="text-orange-500"
+              />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  stroke="#e5e7eb"
+                  strokeWidth="2.5"
+                  fill="none"
+                  strokeDasharray={`${2 * Math.PI * 9} ${2 * Math.PI * 9}`}
+                  strokeDashoffset={`${2 * Math.PI * 9 * (1 - expenseProgress / 100)}`}
+                  transform="rotate(-90 12 12)"
+                  className="transition-all duration-300"
+                  style={{ strokeLinecap: 'round' }}
+                />
+            </svg>
           </div>
-          <div className={`${widgetSize === 'square' ? 'space-y-1' : 'space-y-2'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center min-w-0">
-                <ArrowUpCircle className={`${
-                  widgetSize === 'square' ? 'w-3 h-3' : 'w-4 h-4'
-                } text-emerald-500 mr-1 flex-shrink-0`} />
-                <span className={`${
-                  widgetSize === 'square' ? 'text-xs' : 'text-xs'
-                } text-slate-600 dark:text-slate-300`}>Income</span>
-              </div>
-              <span className={`${
-                widgetSize === 'square' ? 'text-xs' : 'text-sm'
-              } font-semibold text-emerald-600 dark:text-emerald-400 ml-2 flex-shrink-0`}>
-                {widgetSize === 'square' ? 
-                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(financialData.monthlyIncome) :
-                  formatCurrency(financialData.monthlyIncome)
-                }
-              </span>
+          
+          {/* Expense Details */}
+          <div className="flex-1 min-w-0">
+            <div className="text-lg font-bold text-orange-600 dark:text-orange-400">
+              -{formatCurrency(financialData.monthlyExpenses)}
             </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center min-w-0">
-                <ArrowDownCircle className={`${
-                  widgetSize === 'square' ? 'w-3 h-3' : 'w-4 h-4'
-                } text-red-500 mr-1 flex-shrink-0`} />
-                <span className={`${
-                  widgetSize === 'square' ? 'text-xs' : 'text-xs'
-                } text-slate-600 dark:text-slate-300`}>Expenses</span>
-              </div>
-              <span className={`${
-                widgetSize === 'square' ? 'text-xs' : 'text-sm'
-              } font-semibold text-red-600 dark:text-red-400 ml-2 flex-shrink-0`}>
-                {widgetSize === 'square' ? 
-                  new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(financialData.monthlyExpenses) :
-                  formatCurrency(financialData.monthlyExpenses)
-                }
-              </span>
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              Total outcomes this month
             </div>
           </div>
         </div>
 
-        {/* Net Savings */}
-        <div className={`bg-slate-50 dark:bg-slate-700/50 rounded-xl ${
-          widgetSize === 'square' ? 'p-2 flex-shrink-0' : 'p-3 flex-shrink-0'
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center min-w-0">
-              <PiggyBank className={`${
-                widgetSize === 'square' ? 'w-3 h-3' : 'w-4 h-4'
-              } text-emerald-600 dark:text-emerald-400 mr-1 flex-shrink-0`} />
-              <span className={`${
-                widgetSize === 'square' ? 'text-xs' : 'text-sm'
-              } font-medium text-slate-700 dark:text-slate-200`}>
-                Net Savings
-              </span>
-            </div>
-            <span className={`${
-              widgetSize === 'square' ? 'text-xs' : 'text-base'
-            } font-bold text-emerald-600 dark:text-emerald-400 ml-2 flex-shrink-0`}>
-              {widgetSize === 'square' ? 
-                new Intl.NumberFormat('id-ID', { notation: 'compact', currency: 'IDR', style: 'currency' }).format(netSavings) :
-                formatCurrency(netSavings)
-              }
-            </span>
+        {/* Percentage Summary */}
+        <div className="text-center">
+          <div className="text-xs text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg px-3 py-2 inline-block">
+            {financialData.monthlyIncome > 0 
+              ? (
+                <>
+                  <span className="font-bold text-red-700 dark:text-red-400">
+                    {Math.round((financialData.monthlyExpenses / financialData.monthlyIncome) * 100)}%
+                  </span>
+                  <span> of income used for expenses</span>
+                </>
+              )
+              : 'No income data available'
+            }
           </div>
         </div>
       </div>

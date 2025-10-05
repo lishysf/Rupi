@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, BarChart3, CreditCard } from 'lucide-react';
 
 interface FinancialTotal {
   currentMonthExpenses: number;
@@ -81,10 +82,10 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
     };
   }, [expenses, income, savings, investments]);
 
-  // Calculate balances with transfer-based approach
-  // Main/Spending Card = income - expenses - savings transfers - investment transfers
-  const currentBalance = financialData.totalIncome - financialData.totalExpenses - financialData.totalSavings - financialData.totalInvestments;
-  // Total assets across all cards = spendable (main) + savings + investments
+  // Calculate balances
+  // Main/Spending Card = income - expenses - savings transfers
+  const currentBalance = financialData.totalIncome - financialData.totalExpenses - financialData.totalSavings;
+  // Total assets = spendable (main) + savings + current investment portfolio value
   const totalAssets = currentBalance + financialData.totalSavings + financialData.totalInvestments;
   const monthChange = financialData.previousMonthExpenses - financialData.currentMonthExpenses; // Positive if spending less
   const isPositiveChange = monthChange > 0;
@@ -118,82 +119,95 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-            Balance Overview
-          </h2>
-          <div className="w-16 h-4 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
-        </div>
-        <div className="mb-6">
-          <div className="w-48 h-8 bg-slate-200 dark:bg-slate-700 rounded animate-pulse mb-2"></div>
-          <div className="w-32 h-4 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
-        </div>
-        <div className="flex-1">
-          <div className="w-24 h-4 bg-slate-200 dark:bg-slate-700 rounded animate-pulse mb-2"></div>
-          <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+      <div className="relative h-full overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-800 via-emerald-700 to-green-800 shadow-xl border border-emerald-600/20">
+        <div className="p-6 h-full flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-emerald-400/30 rounded-full mr-3 animate-pulse"></div>
+              <div className="w-24 h-5 bg-emerald-400/30 rounded animate-pulse"></div>
+            </div>
+            <div className="w-20 h-6 bg-emerald-400/30 rounded-full animate-pulse"></div>
+          </div>
+          <div className="mb-8">
+            <div className="w-32 h-4 bg-emerald-400/30 rounded animate-pulse mb-2"></div>
+            <div className="w-48 h-10 bg-emerald-400/30 rounded animate-pulse mb-2"></div>
+            <div className="w-40 h-3 bg-emerald-400/30 rounded animate-pulse"></div>
+          </div>
+          <div className="flex-1 flex items-center justify-between">
+            <div className="w-20 h-16 bg-emerald-400/30 rounded-lg animate-pulse"></div>
+            <div className="w-20 h-16 bg-emerald-400/30 rounded-lg animate-pulse"></div>
+            <div className="w-20 h-16 bg-emerald-400/30 rounded-lg animate-pulse"></div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative h-full overflow-hidden rounded-2xl">
-      {/* Credit Card Style Background */}
-      <div className="absolute inset-0 bg-white rounded-2xl shadow-xl border border-slate-200">
+    <div className="relative h-full overflow-hidden rounded-3xl group hover:shadow-2xl transition-all duration-500 hover:scale-[1.02]">
+      {/* Dark Green Card Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-800 via-emerald-700 to-green-800 rounded-3xl shadow-2xl border border-emerald-600/20">
+        {/* Subtle Pattern Overlay */}
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.1) 1px, transparent 0)`,
+            backgroundSize: '24px 24px',
+            animation: 'float 20s ease-in-out infinite'
+          }}></div>
+        </div>
+        
+        {/* Decorative Elements */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-400/10 to-green-400/10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-emerald-400/10 to-green-400/10 rounded-full blur-2xl"></div>
+        
         {/* Card Content */}
-        <div className="relative z-10 p-4 h-full flex flex-col rounded-2xl">
-          {/* Header */}
+        <div className="relative z-10 p-4 h-full flex flex-col">
+          {/* Enhanced Header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center">
-              <div className="w-3 h-3 bg-emerald-500 rounded-full mr-3 animate-pulse"></div>
-              <h2 className="text-slate-900 font-semibold text-lg">Fundy Card</h2>
+              <div className="relative">
+                <div className="w-3 h-3 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full shadow-lg animate-pulse"></div>
+                <div className="absolute inset-0 w-3 h-3 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full animate-ping opacity-75"></div>
+              </div>
+              <div className="ml-3">
+                <h2 className="text-white font-bold text-base tracking-tight">Fundy Card</h2>
+                <p className="text-emerald-200 text-xs">Premium Banking</p>
+              </div>
             </div>
-            <div className="text-slate-600 text-sm font-medium">
+            <div className="text-emerald-200 text-xs font-semibold bg-emerald-600/20 px-2 py-1 rounded-full shadow-sm border border-emerald-500/30">
               {currentMonthName} {new Date().getFullYear()}
             </div>
           </div>
 
           {/* Main Balance Display */}
-          <div className="mb-6">
-            <div className="text-slate-600 text-sm mb-2">Main Card Balance</div>
-            <div className="text-3xl font-bold text-slate-900 mb-1">
-              {formatCurrency(currentBalance)}
-            </div>
-            <div className="text-slate-500 text-xs">Available for Spending</div>
-          </div>
-
-          {/* Financial Summary Cards */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            {/* Total Assets Card */}
-            <div className="bg-slate-50/80 backdrop-blur-sm rounded-lg p-3 border border-slate-200">
-              <div className="text-slate-600 text-xs font-medium mb-1">Total Assets</div>
-              <div className="text-sm font-bold text-slate-900 mb-1 truncate">
-                {formatCurrency(totalAssets)}
+          <div className="flex-1 flex flex-col justify-center">
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-emerald-200 text-sm font-medium">Main Card Balance</div>
+                <div className="flex items-center text-xs text-emerald-300">
+                  <CreditCard className="w-3 h-3 mr-1" />
+                  Available
+                </div>
               </div>
-              <div className="text-emerald-600 text-xs">Net Worth</div>
-            </div>
-
-            {/* Savings Card */}
-            <div className="bg-slate-50/80 backdrop-blur-sm rounded-lg p-3 border border-slate-200">
-              <div className="text-slate-600 text-xs font-medium mb-1">Savings Card</div>
-              <div className="text-sm font-bold text-slate-900 mb-1 truncate">
-                {formatCurrency(financialData.totalSavings)}
+              <div className="text-3xl font-bold text-white tracking-tight mb-3">
+                {formatCurrency(currentBalance)}
               </div>
-              <div className="text-blue-600 text-xs">Transferred</div>
-            </div>
-
-            {/* Investments Card */}
-            <div className="bg-slate-50/80 backdrop-blur-sm rounded-lg p-3 border border-slate-200">
-              <div className="text-slate-600 text-xs font-medium mb-1">Investment Card</div>
-              <div className="text-sm font-bold text-slate-900 mb-1 truncate">
-                {formatCurrency(financialData.totalInvestments || 0)}
+              <div className="flex items-center text-emerald-200 text-sm">
+                <Wallet className="w-4 h-4 mr-2" />
+                Available for Spending
               </div>
-              <div className="text-purple-600 text-xs">Transferred</div>
             </div>
           </div>
         </div>
       </div>
+      
+      {/* Add custom animations */}
+      <style jsx>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-10px) rotate(180deg); }
+        }
+      `}</style>
     </div>
   );
 }

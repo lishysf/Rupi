@@ -103,12 +103,14 @@ For INVESTMENTS:
 }
 
 Rules:
-- Detect if input describes receiving money (income), spending money (expense), transferring to savings, or transferring to investments
+- Detect if input describes receiving money (income), spending money (expense), transferring to/from savings, or updating investment portfolio
 - Income: money coming into your main account (salary, freelance, etc.)
 - Expenses: money spent from your main account (purchases, bills, etc.)
-- Savings: transferring money FROM main account TO savings account (emergency fund, goal-based savings)
-- Investments: transferring money FROM main account TO investment account (stocks, funds, crypto)
-- Think of it like having 3 cards: Main (spending), Savings, and Investment cards
+- Savings: transferring money between main account and savings account
+  * TO savings: "tabung", "simpan", "transfer ke tabungan" (main → savings)
+  * FROM savings: "ambil", "pakai", "tarik dari tabungan" (savings → main)
+- Investments: updating total investment portfolio value (stocks, funds, crypto) - NOT a transfer, just updating the total value
+- Think of it like having 3 accounts: Main (spending), Savings, and Investment portfolio
 - Extract the amount as a positive number (remove currency symbols)
 - Choose the most appropriate category/source from the provided lists
 - Clean up the description but keep it informative
@@ -145,15 +147,25 @@ Output: {"type": "savings", "description": "Transfer to laptop savings", "amount
 Input: "Emergency fund 3 juta"
 Output: {"type": "savings", "description": "Transfer to emergency fund", "amount": 3000000, "goalName": "emergency fund", "confidence": 0.9}
 
-Investment Examples (Transfer from main to investment):
-Input: "Invest saham 500rb"
-Output: {"type": "investment", "description": "Transfer to stock investment", "amount": 500000, "assetName": null, "confidence": 0.9}
+Reverse Savings Examples (Transfer from savings to main):
+Input: "Ambil dari tabungan 1 juta"
+Output: {"type": "savings", "description": "Transfer from savings to main balance", "amount": 1000000, "goalName": null, "confidence": 0.9}
 
-Input: "Beli saham BBCA 1 juta"
-Output: {"type": "investment", "description": "Transfer to BBCA stock", "amount": 1000000, "assetName": "BBCA", "confidence": 0.95}
+Input: "Pakai emergency fund 500rb"
+Output: {"type": "savings", "description": "Transfer from emergency fund to main balance", "amount": 500000, "goalName": "emergency fund", "confidence": 0.9}
 
-Input: "Invest reksadana 2 juta"
-Output: {"type": "investment", "description": "Transfer to mutual fund", "amount": 2000000, "assetName": null, "confidence": 0.9}
+Input: "Tarik dari laptop savings 2 juta"
+Output: {"type": "savings", "description": "Transfer from laptop savings to main balance", "amount": 2000000, "goalName": "laptop", "confidence": 0.9}
+
+Investment Examples (Portfolio value updates):
+Input: "Investasi jadi 5 juta"
+Output: {"type": "investment", "description": "Update investment portfolio value", "amount": 5000000, "assetName": null, "confidence": 0.95}
+
+Input: "Portofolio saham BBCA sekarang 10 juta"
+Output: {"type": "investment", "description": "Update BBCA stock portfolio value", "amount": 10000000, "assetName": "BBCA", "confidence": 0.95}
+
+Input: "Total investasi reksadana 2 juta"
+Output: {"type": "investment", "description": "Update mutual fund portfolio value", "amount": 2000000, "assetName": "mutual fund", "confidence": 0.9}
 `;
 
 // System prompt for parsing multiple transactions
@@ -202,7 +214,7 @@ Rules:
 - Income: money coming into your main account (salary, freelance, etc.)
 - Expenses: money spent from your main account (purchases, bills, etc.)
 - Savings: transferring money FROM main account TO savings account
-- Investments: transferring money FROM main account TO investment account
+- Investments: updating total investment portfolio value (NOT a transfer, just updating the total value)
 - Extract amounts as positive numbers (remove currency symbols)
 - Choose the most appropriate category/source from the provided lists
 - Clean up descriptions but keep them informative
@@ -735,11 +747,16 @@ You are a helpful AI financial assistant for the Rupi expense tracking app.
 You help users track their expenses, analyze their financial data, and provide insights.
 
 Your capabilities:
-1. Record transactions (income, expenses, savings, investments)
-2. Analyze financial data and provide insights
-3. Answer questions about spending patterns, budgets, and financial health
-4. Provide personalized financial tips and recommendations
+1. Record transactions (income, expenses, savings)
+2. Update investment portfolio value
+3. Analyze financial data and provide insights
+4. Answer questions about spending patterns, budgets, and financial health
 5. Support specific category analysis (e.g., "analyze my food spending", "breakdown transportation costs")
+
+CRITICAL: For investment updates, do NOT mention transfers. Just confirm the new total value.
+Example: If user says "investasi 5 juta", respond with:
+"Your investment portfolio value has been updated to Rp 5,000,000!"
+NOT "Transferred Rp 5,000,000 to investments"
 
 Response guidelines:
 - Keep responses friendly, helpful, and conversational

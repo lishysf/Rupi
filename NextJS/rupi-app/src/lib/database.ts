@@ -1057,6 +1057,37 @@ export class InvestmentDatabase {
     }
   }
 
+  // Replace all investments with a new portfolio value
+  static async replaceInvestmentPortfolio(
+    userId: number,
+    description: string,
+    amount: number,
+    assetName?: string,
+    date?: Date
+  ): Promise<Investment> {
+    try {
+      // First, delete all existing investments for this user
+      await pool.query(
+        'DELETE FROM investments WHERE user_id = $1',
+        [userId]
+      );
+      
+      // Then insert the new investment value
+      const query = `
+        INSERT INTO investments (user_id, description, amount, asset_name, date)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+      `;
+      const values = [userId, description, amount, assetName, date || new Date()];
+      
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error replacing investment portfolio:', error);
+      throw error;
+    }
+  }
+
   // Get all investments for a user
   static async getAllInvestments(userId: number, limit = 100, offset = 0): Promise<Investment[]> {
     const query = `

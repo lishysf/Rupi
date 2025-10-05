@@ -141,12 +141,12 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
     return (
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center">
-            <Target className={`${widgetSize === 'half' ? 'w-4 h-4' : 'w-5 h-5'} text-blue-600 dark:text-blue-400 mr-2`} />
-            <h2 className={`${widgetSize === 'half' ? 'text-base' : 'text-lg'} font-semibold text-slate-900 dark:text-white`}>
-              Budget Tracking
-            </h2>
-          </div>
+        <div className="flex items-center">
+          <Target className={`${widgetSize === 'half' ? 'w-4 h-4' : 'w-5 h-5'} text-emerald-600 dark:text-emerald-400 mr-2`} />
+          <h2 className={`${widgetSize === 'half' ? 'text-base' : 'text-lg'} font-semibold text-slate-900 dark:text-white`}>
+            Budget Tracking
+          </h2>
+        </div>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-slate-500 dark:text-slate-400">Loading...</div>
@@ -156,12 +156,12 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center">
           <Target className={`${
             widgetSize === 'half' ? 'w-4 h-4' : 'w-5 h-5'
-          } text-blue-600 dark:text-blue-400 mr-2`} />
+          } text-emerald-600 dark:text-emerald-400 mr-2`} />
           <h2 className={`${
             widgetSize === 'half' ? 'text-base' : 'text-lg'
           } font-semibold text-slate-900 dark:text-white`}>
@@ -174,7 +174,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
           </div>
           <button
             onClick={startAdd}
-            className="p-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
+            className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs"
             title="Add Budget"
           >
             <Plus className="w-3 h-3" />
@@ -193,28 +193,28 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
       {budgets.length > 0 && (
         <div className={`${
           widgetSize === 'half' ? 'mb-2 p-2' : 'mb-3 p-3'
-        } bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 flex-shrink-0`}>
+        } bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800 flex-shrink-0`}>
           <div className="flex justify-between items-center mb-1">
             <span className={`${
               widgetSize === 'half' ? 'text-xs' : 'text-sm'
-            } font-medium text-blue-900 dark:text-blue-100`}>
+            } font-medium text-emerald-900 dark:text-emerald-100`}>
               Monthly Budget
             </span>
-            <span className="text-xs text-blue-700 dark:text-blue-300">
+            <span className="text-xs text-emerald-700 dark:text-emerald-300">
               {overallProgress.toFixed(1)}%
             </span>
           </div>
           <div className="flex justify-between items-center mb-2">
             <span className={`${
               widgetSize === 'half' ? 'text-sm' : 'text-lg'
-            } font-bold text-blue-900 dark:text-blue-100`}>
+            } font-bold text-emerald-900 dark:text-emerald-100`}>
               {formatCurrency(totalSpent)}
             </span>
-            <span className="text-xs text-blue-700 dark:text-blue-300">
+            <span className="text-xs text-emerald-700 dark:text-emerald-300">
               of {formatCurrency(totalBudget)}
             </span>
           </div>
-          <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-1.5">
+          <div className="w-full bg-emerald-200 dark:bg-emerald-800 rounded-full h-1.5">
             <div 
               className={`h-1.5 rounded-full transition-all duration-300 ${getProgressColor(totalSpent, totalBudget)}`}
               style={{ width: `${Math.min(overallProgress, 100)}%` }}
@@ -235,7 +235,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
             </p>
             <button
               onClick={startAdd}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm flex items-center"
             >
               <Plus className="w-4 h-4 mr-2" />
               Set Your First Budget
@@ -270,7 +270,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                     </span>
                     <button
                       onClick={() => startEdit(budget)}
-                      className="p-0.5 text-slate-400 hover:text-blue-600"
+                      className="p-0.5 text-slate-400 hover:text-emerald-600"
                       title="Edit Budget"
                     >
                       <Edit2 className="w-3 h-3" />

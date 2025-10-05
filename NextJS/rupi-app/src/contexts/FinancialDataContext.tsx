@@ -792,20 +792,32 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         dispatch({ type: 'SET_INCOME', payload: [] });
         dispatch({ type: 'SET_SAVINGS', payload: [] });
         dispatch({ type: 'SET_INVESTMENTS', payload: [] });
+        dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: false } });
         return;
       }
       
       dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: true } });
       
       try {
-        await refreshAll();
+        // Load all data in parallel for faster loading
+        await Promise.all([
+          fetchTransactions(),
+          fetchBudgets(),
+          fetchExpenses(),
+          fetchIncome(),
+          fetchSavings(),
+          fetchInvestments()
+        ]);
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+        dispatch({ type: 'SET_ERROR', payload: 'Failed to load financial data' });
       } finally {
         dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: false } });
       }
     };
 
     loadInitialData();
-  }, [session, status, refreshAll]);
+  }, [session, status, fetchTransactions, fetchBudgets, fetchExpenses, fetchIncome, fetchSavings, fetchInvestments]);
 
   const contextValue: FinancialDataContextType = {
     state,

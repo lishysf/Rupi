@@ -182,8 +182,14 @@ export async function DELETE(
     try {
       await client.query('BEGIN');
 
-      // Delete associated savings records
-      await client.query('DELETE FROM savings WHERE goal_id = $1', [id]);
+      // Get the goal name first
+      const goalResult = await client.query('SELECT goal_name FROM savings_goals WHERE id = $1', [id]);
+      
+      if (goalResult.rows.length > 0) {
+        const goalName = goalResult.rows[0].goal_name;
+        // Delete associated savings records
+        await client.query('DELETE FROM savings WHERE goal_name = $1', [goalName]);
+      }
 
       // Delete the goal
       const result = await client.query('DELETE FROM savings_goals WHERE id = $1 RETURNING *', [id]);

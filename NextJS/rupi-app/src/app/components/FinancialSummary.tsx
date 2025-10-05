@@ -1,0 +1,173 @@
+'use client';
+
+import { useMemo } from 'react';
+import { useFinancialData } from '@/contexts/FinancialDataContext';
+
+interface FinancialTotal {
+  currentMonthExpenses: number;
+  previousMonthExpenses: number;
+  currentMonthIncome: number;
+  currentMonthSavings: number;
+  totalExpenses: number;
+  totalIncome: number;
+  totalSavings: number;
+}
+
+interface FinancialSummaryProps {
+  widgetSize?: 'square' | 'half' | 'medium' | 'long';
+}
+
+export default function FinancialSummary({ widgetSize = 'square' }: FinancialSummaryProps) {
+  const { state } = useFinancialData();
+  const { expenses, income, savings } = state.data;
+  const investments: any[] = (state.data as any).investments || [];
+  const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
+
+  // Calculate financial totals from context data
+  const financialData: FinancialTotal & { totalInvestments: number } = useMemo(() => {
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    // Filter expenses for current month
+    const currentMonthExpenses = expenses
+      .filter(expense => {
+        const expenseDate = new Date(expense.date);
+        return expenseDate >= currentMonthStart && expenseDate <= currentMonthEnd;
+      })
+      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+
+    // Filter expenses for previous month
+    const previousMonthExpenses = expenses
+      .filter(expense => {
+        const expenseDate = new Date(expense.date);
+        return expenseDate >= previousMonthStart && expenseDate <= previousMonthEnd;
+      })
+      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+
+    // Filter income for current month
+    const currentMonthIncome = income
+      .filter(incomeItem => {
+        const incomeDate = new Date(incomeItem.date);
+        return incomeDate >= currentMonthStart && incomeDate <= currentMonthEnd;
+      })
+      .reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
+
+    // Filter savings for current month
+    const currentMonthSavings = savings
+      .filter(saving => {
+        const savingDate = new Date(saving.date);
+        return savingDate >= currentMonthStart && savingDate <= currentMonthEnd;
+      })
+      .reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
+
+    // Calculate totals
+    const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+    const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
+    const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
+    const totalInvestments = (investments || []).reduce((sum: number, inv: any) => sum + parseFloat(inv.amount), 0);
+
+    return {
+      currentMonthExpenses,
+      previousMonthExpenses,
+      currentMonthIncome,
+      currentMonthSavings,
+      totalExpenses,
+      totalIncome,
+      totalSavings,
+      totalInvestments
+    };
+  }, [expenses, income, savings, investments]);
+
+  // Calculate balances
+  const currentBalance = financialData.totalIncome - financialData.totalExpenses - financialData.totalSavings;
+  const totalAssets = currentBalance + financialData.totalSavings + financialData.totalInvestments;
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-600">
+        <div className="p-3 h-full flex flex-col">
+          <div className="mb-2">
+            <div className="w-24 h-3 bg-slate-300 dark:bg-slate-600 rounded animate-pulse mb-1"></div>
+            <div className="w-32 h-2 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+          </div>
+          <div className="flex-1 space-y-2">
+            <div className="w-full h-12 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="w-full h-8 bg-slate-200 dark:bg-slate-700 rounded-md animate-pulse"></div>
+              <div className="w-full h-8 bg-slate-200 dark:bg-slate-700 rounded-md animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-600 h-full flex flex-col group hover:shadow-2xl transition-all duration-300">
+      {/* Card Content */}
+      <div className="h-full flex flex-col">
+        {/* Financial Summary Table */}
+        <div className="flex-1 flex flex-col">
+          {/* Assets Row - Takes up half the container, edge to edge */}
+          <div className="h-1/2 bg-gradient-to-br from-emerald-800 via-emerald-700 to-green-800 rounded-t-2xl p-4 border border-emerald-600/20 hover:from-emerald-700 hover:via-emerald-600 hover:to-emerald-800 transition-all duration-300 shadow-xl mb-3 relative overflow-hidden">
+            {/* Decorative background elements */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-400/10 to-green-400/10 rounded-full blur-3xl"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-emerald-400/10 to-green-400/10 rounded-full blur-2xl"></div>
+            
+            <div className="flex flex-col h-full justify-center relative z-10">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold text-white tracking-wide uppercase">Total Assets</span>
+                <div className="w-3 h-3 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full shadow-lg animate-pulse"></div>
+              </div>
+              <div className="text-2xl font-bold text-white tracking-tight mb-2 drop-shadow-sm">
+                {formatCurrency(totalAssets)}
+              </div>
+              <div className="text-xs text-emerald-100 font-medium opacity-90">
+                Combined value of all accounts
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary Sections Container - Takes up remaining half */}
+          <div className="flex-1 px-3 pb-3">
+            <div className="grid grid-cols-2 gap-2 h-full">
+              {/* Savings Row */}
+              <div className="flex flex-col justify-center p-2 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all duration-200">
+                <div className="flex items-center mb-1">
+                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></div>
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Savings</span>
+                </div>
+                <div className="text-xs font-bold text-slate-900 dark:text-white">
+                  {formatCurrency(financialData.totalSavings)}
+                </div>
+              </div>
+
+              {/* Investment Row */}
+              <div className="flex flex-col justify-center p-2 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all duration-200">
+                <div className="flex items-center mb-1">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></div>
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Investment</span>
+                </div>
+                <div className="text-xs font-bold text-slate-900 dark:text-white">
+                  {formatCurrency(financialData.totalInvestments || 0)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

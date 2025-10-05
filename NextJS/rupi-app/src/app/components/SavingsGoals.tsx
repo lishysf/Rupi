@@ -339,12 +339,12 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+      <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
             Savings Goals
           </h2>
-          <div className="w-4 h-4 animate-spin border-2 border-slate-400 border-t-transparent rounded-full"></div>
+          <div className="w-4 h-4 animate-spin border-2 border-emerald-400 border-t-transparent rounded-full"></div>
         </div>
         <div className="flex-1 space-y-3">
           {Array.from({ length: 2 }, (_, i) => (
@@ -361,7 +361,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center">
           <Target className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mr-2" />
@@ -383,7 +383,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
                 }
                 setShowDistribution(!showDistribution);
               }}
-              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+              className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
             >
               {showDistribution ? 'Cancel' : 'Distribute'}
             </button>
@@ -412,7 +412,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
               {totalAllocated > 0 ? `${formatCurrency(totalAllocated)} allocated` : 'Not allocated'}
             </div>
             {remainingToAllocate !== 0 && (
-              <div className={`text-xs ${remainingToAllocate > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+              <div className={`text-xs ${remainingToAllocate > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                 {remainingToAllocate > 0 ? `${formatCurrency(remainingToAllocate)} remaining` : `${formatCurrency(Math.abs(remainingToAllocate))} over-allocated`}
               </div>
             )}
@@ -425,7 +425,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           <div className="text-center py-8">
             <Target className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
             <p className="text-slate-500 dark:text-slate-400 text-sm">
-              No savings goals yet. Create your first goal!
+              No savings goals yet. Create your first goal
             </p>
           </div>
         ) : (
@@ -514,7 +514,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
                           const fillAmount = Math.min(goal.target_amount, maxFromTotalSavings);
                           handleAllocationChange(goal.id, fillAmount);
                         }}
-                        className="flex-1 px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors"
+                        className="flex-1 px-2 py-1 text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded hover:bg-emerald-200 dark:hover:bg-emerald-800/50 transition-colors"
                       >
                         Fill Goal
                       </button>
@@ -598,7 +598,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
               </div>
             </div>
             <div className="text-center">
-              <div className="text-sm font-bold text-blue-600 dark:text-blue-400">
+              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
                 {goals.length > 0 ? ((goals.reduce((sum, goal) => {
                   const current = goal.current_amount || 0;
                   const target = goal.target_amount || 0;

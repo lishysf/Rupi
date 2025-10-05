@@ -43,6 +43,12 @@ export async function GET(request: NextRequest) {
       const now = new Date();
       startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       endDate = new Date(now.getFullYear(), now.getMonth(), 0); // Last day of previous month
+    } else if (timeRange === '7d') {
+      // Last 7 days including today + 1 day buffer to ensure we capture all data
+      endDate = new Date();
+      endDate.setDate(endDate.getDate() + 1); // Add 1 day buffer
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - 6); // 7 days total including today
     } else {
       // Legacy support for days-based ranges
       const days = parseInt(timeRange.replace('d', '')) || 30;
@@ -50,6 +56,13 @@ export async function GET(request: NextRequest) {
       startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
     }
+    
+    // Debug: Log the date range being used
+    console.log(`Date range for ${timeRange}:`, {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+      daysDifference: Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+    });
     
          // Query to get daily income and expense totals
      const query = `
@@ -88,6 +101,13 @@ export async function GET(request: NextRequest) {
      `;
      
      const result = await pool.query(query, [startDate, endDate, user.id]);
+     
+     // Debug: Log the raw database result
+     console.log(`Database result for ${timeRange}:`, {
+       rowCount: result.rows.length,
+       sampleRows: result.rows.slice(0, 3), // Show first 3 rows
+       allDates: result.rows.map(row => row.date)
+     });
      
      // Transform the data to match the expected format
      const trendsData = result.rows.map(row => {

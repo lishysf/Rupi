@@ -1,12 +1,15 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useEffect } from 'react';
+import Dashboard from '@/app/components/Dashboard';
 
-export default function Home() {
+export default function UserDashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const params = useParams();
+  const username = params.username as string;
 
   useEffect(() => {
     if (status === 'loading') return; // Still loading
@@ -16,11 +19,14 @@ export default function Home() {
       return;
     }
 
-    // Redirect to the user's dashboard
-    if (session.user?.name) {
+    // Check if the username in the URL matches the current user
+    // You can customize this logic based on how you want to handle usernames
+    // For now, we'll redirect to the user's own dashboard if they try to access someone else's
+    if (session.user?.name && session.user.name !== username) {
       router.push(`/${session.user.name}/dashboard`);
+      return;
     }
-  }, [session, status, router]);
+  }, [session, status, router, username]);
 
   if (status === 'loading') {
     return (
@@ -35,5 +41,9 @@ export default function Home() {
     );
   }
 
-  return null; // Will redirect
+  if (!session) {
+    return null; // Will redirect to signin
+  }
+
+  return <Dashboard />;
 }

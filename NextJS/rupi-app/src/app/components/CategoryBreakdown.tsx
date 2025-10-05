@@ -1,12 +1,16 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Pie, PieChart, Cell } from "recharts"
+import { TrendingUp, PieChart as PieChartIcon } from "lucide-react";
+import { Pie, PieChart, Cell, Sector } from "recharts";
+import { PieSectorDataItem } from "recharts/types/polar/Pie";
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 
 import {
   Card,
   CardContent,
+  CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -67,31 +71,73 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
       .sort((a, b) => b.total - a.total);
   }, [expenses]);
 
-  // Color mapping for categories
-  const getCategoryColor = (category: string) => {
+  // Fundy green theme color palette - various shades of green with complementary colors
+  const distinctColors = [
+    '#10b981', // emerald-500 - primary green
+    '#059669', // emerald-600 - darker green
+    '#047857', // emerald-700 - dark green
+    '#34d399', // emerald-400 - light green
+    '#6ee7b7', // emerald-300 - lighter green
+    '#a7f3d0', // emerald-200 - very light green
+    '#065f46', // emerald-800 - very dark green
+    '#064e3b', // emerald-900 - darkest green
+    '#22c55e', // green-500 - alternative green
+    '#16a34a', // green-600 - alternative dark green
+    '#15803d', // green-700 - alternative darker green
+    '#4ade80', // green-400 - alternative light green
+    '#86efac', // green-300 - alternative lighter green
+    '#bbf7d0', // green-200 - alternative very light green
+    '#166534', // green-800 - alternative very dark green
+    '#14532d', // green-900 - alternative darkest green
+  ];
+
+  // Color mapping for categories - High contrast colors that don't blend
+  const getCategoryColor = (category: string, index: number = 0) => {
     const colorMap: Record<string, string> = {
-      'Food & Groceries': '#10b981', // emerald
-      'Transportation': '#3b82f6', // blue
-      'Housing & Utilities': '#f59e0b', // amber
-      'Health & Personal': '#8b5cf6', // violet
-      'Entertainment & Shopping': '#ef4444', // red
-      'Debt Payments': '#dc2626', // red-600
-      'Savings & Investments': '#06b6d4', // cyan
-      'Family & Others': '#6b7280', // gray
+      'Food & Groceries': '#10b981', // emerald-500 - primary green
+      'Transportation': '#059669', // emerald-600 - darker green
+      'Housing & Utilities': '#047857', // emerald-700 - dark green
+      'Health & Personal': '#34d399', // emerald-400 - light green
+      'Entertainment & Shopping': '#6ee7b7', // emerald-300 - lighter green
+      'Debt Payments': '#065f46', // emerald-800 - very dark green (for debt)
+      'Savings & Investments': '#22c55e', // green-500 - alternative green
+      'Family & Others': '#16a34a', // green-600 - alternative dark green
+      'Education': '#15803d', // green-700 - alternative darker green
+      'Insurance': '#4ade80', // green-400 - alternative light green
+      'Travel': '#86efac', // green-300 - alternative lighter green
+      'Subscriptions': '#a7f3d0', // emerald-200 - very light green
+      'Gifts & Donations': '#bbf7d0', // green-200 - alternative very light green
+      'Miscellaneous': '#064e3b', // emerald-900 - darkest green
     };
-    return colorMap[category] || '#6b7280';
+    
+    // Return mapped color or fallback to distinct color palette
+    return colorMap[category] || distinctColors[index % distinctColors.length];
   };
 
   // Transform expense summary to chart data
-  const chartData = expenseSummary.map(item => ({
+  const chartData = expenseSummary.map((item, index) => ({
     category: item.category,
     amount: item.total,
-    fill: getCategoryColor(item.category),
+    fill: getCategoryColor(item.category, index),
   }));
+
+  // Chart configuration
+  const chartConfig = {
+    amount: {
+      label: "Amount",
+    },
+    ...chartData.reduce((config, item) => {
+      config[item.category.toLowerCase().replace(/\s+/g, '_')] = {
+        label: item.category,
+        color: item.fill,
+      };
+      return config;
+    }, {} as Record<string, { label: string; color: string }>),
+  } satisfies ChartConfig;
 
   if (loading) {
     return (
-      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-full flex flex-col">
+      <Card className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700 h-full flex flex-col">
         <CardContent className="flex-1 flex items-center justify-center p-6">
           <div className="animate-pulse space-y-4 w-full">
             <div className="flex items-center justify-center">
@@ -113,29 +159,23 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
 
   if (chartData.length === 0 && !loading) {
     return (
-      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-full flex flex-col">
+      <Card className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700 h-full flex flex-col">
         <CardContent className="flex-1 flex items-center justify-center p-6">
           <div className="text-center">
             <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Pie className="w-8 h-8 text-slate-400" />
+              <PieChartIcon className="w-8 h-8 text-slate-400" />
             </div>
             <p className="text-slate-500 dark:text-slate-400 text-sm">
               No expense data available
             </p>
             <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">
-              Start tracking expenses with the AI chat!
+              Start tracking expenses with the AI chat
             </p>
           </div>
         </CardContent>
       </Card>
     );
   }
-
-  const chartConfig = {
-    amount: {
-      label: "Amount",
-    },
-  } satisfies ChartConfig
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -147,184 +187,40 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
   };
 
   const totalExpenses = chartData.reduce((sum, item) => sum + item.amount, 0);
+  const largestCategory = chartData[0]; // First item is the largest since we sort by amount
 
   return (
-    <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-full flex flex-col">
-      <CardContent className={`flex-1 flex p-3 overflow-hidden ${
-        widgetSize === 'square' ? 'flex-col' : 
-        widgetSize === 'half' ? 'gap-4' : 'flex-col gap-4'
-      }`}>
-        {widgetSize === 'square' ? (
-          // Square layout: Large pie chart with small legend below
-          <>
-            {/* Chart Section - Takes most space */}
-            <div className="flex-1 min-h-0 flex items-center justify-center">
-              <ChartContainer
-                config={chartConfig}
-                className="w-full h-full"
-              >
-                <PieChart>
-                  <Pie 
-                    data={chartData} 
-                    dataKey="amount"
-                    stroke="none"
-                    strokeWidth={0}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius="95%"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                        labelFormatter={(label) => label}
-                        formatter={(value, name) => [
-                          formatCurrency(Number(value)),
-                          name === 'amount' ? '' : name
-                        ]}
-                      />
-                    }
-                  />
-                </PieChart>
-              </ChartContainer>
-            </div>
-            
-            {/* Compact legend below */}
-            <div className="flex-shrink-0 grid grid-cols-3 gap-1 mt-2">
-              {chartData.map((item) => (
-                <div key={item.category} className="flex items-center gap-1 min-w-0">
-                  <div 
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: item.fill }}
-                  />
-                  <span className="text-xs text-slate-600 dark:text-slate-300 truncate">
-                    {item.category}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : widgetSize === 'half' ? (
-          // Half layout: Pie chart on left, legend on right with separator
-          <>
-            {/* Chart Section - More constrained */}
-            <div className="w-[45%] min-h-0">
-              <ChartContainer
-                config={chartConfig}
-                className="w-full h-full"
-              >
-                <PieChart>
-                  <Pie 
-                    data={chartData} 
-                    dataKey="amount"
-                    stroke="none"
-                    strokeWidth={0}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius="85%"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                        labelFormatter={(label) => label}
-                        formatter={(value, name) => [
-                          formatCurrency(Number(value)),
-                          name === 'amount' ? '' : name
-                        ]}
-                      />
-                    }
-                  />
-                </PieChart>
-              </ChartContainer>
-            </div>
-            
-            {/* Vertical separator */}
-            <div className="w-px bg-slate-200 dark:bg-slate-600 mx-3"></div>
-            
-            {/* Legend Section - More space */}
-            <div className="flex-1 flex flex-col justify-start gap-1 min-w-0 py-2 overflow-y-auto">
-              {chartData.map((item) => (
-                <div key={item.category} className="flex flex-col gap-0.5 min-w-0 flex-shrink-0">
-                  <div className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: item.fill }}
-                    />
-                    <span className="text-xs text-slate-600 dark:text-slate-300 truncate">
-                      {item.category}
-                    </span>
-                  </div>
-                  <div className="text-xs font-semibold text-slate-900 dark:text-white ml-5">
-                    {formatCurrency(item.amount)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          // Long layout: Chart on top, legend grid below
-          <>
-            {/* Chart Section */}
-            <div className="w-full flex justify-center mb-4">
-              <ChartContainer
-                config={chartConfig}
-                className="w-[300px] h-[300px]"
-              >
-                <PieChart>
-                  <Pie 
-                    data={chartData} 
-                    dataKey="amount"
-                    stroke="none"
-                    strokeWidth={0}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius="45%"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                        labelFormatter={(label) => label}
-                        formatter={(value, name) => [
-                          formatCurrency(Number(value)),
-                          name === 'amount' ? '' : name
-                        ]}
-                      />
-                    }
-                  />
-                </PieChart>
-              </ChartContainer>
-            </div>
-            
-            {/* Legend grid */}
-            <div className="w-full grid grid-cols-3 gap-3">
-              {chartData.map((item) => (
-                <div key={item.category} className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: item.fill }}
-                  />
-                  <span className="text-sm text-slate-600 dark:text-slate-300 truncate">
-                    {item.category}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+    <Card className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex flex-col h-full">
+      <CardHeader className="items-center pb-0">
+        <CardTitle className="text-lg">Expense Breakdown</CardTitle>
+        <CardDescription>Category-wise spending analysis</CardDescription>
+      </CardHeader>
+      <CardContent className="flex-1 pb-0">
+        <ChartContainer
+          config={chartConfig}
+          className="mx-auto aspect-square max-h-[250px]"
+        >
+          <PieChart>
+            <ChartTooltip
+              cursor={false}
+              content={<ChartTooltipContent hideLabel />}
+            />
+            <Pie
+              data={chartData}
+              dataKey="amount"
+              nameKey="category"
+              innerRadius={40}
+              strokeWidth={5}
+              activeIndex={0}
+              activeShape={({
+                outerRadius = 0,
+                ...props
+              }: PieSectorDataItem) => (
+                <Sector {...props} outerRadius={outerRadius + 10} />
+              )}
+            />
+          </PieChart>
+        </ChartContainer>
       </CardContent>
     </Card>
   );
