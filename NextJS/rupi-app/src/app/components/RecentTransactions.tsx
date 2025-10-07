@@ -153,7 +153,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   };
 
   // Get icon and color for category
-  const getCategoryInfo = (category: string, type: 'income' | 'expense' | 'savings') => {
+  const getCategoryInfo = (category: string, type: 'income' | 'expense' | 'savings' | 'investment') => {
     if (type === 'income') {
       const incomeCategories: Record<string, { icon: any; color: string }> = {
         'Salary': { icon: Briefcase, color: 'text-blue-600 dark:text-blue-400' },
@@ -220,6 +220,30 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
+    
+    // Check if the time is exactly midnight (00:00:00)
+    // This usually indicates a date-only input without time
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = date.getSeconds();
+    
+    // If it's exactly midnight, it's likely a date-only input
+    // In this case, we'll show the created_at time instead if available
+    if (hours === 0 && minutes === 0 && seconds === 0) {
+      // Try to get the created_at time from the transaction
+      const transaction = allTransactions.find(t => t.date === dateString);
+      if (transaction && transaction.created_at) {
+        const createdDate = new Date(transaction.created_at);
+        return new Intl.DateTimeFormat('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).format(createdDate);
+      }
+      // If no created_at, show a default time or hide time
+      return '--:--';
+    }
+    
     return new Intl.DateTimeFormat('id-ID', {
       hour: '2-digit',
       minute: '2-digit',

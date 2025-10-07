@@ -702,7 +702,14 @@ export class ExpenseDatabase {
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
-    const values = [userId, description, amount, category, date || new Date()];
+    
+    // If no date provided or date is date-only (midnight), use current timestamp
+    let finalDate = date || new Date();
+    if (date && date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0) {
+      finalDate = new Date(); // Use current time instead of midnight
+    }
+    
+    const values = [userId, description, amount, category, finalDate];
     
     try {
       const result = await pool.query(query, values);
@@ -874,7 +881,14 @@ export class IncomeDatabase {
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
-    const values = [userId, description, amount, source, date || new Date()];
+    
+    // If no date provided or date is date-only (midnight), use current timestamp
+    let finalDate = date || new Date();
+    if (date && date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0) {
+      finalDate = new Date(); // Use current time instead of midnight
+    }
+    
+    const values = [userId, description, amount, source, finalDate];
     
     try {
       const result = await pool.query(query, values);
@@ -1046,7 +1060,14 @@ export class InvestmentDatabase {
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
-    const values = [userId, description, amount, assetName, date || new Date()];
+    
+    // If no date provided or date is date-only (midnight), use current timestamp
+    let finalDate = date || new Date();
+    if (date && date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0) {
+      finalDate = new Date(); // Use current time instead of midnight
+    }
+    
+    const values = [userId, description, amount, assetName, finalDate];
     
     try {
       const result = await pool.query(query, values);
@@ -1078,7 +1099,13 @@ export class InvestmentDatabase {
         VALUES ($1, $2, $3, $4, $5)
         RETURNING *
       `;
-      const values = [userId, description, amount, assetName, date || new Date()];
+      // If no date provided or date is date-only (midnight), use current timestamp
+      let finalDate = date || new Date();
+      if (date && date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0) {
+        finalDate = new Date(); // Use current time instead of midnight
+      }
+      
+      const values = [userId, description, amount, assetName, finalDate];
       
       const result = await pool.query(query, values);
       return result.rows[0];
@@ -1187,7 +1214,14 @@ export class SavingsDatabase {
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
-    const values = [userId, description, amount, goalName, date || new Date()];
+    
+    // If no date provided or date is date-only (midnight), use current timestamp
+    let finalDate = date || new Date();
+    if (date && date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0) {
+      finalDate = new Date(); // Use current time instead of midnight
+    }
+    
+    const values = [userId, description, amount, goalName, finalDate];
     
     try {
       const result = await pool.query(query, values);

@@ -49,14 +49,14 @@ export default function UserAnalyticsPage() {
   return (
     <FinancialDataProvider>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex">
-        <Sidebar currentPage="Analytics" />
+        <Sidebar currentPage="Table" />
         <div className="flex-1 lg:ml-64">
           <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 sticky top-0 z-40">
             <div className="px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between items-center h-16">
                 <div className="flex items-center space-x-4">
-                  <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">Analytics</div>
-                  <div className="text-sm text-slate-500 dark:text-slate-400">Insights and breakdowns</div>
+                  <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">Table</div>
+                  <div className="text-sm text-slate-500 dark:text-slate-400">Edit your financial data</div>
                 </div>
               </div>
             </div>

@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 
 // Types
 interface Transaction {
-  id: number;
+  id: string | number;
   description: string;
   amount: number;
   category: string;
@@ -67,22 +67,67 @@ type FinancialDataAction =
   | { type: 'SET_INVESTMENTS'; payload: any[] }
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
-  | { type: 'DELETE_TRANSACTION'; payload: number }
+  | { type: 'DELETE_TRANSACTION'; payload: string | number }
   | { type: 'ADD_BUDGET'; payload: Budget }
   | { type: 'UPDATE_BUDGET'; payload: Budget }
   | { type: 'DELETE_BUDGET'; payload: string }
   | { type: 'REFRESH_ALL' };
 
-// Initial state
+// Helper function to load cached data
+const loadCachedData = (): Partial<FinancialDataState> => {
+  if (typeof window === 'undefined') return {};
+  
+  try {
+    const cached = localStorage.getItem('financial-data-cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      // Check if cache is less than 5 minutes old
+      if (Date.now() - parsed.timestamp < 5 * 60 * 1000) {
+        return {
+          data: parsed.data,
+          loading: {
+            initial: false,
+            transactions: false,
+            budgets: false,
+            expenses: false,
+            income: false,
+            savings: false,
+            investments: false,
+          }
+        };
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load cached data:', error);
+  }
+  return {};
+};
+
+// Helper function to save data to cache
+const saveCachedData = (data: FinancialData) => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    localStorage.setItem('financial-data-cache', JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }));
+  } catch (error) {
+    console.warn('Failed to save cached data:', error);
+  }
+};
+
+// Initial state with cached data
+const cachedData = loadCachedData();
 const initialState: FinancialDataState = {
   data: {
-    transactions: [],
-    budgets: [],
-    expenses: [],
-    income: [],
-    savings: [],
-    investments: [],
-    lastUpdated: {
+    transactions: cachedData.data?.transactions || [],
+    budgets: cachedData.data?.budgets || [],
+    expenses: cachedData.data?.expenses || [],
+    income: cachedData.data?.income || [],
+    savings: cachedData.data?.savings || [],
+    investments: cachedData.data?.investments || [],
+    lastUpdated: cachedData.data?.lastUpdated || {
       transactions: 0,
       budgets: 0,
       expenses: 0,
@@ -92,7 +137,7 @@ const initialState: FinancialDataState = {
     },
   },
   loading: {
-    initial: true,
+    initial: false, // Never show initial loading - always show dashboard immediately
     transactions: false,
     budgets: false,
     expenses: false,
@@ -122,7 +167,7 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
       };
 
     case 'SET_TRANSACTIONS':
-      return {
+      const newStateTransactions = {
         ...state,
         data: {
           ...state.data,
@@ -133,9 +178,11 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
+      saveCachedData(newStateTransactions.data);
+      return newStateTransactions;
 
     case 'SET_BUDGETS':
-      return {
+      const newStateBudgets = {
         ...state,
         data: {
           ...state.data,
@@ -146,9 +193,11 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
+      saveCachedData(newStateBudgets.data);
+      return newStateBudgets;
 
     case 'SET_EXPENSES':
-      return {
+      const newStateExpenses = {
         ...state,
         data: {
           ...state.data,
@@ -159,9 +208,11 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
+      saveCachedData(newStateExpenses.data);
+      return newStateExpenses;
 
     case 'SET_INCOME':
-      return {
+      const newStateIncome = {
         ...state,
         data: {
           ...state.data,
@@ -172,9 +223,11 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
+      saveCachedData(newStateIncome.data);
+      return newStateIncome;
 
     case 'SET_SAVINGS':
-      return {
+      const newStateSavings = {
         ...state,
         data: {
           ...state.data,
@@ -185,9 +238,11 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
+      saveCachedData(newStateSavings.data);
+      return newStateSavings;
 
     case 'SET_INVESTMENTS':
-      return {
+      const newStateInvestments = {
         ...state,
         data: {
           ...state.data,
@@ -198,6 +253,8 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
+      saveCachedData(newStateInvestments.data);
+      return newStateInvestments;
 
     case 'ADD_TRANSACTION':
       return {
@@ -315,8 +372,8 @@ interface FinancialDataContextType {
   fetchInvestments: () => Promise<void>;
   fetchTrends: (timeRange: string) => Promise<any>;
   // Transaction actions
-  deleteTransaction: (id: number, type: 'income' | 'expense') => Promise<boolean>;
-  updateTransaction: (id: number, type: 'income' | 'expense', data: any) => Promise<boolean>;
+  deleteTransaction: (id: string | number, type: 'income' | 'expense') => Promise<boolean>;
+  updateTransaction: (id: string | number, type: 'income' | 'expense', data: any) => Promise<boolean>;
   // Savings actions
   deleteSavings: (id: number) => Promise<boolean>;
   updateSavings: (id: number, data: { description?: string; amount?: number; goalName?: string }) => Promise<boolean>;
@@ -338,19 +395,46 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
   const isRefreshing = useRef(false);
   const { data: session, status } = useSession();
 
-  // Fetch functions
-  const fetchTransactions = useCallback(async () => {
+  // Helper function for retry logic
+  const fetchWithRetry = async (url: string, options: RequestInit = {}, maxRetries = 3): Promise<Response> => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+        if (response.ok) {
+          return response;
+        }
+        
+        // If it's the last attempt or a client error (4xx), throw
+        if (attempt === maxRetries || (response.status >= 400 && response.status < 500)) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
+    throw new Error('Max retries exceeded');
+  };
+
+  // Fetch functions with retry logic - no loading states for smooth updates
+  const fetchTransactions = useCallback(async (showLoading = false) => {
     if (!session) return;
     
     try {
-      const [expensesResponse, incomeResponse] = await Promise.all([
-        fetch('/api/expenses?limit=50'),
-        fetch('/api/income?limit=50')
-      ]);
-
-      if (!expensesResponse.ok || !incomeResponse.ok) {
-        throw new Error('Failed to fetch transactions');
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'transactions', value: true } });
       }
+      
+      const [expensesResponse, incomeResponse] = await Promise.all([
+        fetchWithRetry('/api/expenses?limit=50'),
+        fetchWithRetry('/api/income?limit=50')
+      ]);
 
       const [expensesData, incomeData] = await Promise.all([
         expensesResponse.json(),
@@ -362,6 +446,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       if (expensesData.success) {
         const expenseTransactions = expensesData.data.map((expense: any) => ({
           ...expense,
+          id: `expense-${expense.id}`, // Make ID unique by prefixing type
           type: 'expense' as const,
           category: expense.category
         }));
@@ -371,6 +456,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       if (incomeData.success) {
         const incomeTransactions = incomeData.data.map((income: any) => ({
           ...income,
+          id: `income-${income.id}`, // Make ID unique by prefixing type
           type: 'income' as const,
           category: income.source
         }));
@@ -381,21 +467,26 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       dispatch({ type: 'SET_TRANSACTIONS', payload: allTransactions });
     } catch (error) {
       console.error('Error fetching transactions:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load transactions' });
+    } finally {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'transactions', value: false } });
+      }
     }
   }, [session]);
 
-  const fetchBudgets = useCallback(async () => {
+  const fetchBudgets = useCallback(async (showLoading = false) => {
     if (!session) return;
     
     try {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'budgets', value: true } });
+      }
+      
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
       
-      const response = await fetch(`/api/budgets?month=${currentMonth}&year=${currentYear}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch budgets');
-      }
+      const response = await fetchWithRetry(`/api/budgets?month=${currentMonth}&year=${currentYear}`);
       
       const data = await response.json();
       if (data.success) {
@@ -403,18 +494,23 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
     } catch (error) {
       console.error('Error fetching budgets:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load budgets' });
+    } finally {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'budgets', value: false } });
+      }
     }
   }, [session]);
 
-  const fetchExpenses = useCallback(async () => {
+  const fetchExpenses = useCallback(async (showLoading = false) => {
     if (!session) return;
     
     try {
-      const response = await fetch('/api/expenses?limit=100');
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch expenses');
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'expenses', value: true } });
       }
+      
+      const response = await fetchWithRetry('/api/expenses?limit=100');
       
       const data = await response.json();
       if (data.success) {
@@ -422,18 +518,23 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
     } catch (error) {
       console.error('Error fetching expenses:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load expenses' });
+    } finally {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'expenses', value: false } });
+      }
     }
   }, [session]);
 
-  const fetchIncome = useCallback(async () => {
+  const fetchIncome = useCallback(async (showLoading = false) => {
     if (!session) return;
     
     try {
-      const response = await fetch('/api/income?limit=100');
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch income');
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'income', value: true } });
       }
+      
+      const response = await fetchWithRetry('/api/income?limit=100');
       
       const data = await response.json();
       if (data.success) {
@@ -441,18 +542,23 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
     } catch (error) {
       console.error('Error fetching income:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load income' });
+    } finally {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'income', value: false } });
+      }
     }
   }, [session]);
 
-  const fetchSavings = useCallback(async () => {
+  const fetchSavings = useCallback(async (showLoading = false) => {
     if (!session) return;
     
     try {
-      const response = await fetch('/api/savings?limit=100');
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch savings');
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'savings', value: true } });
       }
+      
+      const response = await fetchWithRetry('/api/savings?limit=100');
       
       const data = await response.json();
       if (data.success) {
@@ -460,23 +566,35 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
     } catch (error) {
       console.error('Error fetching savings:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load savings' });
+    } finally {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'savings', value: false } });
+      }
     }
   }, [session]);
 
-  const fetchInvestments = useCallback(async () => {
+  const fetchInvestments = useCallback(async (showLoading = false) => {
     if (!session) return;
     
     try {
-      const response = await fetch('/api/investments?limit=100');
-      if (!response.ok) {
-        throw new Error('Failed to fetch investments');
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'investments', value: true } });
       }
+      
+      const response = await fetchWithRetry('/api/investments?limit=100');
+      
       const data = await response.json();
       if (data.success) {
         dispatch({ type: 'SET_INVESTMENTS', payload: data.data || [] });
       }
     } catch (error) {
       console.error('Error fetching investments:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load investments' });
+    } finally {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'investments', value: false } });
+      }
     }
   }, [session]);
 
@@ -543,7 +661,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       
       if (data.success) {
         // Refresh budgets data
-        await fetchBudgets();
+        await fetchBudgets(false);
         return true;
       }
       return false;
@@ -589,7 +707,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       
       if (data.success) {
         // Refresh budgets data
-        await fetchBudgets();
+        await fetchBudgets(false);
         return true;
       }
       return false;
@@ -600,9 +718,11 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
   }, [fetchBudgets]);
 
   // Transaction action functions
-  const deleteTransaction = useCallback(async (id: number, type: 'income' | 'expense') => {
+  const deleteTransaction = useCallback(async (id: string | number, type: 'income' | 'expense') => {
     try {
-      const endpoint = type === 'expense' ? `/api/expenses/${id}` : `/api/income/${id}`;
+      // Extract original ID from prefixed ID
+      const originalId = typeof id === 'string' ? id.split('-')[1] : id;
+      const endpoint = type === 'expense' ? `/api/expenses/${originalId}` : `/api/income/${originalId}`;
       const response = await fetch(endpoint, {
         method: 'DELETE',
       });
@@ -616,13 +736,13 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         // Update local state immediately
         dispatch({ type: 'DELETE_TRANSACTION', payload: id });
         
-        // Refresh all related data to keep all components in sync
+        // Refresh all related data to keep all components in sync (no loading states)
         await Promise.all([
-          fetchTransactions(),
-          fetchExpenses(),
-          fetchIncome(),
-          fetchSavings(),
-          fetchInvestments()
+          fetchTransactions(false),
+          fetchExpenses(false),
+          fetchIncome(false),
+          fetchSavings(false),
+          fetchInvestments(false)
         ]);
         
         return true;
@@ -634,9 +754,11 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }
   }, [fetchTransactions, fetchExpenses, fetchIncome, fetchSavings]);
 
-  const updateTransaction = useCallback(async (id: number, type: 'income' | 'expense', data: any) => {
+  const updateTransaction = useCallback(async (id: string | number, type: 'income' | 'expense', data: any) => {
     try {
-      const endpoint = type === 'expense' ? `/api/expenses/${id}` : `/api/income/${id}`;
+      // Extract original ID from prefixed ID
+      const originalId = typeof id === 'string' ? id.split('-')[1] : id;
+      const endpoint = type === 'expense' ? `/api/expenses/${originalId}` : `/api/income/${originalId}`;
       const response = await fetch(endpoint, {
         method: 'PUT',
         headers: {
@@ -654,18 +776,19 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         // Update local state immediately
         const updatedTransaction = {
           ...result.data,
+          id: `${type}-${result.data.id}`, // Use prefixed ID
           type,
           category: type === 'expense' ? result.data.category : result.data.source
         };
         dispatch({ type: 'UPDATE_TRANSACTION', payload: updatedTransaction });
         
-        // Refresh all related data to keep all components in sync
+        // Refresh all related data to keep all components in sync (no loading states)
         await Promise.all([
-          fetchTransactions(),
-          fetchExpenses(),
-          fetchIncome(),
-          fetchSavings(),
-          fetchInvestments()
+          fetchTransactions(false),
+          fetchExpenses(false),
+          fetchIncome(false),
+          fetchSavings(false),
+          fetchInvestments(false)
         ]);
         
         return true;
@@ -686,7 +809,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
       const data = await response.json();
       if (data.success) {
-        await fetchSavings();
+        await fetchSavings(false);
         return true;
       }
       return false;
@@ -708,7 +831,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       }
       const result = await response.json();
       if (result.success) {
-        await fetchSavings();
+        await fetchSavings(false);
         return true;
       }
       return false;
@@ -724,7 +847,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       if (!response.ok) throw new Error('Failed to delete investment');
       const data = await response.json();
       if (data.success) {
-        await fetchInvestments();
+        await fetchInvestments(false);
         return true;
       }
       return false;
@@ -744,7 +867,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       if (!response.ok) throw new Error('Failed to update investment');
       const result = await response.json();
       if (result.success) {
-        await fetchInvestments();
+        await fetchInvestments(false);
         return true;
       }
       return false;
@@ -761,14 +884,14 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     isRefreshing.current = true;
     
     try {
-      // Fetch all data silently without loading states
+      // Fetch all data silently without loading states for smooth background updates
       await Promise.all([
-        fetchTransactions(),
-        fetchBudgets(),
-        fetchExpenses(),
-        fetchIncome(),
-        fetchSavings(),
-        fetchInvestments()
+        fetchTransactions(false), // No loading states for background refresh
+        fetchBudgets(false),
+        fetchExpenses(false),
+        fetchIncome(false),
+        fetchSavings(false),
+        fetchInvestments(false)
       ]);
       
       dispatch({ type: 'REFRESH_ALL' });
@@ -779,7 +902,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }
   }, [fetchTransactions, fetchBudgets, fetchExpenses, fetchIncome, fetchSavings]);
 
-  // Initial data load
+  // Initial data load with progressive loading
   useEffect(() => {
     if (status === 'loading') return; // Still loading session
     
@@ -796,28 +919,46 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         return;
       }
       
-      dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: true } });
+      // Always show dashboard immediately - no initial loading state
       
       try {
-        // Load all data in parallel for faster loading
+        // Load all data in parallel for balanced loading across left and right sides
+        // Only show loading states for initial load (when no cached data exists)
+        const hasCachedData = state.data.transactions.length > 0 || 
+                             state.data.expenses.length > 0 || 
+                             state.data.income.length > 0;
+        
         await Promise.all([
-          fetchTransactions(),
-          fetchBudgets(),
-          fetchExpenses(),
-          fetchIncome(),
-          fetchSavings(),
-          fetchInvestments()
+          fetchTransactions(!hasCachedData), // Show loading only if no cached data
+          fetchExpenses(!hasCachedData),
+          fetchIncome(!hasCachedData),
+          fetchBudgets(!hasCachedData),
+          fetchSavings(!hasCachedData),
+          fetchInvestments(!hasCachedData)
         ]);
+        
+        // All data loaded - components will transition from skeleton to content
+        
       } catch (error) {
         console.error('Error loading initial data:', error);
         dispatch({ type: 'SET_ERROR', payload: 'Failed to load financial data' });
-      } finally {
-        dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: false } });
       }
     };
 
     loadInitialData();
-  }, [session, status, fetchTransactions, fetchBudgets, fetchExpenses, fetchIncome, fetchSavings, fetchInvestments]);
+  }, [session, status, fetchTransactions, fetchBudgets, fetchExpenses, fetchIncome, fetchSavings, fetchInvestments, state.data.transactions.length, state.data.expenses.length, state.data.income.length]);
+
+  // Background refresh every 5 minutes
+  useEffect(() => {
+    if (!session) return;
+    
+    const interval = setInterval(() => {
+      // Silently refresh data in background
+      refreshAll();
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(interval);
+  }, [session, refreshAll]);
 
   const contextValue: FinancialDataContextType = {
     state,

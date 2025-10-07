@@ -9,35 +9,10 @@ interface GlobalLoaderProps {
 }
 
 export default function GlobalLoader({ children }: GlobalLoaderProps) {
-  const { state } = useFinancialData();
   const { data: session, status } = useSession();
-  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Check if all critical data is loaded
-  const isDataLoaded = !state.loading.initial && 
-    state.data.transactions.length >= 0 && 
-    state.data.expenses.length >= 0 && 
-    state.data.income.length >= 0 &&
-    state.data.savings.length >= 0 &&
-    state.data.budgets.length >= 0;
-
-  // Check if session is ready
-  const isSessionReady = status !== 'loading' && session;
-
-  useEffect(() => {
-    // Mark as initialized when data is loaded and session is ready
-    if (isDataLoaded && isSessionReady) {
-      // Add a small delay to ensure smooth transition
-      const timer = setTimeout(() => {
-        setIsInitialized(true);
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isDataLoaded, isSessionReady]);
-
-  // Show loading screen while data is being fetched
-  if (!isInitialized || status === 'loading' || state.loading.initial) {
+  // Only show loading screen for session authentication
+  if (status === 'loading' || !session) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
         <div className="text-center">
@@ -61,57 +36,7 @@ export default function GlobalLoader({ children }: GlobalLoaderProps) {
 
             {/* Loading Text */}
             <div className="text-slate-600 dark:text-slate-400 text-sm">
-              {status === 'loading' ? 'Authenticating...' : 
-               state.loading.initial ? 'Loading your financial data...' : 
-               'Preparing your dashboard...'}
-            </div>
-
-            {/* Progress Indicators */}
-            <div className="flex space-x-2">
-              <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-                state.data.transactions.length >= 0 ? 'bg-emerald-500' : 'bg-slate-300'
-              }`}></div>
-              <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-                state.data.expenses.length >= 0 ? 'bg-emerald-500' : 'bg-slate-300'
-              }`}></div>
-              <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-                state.data.income.length >= 0 ? 'bg-emerald-500' : 'bg-slate-300'
-              }`}></div>
-              <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-                state.data.savings.length >= 0 ? 'bg-emerald-500' : 'bg-slate-300'
-              }`}></div>
-              <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-                state.data.budgets.length >= 0 ? 'bg-emerald-500' : 'bg-slate-300'
-              }`}></div>
-            </div>
-          </div>
-
-          {/* Loading Steps */}
-          <div className="mt-8 text-xs text-slate-500 dark:text-slate-400 space-y-1">
-            <div className={`transition-opacity duration-300 ${
-              state.data.transactions.length >= 0 ? 'opacity-100' : 'opacity-50'
-            }`}>
-              ✓ Transactions loaded
-            </div>
-            <div className={`transition-opacity duration-300 ${
-              state.data.expenses.length >= 0 ? 'opacity-100' : 'opacity-50'
-            }`}>
-              ✓ Expenses loaded
-            </div>
-            <div className={`transition-opacity duration-300 ${
-              state.data.income.length >= 0 ? 'opacity-100' : 'opacity-50'
-            }`}>
-              ✓ Income loaded
-            </div>
-            <div className={`transition-opacity duration-300 ${
-              state.data.savings.length >= 0 ? 'opacity-100' : 'opacity-50'
-            }`}>
-              ✓ Savings loaded
-            </div>
-            <div className={`transition-opacity duration-300 ${
-              state.data.budgets.length >= 0 ? 'opacity-100' : 'opacity-50'
-            }`}>
-              ✓ Budgets loaded
+              Authenticating...
             </div>
           </div>
         </div>

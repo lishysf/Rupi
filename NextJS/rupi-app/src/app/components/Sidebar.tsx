@@ -24,8 +24,8 @@ const getNavigationItems = (username: string) => [
     current: true
   },
   {
-    name: 'Analytics',
-    href: `/${username}/analytics`,
+    name: 'Table',
+    href: `/table`,
     icon: ChartBarIcon,
     current: false
   },
