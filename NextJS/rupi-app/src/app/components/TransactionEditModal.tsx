@@ -157,7 +157,7 @@ export default function TransactionEditModal({
               </CardTitle>
               <button
                 onClick={handleCancel}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"
+                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -174,7 +174,7 @@ export default function TransactionEditModal({
 
               {/* Description Field */}
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">
                   <FileText className="w-4 h-4" />
                   Description
                 </label>
@@ -182,7 +182,7 @@ export default function TransactionEditModal({
                   type="text"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Enter description..."
                   required
                 />
@@ -190,7 +190,7 @@ export default function TransactionEditModal({
 
               {/* Amount Field */}
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">
                   <DollarSign className="w-4 h-4" />
                   Amount (IDR)
                 </label>
@@ -198,14 +198,14 @@ export default function TransactionEditModal({
                   type="number"
                   value={formData.amount}
                   onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="0"
                   min="0"
                   step="1000"
                   required
                 />
                 {formData.amount > 0 && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
                     Preview: {formatCurrency(formData.amount)}
                   </p>
                 )}
@@ -213,7 +213,7 @@ export default function TransactionEditModal({
 
               {/* Category/Source/Name Field */}
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">
                   <Tag className="w-4 h-4" />
                   {isIncome ? 'Source' : isExpense ? 'Category' : isSavings ? 'Goal Name' : 'Investment Name'}
                 </label>
@@ -221,7 +221,7 @@ export default function TransactionEditModal({
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
                   >
                     <option value="">Select {isIncome ? 'source' : 'category'}...</option>
@@ -234,7 +234,7 @@ export default function TransactionEditModal({
                     type="text"
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder={isSavings ? 'e.g., Emergency Fund' : 'e.g., Index Fund'}
                     required
                   />
@@ -242,8 +242,8 @@ export default function TransactionEditModal({
               </div>
 
               {/* Transaction Info */}
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                <div className="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400">
+              <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                <div className="flex justify-between items-center text-xs text-neutral-500 dark:text-neutral-400">
                   <span>Transaction ID: #{transaction.id}</span>
                   <span>{new Date(transaction.date).toLocaleDateString('id-ID')}</span>
                 </div>
@@ -254,7 +254,7 @@ export default function TransactionEditModal({
               <button
                 type="button"
                 onClick={handleCancel}
-                className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 rounded-lg transition-colors"
                 disabled={loading}
               >
                 Cancel

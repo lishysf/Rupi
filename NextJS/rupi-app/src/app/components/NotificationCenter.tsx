@@ -71,7 +71,7 @@ export default function NotificationCenter() {
       {/* Notification Bell */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
+        className="relative p-2 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors"
       >
         <Bell className="w-6 h-6" />
         {unreadCount > 0 && (
@@ -91,15 +91,15 @@ export default function NotificationCenter() {
           />
           
           {/* Dropdown */}
-          <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50">
+          <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-neutral-800 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 z-50">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+            <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-700">
+              <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
                 Notifications
               </h3>
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                className="p-1 text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -115,7 +115,7 @@ export default function NotificationCenter() {
                   return (
                     <div
                       key={notification.id}
-                      className={`p-4 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${
+                      className={`p-4 border-b border-neutral-100 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors ${
                         notification.unread ? 'bg-blue-50/50 dark:bg-blue-950/10' : ''
                       }`}
                     >
@@ -125,17 +125,17 @@ export default function NotificationCenter() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
-                            <h4 className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                            <h4 className="text-sm font-medium text-neutral-900 dark:text-white truncate">
                               {notification.title}
                             </h4>
                             {notification.unread && (
                               <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
                             )}
                           </div>
-                          <p className="text-sm text-slate-600 dark:text-slate-300 mb-1">
+                          <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-1">
                             {notification.message}
                           </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
                             {notification.time}
                           </p>
                         </div>
@@ -145,8 +145,8 @@ export default function NotificationCenter() {
                 })
               ) : (
                 <div className="p-8 text-center">
-                  <Bell className="w-8 h-8 text-slate-400 dark:text-slate-500 mx-auto mb-2" />
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                  <Bell className="w-8 h-8 text-neutral-400 dark:text-neutral-500 mx-auto mb-2" />
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
                     No notifications yet
                   </p>
                 </div>
@@ -155,7 +155,7 @@ export default function NotificationCenter() {
 
             {/* Footer */}
             {notifications.length > 0 && (
-              <div className="p-3 border-t border-slate-200 dark:border-slate-700">
+              <div className="p-3 border-t border-neutral-200 dark:border-neutral-700">
                 <button className="w-full text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium">
                   Mark all as read
                 </button>

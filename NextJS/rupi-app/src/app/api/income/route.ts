@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { IncomeDatabase, initializeDatabase, INCOME_SOURCES } from '@/lib/database';
+import { IncomeDatabase, UserWalletDatabase, initializeDatabase, INCOME_SOURCES } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     const body = await request.json();
-    const { description, amount, source, date } = body;
+    const { description, amount, source, date, walletId } = body;
 
     // Validate required fields
     if (!description || !amount || !source) {
@@ -108,13 +108,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create income
+    // Handle wallet selection for income
+    let selectedWalletId: number;
+    
+    if (walletId) {
+      // User selected a specific wallet
+      const wallets = await UserWalletDatabase.getAllWallets(user.id);
+      const selectedWallet = wallets.find(w => w.id === walletId);
+      
+      if (!selectedWallet) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Selected wallet not found'
+          },
+          { status: 400 }
+        );
+      }
+      
+      selectedWalletId = walletId;
+    } else {
+      // No wallet selected - require wallet selection
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Please select a wallet for this income. You must specify which wallet to receive all income.'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Create income with wallet ID
     const income = await IncomeDatabase.createIncome(
       user.id,
       description,
       amount,
       source,
-      date ? new Date(date) : undefined
+      date ? new Date(date) : undefined,
+      selectedWalletId
     );
 
     return NextResponse.json({

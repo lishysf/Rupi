@@ -9,6 +9,11 @@ import TransactionEditModal from '@/app/components/TransactionEditModal';
 
 function FinancialTable() {
   const { state, fetchTransactions, deleteTransaction, updateTransaction } = useFinancialData();
+  
+  // Debug logging
+  console.log('FinancialTable state:', state);
+  console.log('Transactions:', state.data.transactions);
+  console.log('Loading states:', state.loading);
   const [selectedTx, setSelectedTx] = useState<any | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [editingType, setEditingType] = useState<'income' | 'expense' | 'savings' | 'investment' | null>(null);
@@ -28,7 +33,7 @@ function FinancialTable() {
   const [pageSize, setPageSize] = useState<number>(25);
 
   useEffect(() => {
-    fetchTransactions();
+    fetchTransactions(true); // Show loading state
   }, [fetchTransactions]);
 
   const handleEdit = (tx: any) => setSelectedTx(tx);
@@ -165,6 +170,13 @@ function FinancialTable() {
     return results;
   }, [state.data.transactions, selectedType, selectedMonth, selectedDay]);
 
+  // Helper function to get wallet name by ID
+  const getWalletName = (walletId?: number) => {
+    if (!walletId) return 'N/A';
+    const wallet = state.data.wallets.find((w: any) => w.id === walletId);
+    return wallet ? wallet.name : 'Unknown';
+  };
+
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
@@ -196,30 +208,60 @@ function FinancialTable() {
     'Others',
   ];
 
+  // Show loading state if data is being fetched
+  if (state.loading.transactions) {
+    return (
+      <div className="p-4 md:p-8">
+        <div className="mb-6">
+          <h1 className="text-xl md:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Table</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading transactions...</p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-neutral-500 dark:text-neutral-400">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if there's an error
+  if (state.error) {
+    return (
+      <div className="p-4 md:p-8">
+        <div className="mb-6">
+          <h1 className="text-xl md:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Table</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">Error loading data</p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-red-500 dark:text-red-400">Error: {state.error}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-xl md:text-2xl font-semibold text-slate-900 dark:text-slate-100">Table</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Edit your financial data</p>
-      </div>
+        <div className="mb-6">
+          <h1 className="text-xl md:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Table</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">Edit your financial data</p>
+        </div>
 
       {/* Filters */}
       <div className="mb-4 flex flex-col md:flex-row gap-3 md:items-end">
         <div className="flex flex-col">
-          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1">Month</label>
+          <label className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Month</label>
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1">Day (optional)</label>
+          <label className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Day (optional)</label>
           <select
             value={selectedDay}
             onChange={(e) => setSelectedDay(e.target.value)}
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           >
             <option value="">All days</option>
             {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
@@ -228,11 +270,11 @@ function FinancialTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1">Type</label>
+          <label className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Type</label>
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value as any)}
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           >
             <option value="all">All</option>
             <option value="income">Income</option>
@@ -241,11 +283,11 @@ function FinancialTable() {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1">Rows per page</label>
+          <label className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Rows per page</label>
           <select
             value={pageSize}
             onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           >
             <option value={10}>10</option>
             <option value={25}>25</option>
@@ -291,7 +333,7 @@ function FinancialTable() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm"
+                className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm"
               >
                 Export CSV
               </button>
@@ -306,7 +348,7 @@ function FinancialTable() {
               </button>
               <button
                 onClick={cancelGlobalEdit}
-                className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm"
+                className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm"
               >
                 Cancel
               </button>
@@ -315,26 +357,26 @@ function FinancialTable() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm disabled:opacity-50"
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm disabled:opacity-50"
           >
             Prev
           </button>
-          <span className="text-sm text-slate-600 dark:text-slate-300">
+          <span className="text-sm text-neutral-600 dark:text-neutral-300">
             Page {page} of {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm disabled:opacity-50"
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm disabled:opacity-50"
           >
             Next
           </button>
         </div>
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900">
+      <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-700 rounded-xl bg-white dark:bg-neutral-900">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+          <thead className="bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
             <tr>
               <th className="text-center px-4 py-3 font-medium">Date (Tanggal)</th>
               <th className="text-center px-4 py-3 font-medium">Time</th>
@@ -342,12 +384,13 @@ function FinancialTable() {
               <th className="text-center px-4 py-3 font-medium">Description</th>
               <th className="text-center px-4 py-3 font-medium">Amount</th>
               <th className="text-center px-4 py-3 font-medium">Category/Source</th>
+              <th className="text-center px-4 py-3 font-medium">Wallet</th>
               <th className="text-center px-4 py-3 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {paginatedRows.map((tx) => (
-              <tr key={`${tx.type}-${tx.id}`} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
+              <tr key={`${tx.type}-${tx.id}`} className="border-t border-neutral-100 dark:border-neutral-800 hover:bg-neutral-50/60 dark:hover:bg-neutral-800/60">
                 {globalEditMode && (tx.type === 'income' || tx.type === 'expense') ? (
                   <>
                     <td className="px-4 py-2 text-center">
@@ -355,10 +398,10 @@ function FinancialTable() {
                         type="date"
                         value={globalEditData[String(tx.id)]?.date || ''}
                         onChange={(e) => updateGlobalEditData(tx.id, 'date', e.target.value)}
-                        className="px-2 py-1.5 w-full border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                        className="px-2 py-1.5 w-full border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
                       />
                     </td>
-                    <td className="px-4 py-2 text-center text-slate-700 dark:text-slate-200">
+                    <td className="px-4 py-2 text-center text-neutral-700 dark:text-neutral-200">
                       {new Date(tx.created_at || tx.updated_at || tx.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-2 text-center">
@@ -366,7 +409,7 @@ function FinancialTable() {
                         value={globalEditData[String(tx.id)]?.type || tx.type}
                         disabled
                         onChange={() => {}}
-                        className="px-2 py-1.5 w-full border border-slate-300 dark:border-slate-600 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500"
+                        className="px-2 py-1.5 w-full border border-neutral-300 dark:border-neutral-600 rounded-md bg-neutral-100 dark:bg-neutral-700 text-neutral-500"
                       >
                         <option value="income">income</option>
                         <option value="expense">expense</option>
@@ -379,7 +422,7 @@ function FinancialTable() {
                         type="text"
                         value={globalEditData[String(tx.id)]?.description || ''}
                         onChange={(e) => updateGlobalEditData(tx.id, 'description', e.target.value)}
-                        className="px-2 py-1.5 w-full border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                        className="px-2 py-1.5 w-full border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
                         placeholder="Description"
                       />
                     </td>
@@ -388,7 +431,7 @@ function FinancialTable() {
                         type="number"
                         value={globalEditData[String(tx.id)]?.amount ?? 0}
                         onChange={(e) => updateGlobalEditData(tx.id, 'amount', parseFloat(e.target.value) || 0)}
-                        className="px-2 py-1.5 w-32 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-center"
+                        className="px-2 py-1.5 w-32 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 text-center"
                         min={0}
                         step={1000}
                       />
@@ -398,7 +441,7 @@ function FinancialTable() {
                         <select
                           value={globalEditData[String(tx.id)]?.category || ''}
                           onChange={(e) => updateGlobalEditData(tx.id, 'category', e.target.value)}
-                          className="px-2 py-1.5 w-full border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                          className="px-2 py-1.5 w-full border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
                         >
                           <option value="">Select source...</option>
                           {INCOME_SOURCES.map((s) => (
@@ -409,7 +452,7 @@ function FinancialTable() {
                         <select
                           value={globalEditData[String(tx.id)]?.category || ''}
                           onChange={(e) => updateGlobalEditData(tx.id, 'category', e.target.value)}
-                          className="px-2 py-1.5 w-full border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                          className="px-2 py-1.5 w-full border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
                         >
                           <option value="">Select category...</option>
                           {EXPENSE_CATEGORIES.map((c) => (
@@ -417,6 +460,11 @@ function FinancialTable() {
                           ))}
                         </select>
                       )}
+                    </td>
+                    <td className="px-4 py-2 text-center text-neutral-700 dark:text-neutral-200">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${getWalletName(tx.wallet_id) === 'N/A' ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                        {getWalletName(tx.wallet_id)}
+                      </span>
                     </td>
                     <td className="px-4 py-2 text-center">
                       <button
@@ -429,18 +477,23 @@ function FinancialTable() {
                   </>
                 ) : (
                   <>
-                    <td className="px-4 py-3 text-center text-slate-700 dark:text-slate-200">{new Date(tx.date).toLocaleDateString('id-ID')}</td>
-                    <td className="px-4 py-3 text-center text-slate-700 dark:text-slate-200">{new Date(tx.created_at || tx.updated_at || tx.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                    <td className="px-4 py-3 text-center text-neutral-700 dark:text-neutral-200">{new Date(tx.date).toLocaleDateString('id-ID')}</td>
+                    <td className="px-4 py-3 text-center text-neutral-700 dark:text-neutral-200">{new Date(tx.created_at || tx.updated_at || tx.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${tx.type === 'income' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : tx.type === 'expense' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : tx.type === 'savings' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'}`}>
                     	{tx.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center text-slate-700 dark:text-slate-200">{tx.description}</td>
-                    <td className="px-4 py-3 text-center text-slate-900 dark:text-white">
+                    <td className="px-4 py-3 text-center text-neutral-700 dark:text-neutral-200">{tx.description}</td>
+                    <td className="px-4 py-3 text-center text-neutral-900 dark:text-neutral-100">
                       {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(tx.amount)}
                     </td>
-                    <td className="px-4 py-3 text-center text-slate-700 dark:text-slate-200">{tx.category}</td>
+                    <td className="px-4 py-3 text-center text-neutral-700 dark:text-neutral-200">{tx.category}</td>
+                    <td className="px-4 py-3 text-center text-neutral-700 dark:text-neutral-200">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${getWalletName(tx.wallet_id) === 'N/A' ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                        {getWalletName(tx.wallet_id)}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => handleDelete(tx)}
@@ -455,7 +508,7 @@ function FinancialTable() {
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={8} className="px-4 py-12 text-center text-neutral-500 dark:text-neutral-400">
                   No data yet.
                 </td>
               </tr>
@@ -476,17 +529,17 @@ function FinancialTable() {
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page <= 1}
-          className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm disabled:opacity-50"
+          className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm disabled:opacity-50"
         >
           Prev
         </button>
-        <span className="text-sm text-slate-600 dark:text-slate-300">
+        <span className="text-sm text-neutral-600 dark:text-neutral-300">
           Page {page} of {totalPages}
         </span>
         <button
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           disabled={page >= totalPages}
-          className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm disabled:opacity-50"
+          className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm disabled:opacity-50"
         >
           Next
         </button>
@@ -514,7 +567,7 @@ export default function TablePage() {
 
   return (
     <FinancialDataProvider>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex">
+      <div className="min-h-screen bg-background text-foreground flex">
         <Sidebar currentPage="Table" />
         <div className="flex-1 lg:ml-64">
           <main className="px-4 sm:px-6 lg:px-8 py-8">

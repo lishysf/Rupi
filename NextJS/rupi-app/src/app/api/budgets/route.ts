@@ -28,19 +28,24 @@ export async function GET(request: NextRequest) {
     const budgets = await BudgetDatabase.getAllBudgets(user.id, month, year);
     console.log('API: Found budgets:', budgets);
     
-    // Get actual spending for each category in the same month
+    // Get actual spending for each category in the same month with optimized query
     const startDate = new Date(year, month - 1, 1); // First day of month
     const endDate = new Date(year, month, 0); // Last day of month
     
+    // Optimized query with better indexing and only fetch categories that have budgets
+    const budgetCategories = budgets.map(b => b.category);
     const spendingQuery = `
       SELECT 
         category,
         SUM(amount) as spent
       FROM expenses 
-      WHERE user_id = $1 AND date >= $2 AND date <= $3
+      WHERE user_id = $1 
+        AND date >= $2 
+        AND date <= $3
+        AND category = ANY($4)
       GROUP BY category
     `;
-    const spendingResult = await pool.query(spendingQuery, [user.id, startDate, endDate]);
+    const spendingResult = await pool.query(spendingQuery, [user.id, startDate, endDate, budgetCategories]);
     
     // Create a map of spending by category
     const spendingMap = new Map();

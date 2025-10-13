@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 
 interface FinancialTotal {
@@ -13,15 +13,29 @@ interface FinancialTotal {
   totalSavings: number;
 }
 
+interface UserWallet {
+  id: number;
+  name: string;
+  type: string;
+  balance: number;
+  color: string;
+  icon: string;
+  is_active: boolean;
+}
+
 interface FinancialSummaryProps {
   widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function FinancialSummary({ widgetSize = 'square' }: FinancialSummaryProps) {
   const { state } = useFinancialData();
-  const { expenses, income, savings } = state.data;
+  const { expenses, income, savings, wallets } = state.data;
   const investments: any[] = (state.data as any).investments || [];
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
+  
+  // Wallet loading state from context - only show loading during initial load
+  const walletLoading = state.loading.wallets && state.loading.initial;
+
 
   // Calculate financial totals from context data
   const financialData: FinancialTotal & { totalInvestments: number } = useMemo(() => {
@@ -81,8 +95,13 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
     };
   }, [expenses, income, savings, investments]);
 
-  // Calculate balances
-  const currentBalance = financialData.totalIncome - financialData.totalExpenses - financialData.totalSavings;
+  // Calculate wallet total balance
+  const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+
+  // Calculate balances using wallet-first approach
+  // Main/Spending Card = wallet balance (user's actual available money)
+  const currentBalance = walletBalance;
+  // Total assets = wallet balance + savings + current investment portfolio value
   const totalAssets = currentBalance + financialData.totalSavings + financialData.totalInvestments;
 
   const formatCurrency = (amount: number) => {
@@ -96,17 +115,17 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
 
   if (loading) {
     return (
-      <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-600">
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-transparent">
         <div className="p-3 h-full flex flex-col">
           <div className="mb-2">
-            <div className="w-24 h-3 bg-slate-300 dark:bg-slate-600 rounded animate-pulse mb-1"></div>
-            <div className="w-32 h-2 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+            <div className="w-24 h-3 bg-neutral-300 dark:bg-neutral-600 rounded animate-pulse mb-1"></div>
+            <div className="w-32 h-2 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse"></div>
           </div>
           <div className="flex-1 space-y-2">
-            <div className="w-full h-12 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
+            <div className="w-full h-12 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse"></div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="w-full h-8 bg-slate-200 dark:bg-slate-700 rounded-md animate-pulse"></div>
-              <div className="w-full h-8 bg-slate-200 dark:bg-slate-700 rounded-md animate-pulse"></div>
+              <div className="w-full h-8 bg-neutral-200 dark:bg-neutral-700 rounded-md animate-pulse"></div>
+              <div className="w-full h-8 bg-neutral-200 dark:bg-neutral-700 rounded-md animate-pulse"></div>
             </div>
           </div>
         </div>
@@ -115,7 +134,7 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
   }
 
   return (
-    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-600 h-full flex flex-col group hover:shadow-2xl transition-all duration-300">
+    <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-transparent h-full flex flex-col group hover:shadow-2xl transition-all duration-300">
       {/* Card Content */}
       <div className="h-full flex flex-col">
         {/* Financial Summary Table */}
@@ -144,23 +163,23 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
           <div className="flex-1 px-3 pb-3">
             <div className="grid grid-cols-2 gap-2 h-full">
               {/* Savings Row */}
-              <div className="flex flex-col justify-center p-2 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all duration-200">
+              <div className="flex flex-col justify-center p-2 bg-neutral-50 dark:bg-neutral-800/30 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-all duration-200">
                 <div className="flex items-center mb-1">
                   <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></div>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Savings</span>
+                  <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Savings</span>
                 </div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white">
+                <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
                   {formatCurrency(financialData.totalSavings)}
                 </div>
               </div>
 
               {/* Investment Row */}
-              <div className="flex flex-col justify-center p-2 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all duration-200">
+              <div className="flex flex-col justify-center p-2 bg-neutral-50 dark:bg-neutral-800/30 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-all duration-200">
                 <div className="flex items-center mb-1">
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></div>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Investment</span>
+                  <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Investment</span>
                 </div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white">
+                <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
                   {formatCurrency(financialData.totalInvestments || 0)}
                 </div>
               </div>

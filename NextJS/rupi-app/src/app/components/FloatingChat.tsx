@@ -89,15 +89,15 @@ export default function FloatingChat() {
       if (data.success) {
         const aiResponse: ChatMessage = {
           id: (Date.now() + 2).toString(),
-          text: data.data.response,
+          text: data.message || data.data?.response || 'Transaction completed successfully!',
           timestamp: new Date(),
           isUser: false,
-          transactionCreated: !!data.data.transactionCreated,
-          transactionType: data.data.transactionCreated?.type || 
-            (data.data.transactionCreated?.amount ? 
-              (data.data.transactionCreated.category ? 'expense' : 'income') : undefined),
-          multipleTransactionsCreated: !!data.data.multipleTransactionsCreated,
-          transactionCount: data.data.multipleTransactionsCreated?.successCount
+          transactionCreated: !!data.data?.transactionCreated,
+          transactionType: data.data?.transactionCreated?.type || 
+            (data.data?.transactionCreated?.amount ? 
+              (data.data?.transactionCreated.category ? 'expense' : 'income') : undefined),
+          multipleTransactionsCreated: !!data.data?.multipleTransactionsCreated,
+          transactionCount: data.data?.multipleTransactionsCreated?.successCount
         };
 
         // Replace loading message with actual response
@@ -158,6 +158,9 @@ export default function FloatingChat() {
 
   // Format message text with better styling
   const formatMessageText = (text: string) => {
+    // Handle undefined or null text
+    if (!text) return '';
+    
     // Split text into lines and process each line
     const lines = text.split('\n');
     
@@ -170,7 +173,7 @@ export default function FloatingChat() {
       // Handle headers (lines starting with **)
       if (line.startsWith('**') && line.endsWith('**')) {
         return (
-          <div key={index} className="font-semibold text-slate-900 dark:text-white mb-2 mt-3 first:mt-0">
+          <div key={index} className="font-semibold text-neutral-900 dark:text-white mb-2 mt-3 first:mt-0">
             {line.slice(2, -2)}
           </div>
         );
@@ -180,7 +183,7 @@ export default function FloatingChat() {
       if (line.startsWith('- ') || line.startsWith('• ')) {
         return (
           <div key={index} className="flex items-start mb-1">
-            <span className="text-slate-600 dark:text-slate-400 mr-2 mt-0.5">•</span>
+            <span className="text-neutral-600 dark:text-neutral-400 mr-2 mt-0.5">•</span>
             <span className="flex-1">{line.slice(2)}</span>
           </div>
         );
@@ -190,7 +193,7 @@ export default function FloatingChat() {
       if (/^\d+\.\s/.test(line)) {
         return (
           <div key={index} className="flex items-start mb-1">
-            <span className="text-slate-600 dark:text-slate-400 mr-2 mt-0.5 font-medium">
+            <span className="text-neutral-600 dark:text-neutral-400 mr-2 mt-0.5 font-medium">
               {line.match(/^\d+/)?.[0]}.
             </span>
             <span className="flex-1">{line.replace(/^\d+\.\s/, '')}</span>
@@ -227,30 +230,30 @@ export default function FloatingChat() {
       <div className="fixed bottom-4 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-sm sm:max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl px-3 sm:px-4 md:px-0">
         {/* Chat History Bubble */}
         {isExpanded && (
-        <div className="mb-4 w-full bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200/50 dark:border-slate-700/50 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200 backdrop-blur-xl">
+        <div className="mb-4 w-full bg-white dark:bg-neutral-800 rounded-3xl shadow-2xl border border-neutral-200/50 dark:border-neutral-700/50 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200 backdrop-blur-xl">
           {/* Chat Header */}
-          <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-700/50 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+          <div className="flex items-center justify-between p-4 border-b border-neutral-100 dark:border-neutral-700/50 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-sm">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center shadow-sm">
                 <MessageCircle className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">AI Assistant</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Online</p>
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">AI Assistant</h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">Online</p>
               </div>
             </div>
             <button
               onClick={handleClose}
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"
+              className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full transition-colors"
             >
-              <X className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <X className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
             </button>
           </div>
 
           {/* Chat Messages */}
           <div 
             ref={chatHistoryRef}
-            className="h-48 sm:h-64 md:h-72 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/30"
+            className="h-48 sm:h-64 md:h-72 overflow-y-auto p-4 space-y-4 bg-neutral-50/50 dark:bg-neutral-900/30"
           >
             {messages.map((message, index) => {
               const prevMessage = index > 0 ? messages[index - 1] : null;
@@ -265,7 +268,7 @@ export default function FloatingChat() {
                   className={`max-w-[85%] sm:max-w-[80%] ${
                     message.isUser
                       ? 'bg-emerald-500 text-white rounded-2xl rounded-br-md shadow-sm'
-                      : `bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl rounded-bl-md shadow-sm border border-slate-200/50 dark:border-slate-600/50 ${
+                      : `bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white rounded-2xl rounded-bl-md shadow-sm border border-neutral-200/50 dark:border-neutral-600/50 ${
                           (message.transactionCreated || message.multipleTransactionsCreated) ? 'border-green-300 dark:border-green-600' : ''
                         }`
                   }`}
@@ -304,7 +307,7 @@ export default function FloatingChat() {
                     <p className={`text-xs ${
                       message.isUser 
                         ? 'text-emerald-100' 
-                        : 'text-slate-500 dark:text-slate-400'
+                        : 'text-neutral-500 dark:text-neutral-400'
                     }`}>
                       {message.timestamp.toLocaleTimeString([], { 
                         hour: '2-digit', 
@@ -322,7 +325,7 @@ export default function FloatingChat() {
 
         {/* Chat Input */}
         <div className="relative">
-          <div className="flex items-center bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-slate-200/50 dark:border-slate-700/50 p-3 w-full backdrop-blur-sm">
+          <div className="flex items-center bg-white dark:bg-neutral-800 rounded-3xl shadow-lg border border-neutral-200/50 dark:border-neutral-700/50 p-3 w-full backdrop-blur-sm">
             <input
               ref={inputRef}
               type="text"
@@ -331,12 +334,12 @@ export default function FloatingChat() {
               onKeyPress={handleKeyPress}
               onFocus={handleInputFocus}
               placeholder="Message..."
-              className="flex-1 px-3 py-2 bg-transparent text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none text-sm"
+              className="flex-1 px-3 py-2 bg-transparent text-neutral-900 dark:text-white placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none text-sm"
             />
             <button
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || isLoading}
-              className="p-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 dark:disabled:bg-slate-600 text-white rounded-full transition-all duration-200 disabled:cursor-not-allowed flex-shrink-0 shadow-sm hover:shadow-md disabled:shadow-none"
+              className="p-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-neutral-300 dark:disabled:bg-neutral-600 text-white rounded-full transition-all duration-200 disabled:cursor-not-allowed flex-shrink-0 shadow-sm hover:shadow-md disabled:shadow-none"
             >
               <Send className="w-4 h-4" />
             </button>

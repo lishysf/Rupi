@@ -24,13 +24,15 @@ export interface ParsedIncome {
 
 // Interface for parsed transaction data
 export interface ParsedTransaction {
-  type: 'income' | 'expense' | 'savings' | 'investment';
+  type: 'income' | 'expense' | 'savings' | 'investment' | 'transfer';
   description: string;
   amount: number;
   category?: ExpenseCategory;
   source?: IncomeSource;
   goalName?: string;
   assetName?: string;
+  walletName?: string; // e.g., "Gojek", "BCA", "Dana", "Cash"
+  walletType?: string; // e.g., "e_wallet", "bank_card", "cash", "bank_account"
   confidence: number;
 }
 
@@ -64,7 +66,7 @@ Available income sources:
 6. Gift (gifts, allowance, money received)
 7. Others (other income sources, miscellaneous income)
 
-Your task is to determine if the input is income, expense, savings, or investment, then parse accordingly. Return ONLY a valid JSON object with this exact structure:
+Your task is to determine if the input is income, expense, savings, investment, or transfer, then parse accordingly. Return ONLY a valid JSON object with this exact structure:
 
 For EXPENSES:
 {
@@ -102,20 +104,41 @@ For INVESTMENTS:
   "confidence": number between 0 and 1
 }
 
+For TRANSFERS (wallet-to-wallet transfers):
+{
+  "type": "transfer",
+  "description": "cleaned and formatted description",
+  "amount": number (extracted amount),
+  "walletName": "source wallet name if mentioned",
+  "walletType": "wallet type if mentioned",
+  "confidence": number between 0 and 1
+}
+
 Rules:
-- Detect if input describes receiving money (income), spending money (expense), transferring to/from savings, or updating investment portfolio
+- Detect if input describes receiving money (income), spending money (expense), transferring to/from savings, updating investment portfolio, or wallet-to-wallet transfers
 - Income: money coming into your main account (salary, freelance, etc.)
 - Expenses: money spent from your main account (purchases, bills, etc.)
 - Savings: transferring money between main account and savings account
-  * TO savings: "tabung", "simpan", "transfer ke tabungan" (main → savings)
+  * TO savings: "tabung", "simpan", "nabung", "transfer ke tabungan" (main → savings)
   * FROM savings: "ambil", "pakai", "tarik dari tabungan" (savings → main)
 - Investments: updating total investment portfolio value (stocks, funds, crypto) - NOT a transfer, just updating the total value
+- Transfers: money moved between different wallets (transfer dari X ke Y, pindah dari X ke Y, kirim dari X ke Y)
 - Think of it like having 3 accounts: Main (spending), Savings, and Investment portfolio
 - Extract the amount as a positive number (remove currency symbols)
 - Choose the most appropriate category/source from the provided lists
 - Clean up the description but keep it informative
 - If type, amount, or category/source is unclear, set confidence lower
 - ALWAYS return valid JSON, nothing else
+
+Wallet/Payment Method Detection:
+- Look for wallet/payment method mentions in the text
+- Common Indonesian e-wallets: Gojek, GoPay, Dana, OVO, LinkAja, ShopeePay, DANA, Flip, Jenius
+- Common banks: BCA, Mandiri, BRI, BNI, CIMB, Bank Jago
+- Cash: "tunai", "cash", "uang tunai"
+- If wallet is mentioned, add "walletName" and "walletType" fields:
+  * walletType: "e_wallet" for Gojek, Dana, OVO, etc.
+  * walletType: "bank" for BCA, Mandiri, BRI, BNI, etc. (any bank)
+  * walletType: "cash" for physical money
 
 Income Examples:
 Input: "Gajian bulan ini 8 juta"
@@ -141,6 +164,9 @@ Savings Examples (Transfer from main to savings):
 Input: "Tabung deposito 2 juta"
 Output: {"type": "savings", "description": "Transfer to savings deposit", "amount": 2000000, "goalName": null, "confidence": 0.9}
 
+Input: "Nabung 2 juta dari BCA"
+Output: {"type": "savings", "description": "Transfer to savings from BCA", "amount": 2000000, "goalName": null, "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
+
 Input: "Tabung untuk laptop 1 juta"
 Output: {"type": "savings", "description": "Transfer to laptop savings", "amount": 1000000, "goalName": "laptop", "confidence": 0.9}
 
@@ -154,6 +180,28 @@ Output: {"type": "savings", "description": "Transfer from savings to main balanc
 Input: "Pakai emergency fund 500rb"
 Output: {"type": "savings", "description": "Transfer from emergency fund to main balance", "amount": 500000, "goalName": "emergency fund", "confidence": 0.9}
 
+Wallet Examples:
+Input: "Bayar makan pakai Gojek 50rb"
+Output: {"type": "expense", "description": "Food payment via Gojek", "amount": 50000, "category": "Food & Groceries", "walletName": "Gojek", "walletType": "e_wallet", "confidence": 0.95}
+
+Input: "Gaji 5 juta masuk ke rekening BCA"
+Output: {"type": "income", "description": "Salary to BCA account", "amount": 5000000, "source": "Salary", "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
+
+Input: "Gajian 5juta ke bca"
+Output: {"type": "income", "description": "Salary to BCA", "amount": 5000000, "source": "Salary", "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
+
+Input: "Gaji 3 juta ke Gojek"
+Output: {"type": "income", "description": "Salary to Gojek", "amount": 3000000, "source": "Salary", "walletName": "Gojek", "walletType": "e_wallet", "confidence": 0.95}
+
+Input: "Transfer 1 juta ke Dana"
+Output: {"type": "income", "description": "Transfer to Dana", "amount": 1000000, "source": "Others", "walletName": "Dana", "walletType": "e_wallet", "confidence": 0.9}
+
+Input: "Beli bensin pakai Dana 100rb"
+Output: {"type": "expense", "description": "Gas purchase via Dana", "amount": 100000, "category": "Transportation", "walletName": "Dana", "walletType": "e_wallet", "confidence": 0.9}
+
+Input: "Bayar dengan tunai 25rb"
+Output: {"type": "expense", "description": "Cash payment", "amount": 25000, "category": "Family & Others", "walletName": "Cash", "walletType": "cash", "confidence": 0.9}
+
 Input: "Tarik dari laptop savings 2 juta"
 Output: {"type": "savings", "description": "Transfer from laptop savings to main balance", "amount": 2000000, "goalName": "laptop", "confidence": 0.9}
 
@@ -166,6 +214,16 @@ Output: {"type": "investment", "description": "Update BBCA stock portfolio value
 
 Input: "Total investasi reksadana 2 juta"
 Output: {"type": "investment", "description": "Update mutual fund portfolio value", "amount": 2000000, "assetName": "mutual fund", "confidence": 0.9}
+
+Transfer Examples (Wallet-to-wallet transfers):
+Input: "Transfer 1 juta dari BCA ke GoPay"
+Output: {"type": "transfer", "description": "Transfer from BCA to GoPay", "amount": 1000000, "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
+
+Input: "Pindah 500rb dari Mandiri ke Dana"
+Output: {"type": "transfer", "description": "Transfer from Mandiri to Dana", "amount": 500000, "walletName": "Mandiri", "walletType": "bank", "confidence": 0.95}
+
+Input: "Kirim 2 juta dari Gojek ke BCA"
+Output: {"type": "transfer", "description": "Transfer from Gojek to BCA", "amount": 2000000, "walletName": "Gojek", "walletType": "e_wallet", "confidence": 0.95}
 `;
 
 // System prompt for parsing multiple transactions
@@ -378,7 +436,7 @@ export class GroqAIService {
 
   // Validate parsed transaction data
   private static isValidParsedTransaction(transaction: any): transaction is ParsedTransaction {
-    const hasValidType = transaction.type === 'income' || transaction.type === 'expense' || transaction.type === 'savings' || transaction.type === 'investment';
+    const hasValidType = transaction.type === 'income' || transaction.type === 'expense' || transaction.type === 'savings' || transaction.type === 'investment' || transaction.type === 'transfer';
     const hasValidBasics = (
       typeof transaction === 'object' &&
       typeof transaction.description === 'string' &&
@@ -413,6 +471,13 @@ export class GroqAIService {
     if (transaction.type === 'investment') {
       return (
         transaction.assetName === null || typeof transaction.assetName === 'string'
+      );
+    }
+
+    if (transaction.type === 'transfer') {
+      return (
+        (transaction.walletName === null || typeof transaction.walletName === 'string') &&
+        (transaction.walletType === null || typeof transaction.walletType === 'string')
       );
     }
 
@@ -824,6 +889,161 @@ Examples of good responses:
     } catch (error) {
       console.error('Error generating chat response:', error);
       return "I'm having trouble responding right now, but I'm here to help with your finances!";
+    }
+  }
+
+  // Parse wallet transfer details from natural language
+  static async parseWalletTransfer(message: string, userId: number): Promise<{
+    fromWalletId: number | null;
+    toWalletId: number | null;
+    fromWalletName: string | null;
+    toWalletName: string | null;
+  }> {
+    try {
+      // Get user's wallets for context
+      const { UserWalletDatabase } = await import('./database');
+      const wallets = await UserWalletDatabase.getAllWallets(userId);
+      
+      console.log('Available wallets for user:', wallets.map(w => ({ id: w.id, name: w.name, type: w.type })));
+      
+      const walletTransferPrompt = `
+You are an AI assistant that parses wallet transfer requests and identifies source and destination wallets.
+
+Available wallets for this user:
+${wallets.map(w => `- ${w.name} (ID: ${w.id})`).join('\n')}
+
+Your task is to identify which wallet is the SOURCE (from) and which is the DESTINATION (to) in the transfer request.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "fromWalletId": number or null,
+  "toWalletId": number or null,
+  "fromWalletName": "wallet name or null",
+  "toWalletName": "wallet name or null"
+}
+
+Rules:
+- Look for keywords like "dari" (from), "ke" (to), "transfer", "pindah", "kirim"
+- Match wallet names mentioned in the message to the available wallets
+- Use fuzzy matching if exact names don't match
+- If you can't identify both wallets clearly, return null for missing ones
+- Common wallet name variations:
+  * "BCA" matches "BCA", "bca", "Bank BCA", "BCA Bank"
+  * "GoPay" matches "GoPay", "gopay", "Gojek", "gojek", "GoPay Wallet"
+  * "Dana" matches "Dana", "dana", "Dana Wallet"
+  * "OVO" matches "OVO", "ovo", "OVO Wallet"
+  * "Mandiri" matches "Mandiri", "mandiri", "Bank Mandiri", "Mandiri Bank"
+  * "GoPay" matches "GoPay", "gopay", "Gojek", "gojek"
+  * "Dana" matches "Dana", "dana"
+  * "OVO" matches "OVO", "ovo"
+  * "Mandiri" matches "Mandiri", "mandiri", "Bank Mandiri"
+
+IMPORTANT: Be very flexible with wallet name matching. If the user says "BCA" and you have a wallet named "BCA", match it even if the case is different.
+If the user says "GoPay" and you have "GoPay", match it.
+If the user says "Dana" and you have "Dana", match it.
+
+Examples:
+Input: "transfer 1 juta dari BCA ke GoPay"
+Output: {"fromWalletId": 1, "toWalletId": 2, "fromWalletName": "BCA", "toWalletName": "GoPay"}
+
+Input: "pindah 500rb dari Mandiri ke Dana"
+Output: {"fromWalletId": 3, "toWalletId": 4, "fromWalletName": "Mandiri", "toWalletName": "Dana"}
+
+Input: "transfer money from savings to wallet"
+Output: {"fromWalletId": null, "toWalletId": null, "fromWalletName": null, "toWalletName": null}
+
+Input: "kirim 2 juta dari Gojek ke BCA"
+Output: {"fromWalletId": 2, "toWalletId": 1, "fromWalletName": "Gojek", "toWalletName": "BCA"}
+      `;
+
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: walletTransferPrompt
+          },
+          {
+            role: "user",
+            content: message
+          }
+        ],
+        model: "llama-3.1-8b-instant",
+        temperature: 0.1,
+        max_completion_tokens: 200,
+        top_p: 0.9,
+        stream: false,
+        stop: null
+      });
+
+      const response = chatCompletion.choices[0]?.message?.content;
+      
+      if (!response) {
+        throw new Error('No response from AI');
+      }
+
+      const parsedData = JSON.parse(response.trim());
+      
+      // Validate the response
+      if (typeof parsedData.fromWalletId !== 'number' && parsedData.fromWalletId !== null) {
+        throw new Error('Invalid fromWalletId format');
+      }
+      if (typeof parsedData.toWalletId !== 'number' && parsedData.toWalletId !== null) {
+        throw new Error('Invalid toWalletId format');
+      }
+
+      // If AI couldn't parse wallet IDs, try manual matching as fallback
+      if (!parsedData.fromWalletId || !parsedData.toWalletId) {
+        console.log('AI parsing failed, trying manual wallet matching...');
+        
+        const messageLower = message.toLowerCase();
+        
+        // Try to find source wallet
+        let fromWalletId = null;
+        let fromWalletName = null;
+        for (const wallet of wallets) {
+          const walletNameLower = wallet.name.toLowerCase();
+          if (messageLower.includes(walletNameLower) || 
+              (walletNameLower.includes('bca') && messageLower.includes('bca')) ||
+              (walletNameLower.includes('gopay') && messageLower.includes('gopay')) ||
+              (walletNameLower.includes('dana') && messageLower.includes('dana')) ||
+              (walletNameLower.includes('ovo') && messageLower.includes('ovo')) ||
+              (walletNameLower.includes('mandiri') && messageLower.includes('mandiri'))) {
+            fromWalletId = wallet.id;
+            fromWalletName = wallet.name;
+            break;
+          }
+        }
+        
+        // Try to find destination wallet
+        let toWalletId = null;
+        let toWalletName = null;
+        for (const wallet of wallets) {
+          const walletNameLower = wallet.name.toLowerCase();
+          if (messageLower.includes(walletNameLower) && wallet.id !== fromWalletId) {
+            toWalletId = wallet.id;
+            toWalletName = wallet.name;
+            break;
+          }
+        }
+        
+        if (fromWalletId && toWalletId) {
+          console.log('Manual matching successful:', { fromWalletId, toWalletId, fromWalletName, toWalletName });
+          return { fromWalletId, toWalletId, fromWalletName, toWalletName };
+        }
+      }
+
+      return parsedData;
+
+    } catch (error) {
+      console.error('Error parsing wallet transfer with Groq AI:', error);
+      
+      // Fallback: return null values
+      return {
+        fromWalletId: null,
+        toWalletId: null,
+        fromWalletName: null,
+        toWalletName: null
+      };
     }
   }
 

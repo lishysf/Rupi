@@ -36,15 +36,15 @@ export default function AIInsights({ widgetSize = 'half' }: AIInsightsProps) {
   ];
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+    <div className="bg-white dark:bg-neutral-800 rounded-2xl shadow-lg border border-neutral-200 dark:border-neutral-700 p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center">
           <Brain className="w-5 h-5 text-purple-600 dark:text-purple-400 mr-2" />
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
             AI Insights
           </h2>
         </div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">
+        <div className="text-xs text-neutral-500 dark:text-neutral-400">
           LLaMA
         </div>
       </div>
@@ -65,7 +65,7 @@ export default function AIInsights({ widgetSize = 'half' }: AIInsightsProps) {
                   <h3 className={`font-medium ${insight.color} mb-1 text-sm`}>
                     {insight.title}
                   </h3>
-                  <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
+                  <p className="text-xs text-neutral-700 dark:text-neutral-200 leading-relaxed">
                     {insight.content}
                   </p>
                 </div>
@@ -76,7 +76,7 @@ export default function AIInsights({ widgetSize = 'half' }: AIInsightsProps) {
       </div>
 
       {/* AI Actions */}
-      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+      <div className="mt-4 pt-3 border-t border-neutral-200 dark:border-neutral-700 flex-shrink-0">
         <div className="flex flex-wrap gap-1">
           <button className="px-2 py-1 text-xs font-medium text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 rounded hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors">
             Budget Plan

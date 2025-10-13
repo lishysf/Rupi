@@ -1,53 +1,275 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GroqAIService } from '@/lib/groq-ai';
-import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, InvestmentDatabase, initializeDatabase } from '@/lib/database';
+import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, InvestmentDatabase, UserWalletDatabase, initializeDatabase } from '@/lib/database';
+import pool from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
-// Helper function to handle expense creation with balance validation
-async function handleExpenseCreation(userId: number, description: string, amount: number, category: string) {
-  // Check if main balance is sufficient for expense
-  const [allExpenses, allIncome, allSavings] = await Promise.all([
-    ExpenseDatabase.getAllExpenses(userId, 100, 0),
-    IncomeDatabase.getAllIncome(userId, 100, 0),
-    SavingsDatabase.getAllSavings(userId, 100, 0)
-  ]);
+// Helper function to handle expense creation
+async function handleExpenseCreation(userId: number, description: string, amount: number, category: string, walletId?: number) {
+  // Always require a wallet for expenses
+  if (!walletId) {
+    throw new Error('Please specify which wallet to use for this expense. For example: "Beli kopi 50rb pakai BCA" or "Bayar listrik 200rb dari Gojek".');
+  }
+
+  // Verify wallet exists
+  const wallets = await UserWalletDatabase.getAllWallets(userId);
+  const wallet = wallets.find(w => w.id === walletId);
   
-  const totalIncome = allIncome.reduce((sum, income) => sum + (typeof income.amount === 'string' ? parseFloat(income.amount) : income.amount), 0);
-  const totalExpenses = allExpenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
-  const totalSavings = allSavings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
-  const mainBalance = totalIncome - totalExpenses - totalSavings;
+  if (!wallet) {
+    throw new Error('Specified wallet not found');
+  }
+
+  // Check if wallet has sufficient balance (calculated from transactions)
+  const currentBalance = await UserWalletDatabase.calculateWalletBalance(userId, walletId);
   
-  if (mainBalance < amount) {
-    throw new Error(`Insufficient main balance. Current balance: Rp${mainBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+  if (currentBalance < amount) {
+    throw new Error(`Insufficient balance in ${wallet.name}. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
   }
   
-  return await ExpenseDatabase.createExpense(userId, description, amount, category as any, new Date());
+  console.log('Expense creation debug:', {
+    userId,
+    description,
+    amount,
+    category,
+    walletId,
+    walletName: wallet.name,
+    currentBalance: currentBalance,
+    newBalance: currentBalance - amount
+  });
+  
+  // Create expense record (balance will be calculated from transactions)
+  return await ExpenseDatabase.createExpense(userId, description, amount, category as any, new Date(), walletId);
 }
 
-// Helper function to handle savings transfers with balance validation
-async function handleSavingsTransfer(userId: number, description: string, amount: number, goalName?: string) {
-  const isTransferToSavings = description.toLowerCase().includes('transfer to') || 
-                             description.toLowerCase().includes('tabung') ||
-                             description.toLowerCase().includes('simpan');
+// Helper function to handle income creation
+async function handleIncomeCreation(userId: number, description: string, amount: number, source: string, walletId?: number) {
+  // Always require a wallet for income
+  if (!walletId) {
+    throw new Error('Please specify which wallet to receive this income. For example: "Gaji 5 juta ke BCA" or "Bonus 1 juta ke Gojek".');
+  }
+
+  // Verify wallet exists
+  const wallets = await UserWalletDatabase.getAllWallets(userId);
+  const wallet = wallets.find(w => w.id === walletId);
   
-  if (isTransferToSavings) {
-    // Transfer TO savings: Check if main balance is sufficient
-    const [allExpenses, allIncome, allSavings] = await Promise.all([
-      ExpenseDatabase.getAllExpenses(userId, 100, 0),
-      IncomeDatabase.getAllIncome(userId, 100, 0),
-      SavingsDatabase.getAllSavings(userId, 100, 0)
+  if (!wallet) {
+    throw new Error('Specified wallet not found');
+  }
+
+  // Get current balance (calculated from transactions)
+  const currentBalance = await UserWalletDatabase.calculateWalletBalance(userId, walletId);
+  const newBalance = currentBalance + amount;
+  
+  console.log('Income creation debug:', {
+    userId,
+    description,
+    amount,
+    source,
+    walletId,
+    walletName: wallet.name,
+    currentBalance: currentBalance,
+    newBalance: newBalance
+  });
+  
+  // Create income record (balance will be calculated from transactions)
+  return await IncomeDatabase.createIncome(userId, description, amount, source as any, new Date(), walletId);
+}
+
+// Helper function to handle wallet-to-wallet transfers
+async function handleWalletTransfer(userId: number, description: string, amount: number, fromWalletId?: number, toWalletId?: number) {
+  if (!fromWalletId || !toWalletId) {
+    throw new Error('Please specify both source and destination wallets. For example: "Transfer 1 juta dari BCA ke GoPay" or "Pindah 500rb dari Mandiri ke Dana".');
+  }
+
+  if (fromWalletId === toWalletId) {
+    throw new Error('Cannot transfer to the same wallet');
+  }
+
+  // Verify both wallets exist and belong to user
+  const wallets = await UserWalletDatabase.getAllWallets(userId);
+  const fromWallet = wallets.find(w => w.id === fromWalletId);
+  const toWallet = wallets.find(w => w.id === toWalletId);
+  
+  if (!fromWallet) {
+    throw new Error('Source wallet not found');
+  }
+  
+  if (!toWallet) {
+    throw new Error('Destination wallet not found');
+  }
+
+  // Check if source wallet has sufficient balance
+  const currentBalance = await UserWalletDatabase.calculateWalletBalance(userId, fromWalletId);
+  
+  if (currentBalance < amount) {
+    throw new Error(`Insufficient balance in ${fromWallet.name}. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+  }
+
+  // Create wallet transfer directly using database
+  const { TransactionDatabase } = await import('@/lib/database');
+  const { Pool } = await import('pg');
+  
+  const pool = new Pool({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    database: process.env.DB_NAME || 'rupi_db',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'password',
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Create wallet transfer record
+    const transferQuery = `
+      INSERT INTO wallet_transfers (user_id, from_wallet_id, to_wallet_id, to_savings, amount, description, transfer_type)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `;
+    
+    const transferResult = await client.query(transferQuery, [
+      userId,
+      fromWalletId,
+      toWalletId,
+      false, // to_savings = false for wallet-to-wallet transfer
+      amount,
+      description.trim() || `Transfer from ${fromWallet.name} to ${toWallet.name}`,
+      'wallet_to_wallet'
     ]);
-    
-    const totalIncome = allIncome.reduce((sum, income) => sum + (typeof income.amount === 'string' ? parseFloat(income.amount) : income.amount), 0);
-    const totalExpenses = allExpenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
-    const totalSavings = allSavings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
-    const mainBalance = totalIncome - totalExpenses - totalSavings;
-    
-    if (mainBalance < amount) {
-      throw new Error(`Insufficient main balance. Current balance: Rp${mainBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+
+    // Create outgoing transaction for source wallet
+    await TransactionDatabase.createTransaction(
+      userId,
+      `Transfer to ${toWallet.name}${description ? `: ${description}` : ''}`,
+      -amount, // Negative amount for outgoing
+      'transfer',
+      fromWalletId,
+      'Transfer', // Transfer category
+      undefined,
+      undefined,
+      undefined,
+      new Date()
+    );
+
+    // Create incoming transaction for destination wallet
+    await TransactionDatabase.createTransaction(
+      userId,
+      `Transfer from ${fromWallet.name}${description ? `: ${description}` : ''}`,
+      amount, // Positive amount for incoming
+      'transfer',
+      toWalletId,
+      'Transfer', // Transfer category
+      undefined,
+      undefined,
+      undefined,
+      new Date()
+    );
+
+    await client.query('COMMIT');
+    return transferResult.rows[0];
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Helper function to handle savings transfers with wallet balance validation
+async function handleSavingsTransfer(userId: number, description: string, amount: number, goalName?: string, walletId?: number) {
+  const descriptionLower = description.toLowerCase();
+  
+  // Check for transfer TO savings (deposit) keywords
+  const isTransferToSavings = descriptionLower.includes('transfer to') || 
+                             descriptionLower.includes('tabung') ||
+                             descriptionLower.includes('simpan') ||
+                             descriptionLower.includes('nabung') ||
+                             descriptionLower.includes('transfer ke tabungan') ||
+                             descriptionLower.includes('masuk ke tabungan') ||
+                             descriptionLower.includes('to savings') ||
+                             descriptionLower.includes('savings from') ||
+                             (descriptionLower.includes('savings') && descriptionLower.includes('from'));
+  
+  // Check for transfer FROM savings (withdrawal) keywords
+  const isTransferFromSavings = descriptionLower.includes('ambil') ||
+                               descriptionLower.includes('pakai') ||
+                               descriptionLower.includes('tarik dari tabungan') ||
+                               descriptionLower.includes('transfer from') ||
+                               descriptionLower.includes('keluar dari tabungan') ||
+                               descriptionLower.includes('withdraw') ||
+                               descriptionLower.includes('from savings') ||
+                               descriptionLower.includes('savings to');
+  
+  // Default to deposit if no clear direction is specified
+  // If wallet is specified, it's likely a deposit (money going from wallet to savings)
+  const isDeposit = isTransferToSavings || (!isTransferFromSavings && !isTransferToSavings) || (walletId && !isTransferFromSavings);
+  
+  console.log('Savings direction debug:', {
+    originalDescription: description,
+    descriptionLower,
+    isTransferToSavings,
+    isTransferFromSavings,
+    isDeposit,
+    walletId,
+    containsTabung: descriptionLower.includes('tabung'),
+    containsNabung: descriptionLower.includes('nabung'),
+    containsSimpan: descriptionLower.includes('simpan')
+  });
+  
+  if (isDeposit) {
+    // Transfer TO savings: Require wallet selection
+    if (!walletId) {
+      throw new Error('Please specify which wallet to transfer from. For example: "Tabung 1 juta dari BCA" or "Transfer 500 ribu ke tabungan dari Gojek".');
     }
     
-    return await SavingsDatabase.createSavings(userId, description, amount, goalName, new Date());
+    // Verify wallet exists and has sufficient balance
+    const wallets = await UserWalletDatabase.getAllWallets(userId);
+    const wallet = wallets.find(w => w.id === walletId);
+    
+    if (!wallet) {
+      throw new Error('Specified wallet not found');
+    }
+    
+    const currentBalance = await UserWalletDatabase.calculateWalletBalance(userId, walletId);
+    
+    if (currentBalance < amount) {
+      throw new Error(`Insufficient balance in ${wallet.name} for savings transfer. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+    }
+    
+    // Create savings record
+    const savings = await SavingsDatabase.createSavings(userId, description, amount, goalName, new Date(), walletId);
+    
+    // Create wallet transfer record (NOT an expense - just money movement)
+    const { WalletTransferDatabase } = await import('@/lib/database');
+    await WalletTransferDatabase.createTransfer(
+      userId,
+      walletId, // from wallet
+      undefined, // to wallet (none, going to savings)
+      true, // to savings
+      amount,
+      `Savings: ${description}`,
+      'wallet_to_savings'
+    );
+    
+    // Also create a transaction record for the new unified system
+    const { TransactionDatabase } = await import('@/lib/database');
+    await TransactionDatabase.createTransaction(
+      userId,
+      `Savings: ${description}`,
+      -amount, // Negative amount for outgoing from wallet
+      'transfer',
+      walletId,
+      'Savings Transfer',
+      undefined,
+      goalName,
+      undefined,
+      new Date()
+    );
+    
+    return savings;
   } else {
     // Transfer FROM savings: Check if savings balance is sufficient
     const allSavings = await SavingsDatabase.getAllSavings(userId, 100, 0);
@@ -57,7 +279,25 @@ async function handleSavingsTransfer(userId: number, description: string, amount
       throw new Error(`Insufficient savings balance. Current savings: Rp${totalSavings.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
     }
     
-    return await SavingsDatabase.createSavings(userId, description, -amount, goalName, new Date());
+    // Create savings withdrawal record
+    const savings = await SavingsDatabase.createSavings(userId, description, -amount, goalName, new Date());
+    
+    // Also create a transaction record for the new unified system
+    const { TransactionDatabase } = await import('@/lib/database');
+    await TransactionDatabase.createTransaction(
+      userId,
+      `Savings Withdrawal: ${description}`,
+      amount, // Positive amount for incoming to wallet
+      'transfer',
+      undefined, // No specific wallet for savings withdrawal
+      'Savings Withdrawal',
+      undefined,
+      goalName,
+      undefined,
+      new Date()
+    );
+    
+    return savings;
   }
 }
 
@@ -112,6 +352,37 @@ export async function POST(request: NextRequest) {
               try {
                 let createdTransaction = null;
                 
+                // Find wallet if mentioned - require exact match or close match
+                let walletId: number | undefined;
+                if (transaction.walletName && transaction.walletType) {
+                  const wallets = await UserWalletDatabase.getAllWallets(user.id);
+                  const walletNameLower = transaction.walletName.toLowerCase();
+                  
+                  // Try exact match first
+                  let matchingWallet = wallets.find(w => w.name.toLowerCase() === walletNameLower);
+                  
+                  // If no exact match, try partial match (wallet name contains the mentioned name)
+                  if (!matchingWallet) {
+                    matchingWallet = wallets.find(w => w.name.toLowerCase().includes(walletNameLower));
+                  }
+                  
+                  // If still no match, try reverse (mentioned name contains wallet name)
+                  if (!matchingWallet) {
+                    matchingWallet = wallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
+                  }
+                  
+                  walletId = matchingWallet?.id;
+                  
+                  // If wallet was mentioned but not found, skip this transaction
+                  if (!walletId) {
+                    failedTransactions.push({
+                      transaction,
+                      error: `Wallet "${transaction.walletName}" not found. Please create this wallet first.`
+                    });
+                    continue; // Skip to next transaction
+                  }
+                }
+                
                 if (transaction.type === 'expense') {
                   // Handle expense creation with balance validation
                   try {
@@ -119,7 +390,8 @@ export async function POST(request: NextRequest) {
                       user.id,
                       transaction.description,
                       transaction.amount,
-                      transaction.category!
+                      transaction.category!,
+                      walletId
                     );
                   } catch (expenseError) {
                     console.error('Error creating expense:', expenseError);
@@ -130,12 +402,12 @@ export async function POST(request: NextRequest) {
                     });
                   }
                 } else if (transaction.type === 'income') {
-                  createdTransaction = await IncomeDatabase.createIncome(
+                  createdTransaction = await handleIncomeCreation(
                     user.id,
                     transaction.description,
                     transaction.amount,
                     transaction.source!,
-                    new Date()
+                    walletId
                   );
                 } else if (transaction.type === 'savings') {
                   // Handle savings transfer with balance validation
@@ -144,7 +416,8 @@ export async function POST(request: NextRequest) {
                       user.id,
                       transaction.description,
                       transaction.amount,
-                      transaction.goalName
+                      transaction.goalName,
+                      walletId
                     );
                   } catch (savingsError) {
                     console.error('Error creating savings:', savingsError);
@@ -228,12 +501,133 @@ export async function POST(request: NextRequest) {
     }
     // Check if this is a single transaction input
     else if (intent === 'transaction') {
-      try {
-        // Parse transaction using Groq AI
-        const parsedTransaction = await GroqAIService.parseTransaction(message);
-        
-        // Only create transaction if confidence is high enough and amount is valid
-        if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
+        try {
+          // Parse transaction using Groq AI - let AI determine the type
+          const parsedTransaction = await GroqAIService.parseTransaction(message);
+          
+          console.log('Parsed transaction:', parsedTransaction);
+          console.log('Transaction type:', parsedTransaction.type);
+          console.log('Has wallet name:', !!parsedTransaction.walletName);
+          console.log('Description contains tabungan:', parsedTransaction.description?.toLowerCase().includes('tabungan'));
+          console.log('Description contains savings:', parsedTransaction.description?.toLowerCase().includes('savings'));
+          
+          // Handle based on AI-determined transaction type
+          if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
+            
+            // Check if AI detected this as a wallet transfer (not savings transfer)
+            if (parsedTransaction.type === 'transfer' && 
+                parsedTransaction.walletName && 
+                !parsedTransaction.description.toLowerCase().includes('tabungan') &&
+                !parsedTransaction.description.toLowerCase().includes('savings')) {
+              
+              console.log('AI detected wallet transfer, parsing transfer details...');
+              const transferDetails = await GroqAIService.parseWalletTransfer(message, user.id);
+              console.log('Transfer details parsed:', transferDetails);
+              
+              if (transferDetails.fromWalletId && transferDetails.toWalletId) {
+                const result = await handleWalletTransfer(user.id, message, parsedTransaction.amount, transferDetails.fromWalletId, transferDetails.toWalletId);
+                return NextResponse.json({
+                  success: true,
+                  message: `Perfect! I've transferred Rp ${parsedTransaction.amount.toLocaleString()} from your ${transferDetails.fromWalletName} to your ${transferDetails.toWalletName}. Your wallet balances have been updated!`,
+                  data: result
+                });
+              } else {
+                console.log('Failed to parse wallet transfer - missing wallet IDs:', transferDetails);
+                return NextResponse.json({
+                  success: false,
+                  message: `I understand you want to transfer money, but I need you to specify both the source and destination wallets clearly. For example: "Transfer 1 juta dari BCA ke GoPay" or "Pindah 500rb dari Mandiri ke Dana".`
+                });
+              }
+            }
+            
+            // Check if this is a savings transfer (not wallet transfer)
+            if (parsedTransaction.type === 'savings' || 
+                (parsedTransaction.description && (
+                  parsedTransaction.description.toLowerCase().includes('tabung') ||
+                  parsedTransaction.description.toLowerCase().includes('simpan') ||
+                  parsedTransaction.description.toLowerCase().includes('nabung') ||
+                  parsedTransaction.description.toLowerCase().includes('transfer ke tabungan') ||
+                  parsedTransaction.description.toLowerCase().includes('masuk ke tabungan') ||
+                  parsedTransaction.description.toLowerCase().includes('savings')
+                ))) {
+              
+              console.log('AI detected savings transfer, processing...');
+              // Handle savings transfer with balance validation
+              try {
+                console.log('AI parsed savings transaction:', {
+                  originalMessage: message,
+                  parsedDescription: parsedTransaction.description,
+                  parsedAmount: parsedTransaction.amount,
+                  parsedGoalName: parsedTransaction.goalName,
+                  walletId: walletId
+                });
+                
+                transactionCreated = await handleSavingsTransfer(
+                  user.id,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  parsedTransaction.goalName,
+                  walletId
+                );
+                
+                const descriptionLower = parsedTransaction.description.toLowerCase();
+                const isTransferToSavings = descriptionLower.includes('transfer to') || 
+                                           descriptionLower.includes('tabung') ||
+                                           descriptionLower.includes('simpan') ||
+                                           descriptionLower.includes('nabung') ||
+                                           descriptionLower.includes('transfer ke tabungan') ||
+                                           descriptionLower.includes('masuk ke tabungan');
+                
+                if (isTransferToSavings) {
+                  response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your wallet to your savings account. Your savings balance has been updated!`;
+                } else {
+                  response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your savings account to your wallet. Your wallet balance has been updated!`;
+                }
+              } catch (savingsError) {
+                console.error('Error creating savings:', savingsError);
+                response = savingsError instanceof Error ? savingsError.message : 'Unknown error';
+              }
+            }
+            
+            // Handle other transaction types (income, expense, investment)
+            // Find wallet if mentioned - require exact match or close match
+            let walletId: number | undefined;
+            if (parsedTransaction.walletName && parsedTransaction.walletType) {
+            const wallets = await UserWalletDatabase.getAllWallets(user.id);
+            const walletNameLower = parsedTransaction.walletName.toLowerCase();
+            
+            console.log('Wallet matching debug:', {
+              mentionedWallet: parsedTransaction.walletName,
+              mentionedWalletLower: walletNameLower,
+              availableWallets: wallets.map(w => ({ id: w.id, name: w.name, nameLower: w.name.toLowerCase() }))
+            });
+            
+            // Try exact match first
+            let matchingWallet = wallets.find(w => w.name.toLowerCase() === walletNameLower);
+            
+            // If no exact match, try partial match (wallet name contains the mentioned name)
+            if (!matchingWallet) {
+              matchingWallet = wallets.find(w => w.name.toLowerCase().includes(walletNameLower));
+            }
+            
+            // If still no match, try reverse (mentioned name contains wallet name)
+            if (!matchingWallet) {
+              matchingWallet = wallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
+            }
+            
+            walletId = matchingWallet?.id;
+            
+            console.log('Wallet matching result:', {
+              foundWallet: matchingWallet ? { id: matchingWallet.id, name: matchingWallet.name } : null,
+              walletId
+            });
+            
+            // If wallet was mentioned but not found, throw an error
+            if (!walletId) {
+              throw new Error(`Wallet "${parsedTransaction.walletName}" not found. Please create this wallet first or use an existing wallet.`);
+            }
+          }
+
           if (parsedTransaction.type === 'expense') {
             // Handle expense creation with balance validation
             try {
@@ -241,42 +635,58 @@ export async function POST(request: NextRequest) {
                 user.id,
                 parsedTransaction.description,
                 parsedTransaction.amount,
-                parsedTransaction.category!
+                parsedTransaction.category!,
+                walletId
               );
               
-              response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category. Your expense has been saved successfully!`;
+              const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
+              response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category${walletInfo}. Your expense has been saved successfully!`;
             } catch (expenseError) {
               console.error('Error creating expense:', expenseError);
               response = expenseError instanceof Error ? expenseError.message : 'Unknown error';
             }
           } else if (parsedTransaction.type === 'income') {
-            transactionCreated = await IncomeDatabase.createIncome(
+            transactionCreated = await handleIncomeCreation(
               user.id,
               parsedTransaction.description,
               parsedTransaction.amount,
               parsedTransaction.source!,
-              new Date()
+              walletId
             );
 
-            response = `Excellent! I've recorded your income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}. Your income has been saved successfully!`;
+            const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
+            response = `Excellent! I've recorded your income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}. Your income has been saved successfully!`;
           } else if (parsedTransaction.type === 'savings') {
             // Handle savings transfer with balance validation
             try {
+              console.log('AI parsed savings transaction:', {
+                originalMessage: message,
+                parsedDescription: parsedTransaction.description,
+                parsedAmount: parsedTransaction.amount,
+                parsedGoalName: parsedTransaction.goalName,
+                walletId: walletId
+              });
+              
               transactionCreated = await handleSavingsTransfer(
                 user.id,
                 parsedTransaction.description,
                 parsedTransaction.amount,
-                parsedTransaction.goalName
+                parsedTransaction.goalName,
+                walletId
               );
               
-              const isTransferToSavings = parsedTransaction.description.toLowerCase().includes('transfer to') || 
-                                         parsedTransaction.description.toLowerCase().includes('tabung') ||
-                                         parsedTransaction.description.toLowerCase().includes('simpan');
+              const descriptionLower = parsedTransaction.description.toLowerCase();
+              const isTransferToSavings = descriptionLower.includes('transfer to') || 
+                                         descriptionLower.includes('tabung') ||
+                                         descriptionLower.includes('simpan') ||
+                                         descriptionLower.includes('nabung') ||
+                                         descriptionLower.includes('transfer ke tabungan') ||
+                                         descriptionLower.includes('masuk ke tabungan');
               
               if (isTransferToSavings) {
-                response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your main account to your savings account. Your savings balance has been updated!`;
+                response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your wallet to your savings account. Your savings balance has been updated!`;
               } else {
-                response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your savings account to your main account. Your main balance has been updated!`;
+                response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your savings account to your wallet. Your wallet balance has been updated!`;
               }
             } catch (savingsError) {
               console.error('Error creating savings:', savingsError);
@@ -300,9 +710,9 @@ export async function POST(request: NextRequest) {
           }
         } else {
           if (parsedTransaction.type === 'expense') {
-            response = `I understood that you want to record an expense, but I need more clarity. Could you please specify the amount and what you purchased? For example: "I bought coffee for 25,000" or "Paid electricity bill 200,000".`;
+            response = `I understood that you want to record an expense, but I need more clarity. Please specify the amount, what you purchased, and which wallet to use. For example: "Beli kopi 25rb pakai BCA" or "Bayar listrik 200rb dari Gojek".`;
           } else if (parsedTransaction.type === 'income') {
-            response = `I understood that you want to record income, but I need more clarity. Could you please specify the amount and source? For example: "Got salary 8 million" or "Freelance payment 1.5 million".`;
+            response = `I understood that you want to record income, but I need more clarity. Please specify the amount, source, and which wallet to receive it. For example: "Gaji 8 juta ke BCA" or "Bonus 1.5 juta ke Gojek".`;
           } else if (parsedTransaction.type === 'savings') {
             response = `I understood that you want to transfer money to savings, but I need more clarity. Could you please specify the amount and what you're saving for? For example: "Transfer 1 million to laptop savings" or "Move 2 million to emergency fund".`;
           } else if (parsedTransaction.type === 'investment') {
@@ -311,7 +721,7 @@ export async function POST(request: NextRequest) {
         }
       } catch (error) {
         console.error('Error parsing transaction:', error);
-        response = "I had trouble understanding your transaction. Could you please try again with a clearer format? For example: 'I bought coffee for 25,000', 'Paid rent 2,000,000', or 'Got salary 8 million'.";
+        response = "I had trouble understanding your transaction. Please specify the amount, what it's for, and which wallet to use. For example: 'Beli kopi 25rb pakai BCA', 'Bayar listrik 200rb dari Gojek', or 'Gaji 8 juta ke BCA'.";
       }
     }
     // Check if this is a data analysis request

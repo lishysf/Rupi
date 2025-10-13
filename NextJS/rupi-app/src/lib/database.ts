@@ -25,6 +25,49 @@ export async function initializeDatabase() {
       )
     `);
 
+    // Create user_wallets table first (needed by other tables)
+    const walletsTableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'user_wallets'
+      );
+    `);
+    
+    if (!walletsTableExists.rows[0].exists) {
+      // Create user_wallets table
+      await pool.query(`
+        CREATE TABLE user_wallets (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name VARCHAR(100) NOT NULL,
+          type VARCHAR(50) NOT NULL,
+          color VARCHAR(7) DEFAULT '#10B981',
+          icon VARCHAR(50) DEFAULT 'wallet',
+          is_active BOOLEAN DEFAULT true,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_wallets_user_id ON user_wallets(user_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_wallets_type ON user_wallets(type);
+    `);
+
+    // Remove balance column from existing user_wallets table if it exists
+    try {
+      await pool.query(`
+        ALTER TABLE user_wallets DROP COLUMN IF EXISTS balance;
+      `);
+    } catch (error) {
+      // Column might not exist, that's okay
+      console.log('Balance column removal:', error.message);
+    }
+
     // Check if expenses table exists and add user_id column if it doesn't exist
     const expensesTableExists = await pool.query(`
       SELECT EXISTS (
@@ -84,6 +127,7 @@ export async function initializeDatabase() {
           description TEXT NOT NULL,
           amount DECIMAL(10, 2) NOT NULL,
           category VARCHAR(100) NOT NULL,
+          wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
           date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -147,6 +191,7 @@ export async function initializeDatabase() {
           description TEXT NOT NULL,
           amount DECIMAL(10, 2) NOT NULL,
           source VARCHAR(100) NOT NULL,
+          wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
           date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -163,6 +208,9 @@ export async function initializeDatabase() {
     `);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_expenses_user_date_category ON expenses(user_id, date, category);
     `);
 
     // Create indexes for income
@@ -232,6 +280,7 @@ export async function initializeDatabase() {
           description TEXT NOT NULL,
           amount DECIMAL(10, 2) NOT NULL,
           asset_name VARCHAR(150),
+          wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
           date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -244,6 +293,8 @@ export async function initializeDatabase() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_investments_date ON investments(date);
     `);
+
+
 
     // Check if savings table exists and add user_id column if it doesn't exist
     const savingsTableExists = await pool.query(`
@@ -301,6 +352,7 @@ export async function initializeDatabase() {
           description TEXT NOT NULL,
           amount DECIMAL(10, 2) NOT NULL,
           goal_name VARCHAR(150),
+          wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
           date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -382,6 +434,116 @@ export async function initializeDatabase() {
     // Create indexes for savings_goals table
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_savings_goals_user_id ON savings_goals(user_id);
+    `);
+
+    // Check if wallet_balance_adjustments table exists
+    const walletAdjustmentsTableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'wallet_balance_adjustments'
+      );
+    `);
+    
+    if (!walletAdjustmentsTableExists.rows[0].exists) {
+      // Create wallet_balance_adjustments table
+      await pool.query(`
+        CREATE TABLE wallet_balance_adjustments (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          wallet_id INTEGER NOT NULL REFERENCES user_wallets(id) ON DELETE CASCADE,
+          amount DECIMAL(10, 2) NOT NULL,
+          description TEXT NOT NULL,
+          adjustment_type VARCHAR(20) NOT NULL CHECK (adjustment_type IN ('initial_balance', 'manual_adjustment')),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_wallet_balance_adjustments_user_id ON wallet_balance_adjustments(user_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_wallet_balance_adjustments_wallet_id ON wallet_balance_adjustments(wallet_id);
+    `);
+
+    // Check if wallet_transfers table exists
+    const walletTransfersTableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'wallet_transfers'
+      );
+    `);
+    
+    if (!walletTransfersTableExists.rows[0].exists) {
+      // Create wallet_transfers table for tracking money movements between wallets and savings
+      await pool.query(`
+        CREATE TABLE wallet_transfers (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          from_wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
+          to_wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
+          to_savings BOOLEAN DEFAULT FALSE,
+          amount DECIMAL(10, 2) NOT NULL,
+          description TEXT NOT NULL,
+          transfer_type VARCHAR(20) NOT NULL CHECK (transfer_type IN ('wallet_to_wallet', 'wallet_to_savings', 'savings_to_wallet')),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_wallet_transfers_user_id ON wallet_transfers(user_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_wallet_transfers_from_wallet ON wallet_transfers(from_wallet_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_wallet_transfers_to_wallet ON wallet_transfers(to_wallet_id);
+    `);
+
+    // Create transactions table for all financial transactions
+    const transactionsTableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'transactions'
+      );
+    `);
+    
+    if (!transactionsTableExists.rows[0].exists) {
+      await pool.query(`
+        CREATE TABLE transactions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          description TEXT NOT NULL,
+          amount DECIMAL(10, 2) NOT NULL,
+          type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense', 'transfer', 'savings', 'investment')),
+          category VARCHAR(50),
+          source VARCHAR(50),
+          wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
+          goal_name VARCHAR(100),
+          asset_name VARCHAR(100),
+          date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_wallet_id ON transactions(wallet_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
     `);
 
     // Check if budgets table exists and add user_id column if it doesn't exist
@@ -466,6 +628,46 @@ export async function initializeDatabase() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_budgets_month_year ON budgets(month, year);
     `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_budgets_user_month_year ON budgets(user_id, month, year);
+    `);
+
+    // Add wallet_id columns to existing tables if they don't exist (after all tables are created)
+    const tablesToUpdate = ['expenses', 'income', 'savings', 'investments'];
+    
+    for (const tableName of tablesToUpdate) {
+      // First check if the table exists
+      const tableExists = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = '${tableName}'
+        );
+      `);
+      
+      if (tableExists.rows[0].exists) {
+        // Table exists, check if wallet_id column exists
+        const walletColumnExists = await pool.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+            AND table_name = '${tableName}' 
+            AND column_name = 'wallet_id'
+          );
+        `);
+        
+        if (!walletColumnExists.rows[0].exists) {
+          await pool.query(`
+            ALTER TABLE ${tableName} 
+            ADD COLUMN wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL;
+          `);
+          
+          await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_${tableName}_wallet_id ON ${tableName}(wallet_id);
+          `);
+        }
+      }
+    }
 
     console.log('Database initialized successfully');
   } catch (error) {
@@ -517,6 +719,7 @@ export interface Expense {
   description: string;
   amount: number;
   category: ExpenseCategory;
+  wallet_id?: number;
   date: Date;
   created_at: Date;
   updated_at: Date;
@@ -529,6 +732,7 @@ export interface Income {
   description: string;
   amount: number;
   source: IncomeSource;
+  wallet_id?: number;
   date: Date;
   created_at: Date;
   updated_at: Date;
@@ -541,7 +745,21 @@ export interface Investment {
   description: string;
   amount: number;
   asset_name?: string;
+  wallet_id?: number;
   date: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// User Wallet interface
+export interface UserWallet {
+  id: number;
+  user_id: number;
+  name: string;
+  type: string;
+  color: string;
+  icon: string;
+  is_active: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -553,6 +771,7 @@ export interface Savings {
   description: string;
   amount: number;
   goal_name?: string;
+  wallet_id?: number;
   date: Date;
   created_at: Date;
   updated_at: Date;
@@ -581,6 +800,48 @@ export interface Budget {
   year: number;
   created_at: Date;
   updated_at: Date;
+}
+
+// Wallet Balance Adjustment interface
+export interface WalletBalanceAdjustment {
+  id: number;
+  user_id: number;
+  wallet_id: number;
+  amount: number;
+  description: string;
+  adjustment_type: 'initial_balance' | 'manual_adjustment';
+  created_at: Date;
+  updated_at: Date;
+}
+
+// Transaction interface
+export interface Transaction {
+  id: number;
+  user_id: number;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense' | 'transfer' | 'savings' | 'investment';
+  category?: string;
+  source?: string;
+  wallet_id?: number;
+  goal_name?: string;
+  asset_name?: string;
+  date: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// Wallet Transfer interface
+export interface WalletTransfer {
+  id: number;
+  user_id: number;
+  from_wallet_id?: number;
+  to_wallet_id?: number;
+  to_savings: boolean;
+  amount: number;
+  description: string;
+  transfer_type: 'wallet_to_wallet' | 'wallet_to_savings' | 'savings_to_wallet';
+  created_at: Date;
 }
 
 // Database operations
@@ -695,11 +956,12 @@ export class ExpenseDatabase {
     description: string,
     amount: number,
     category: ExpenseCategory,
-    date?: Date
+    date?: Date,
+    walletId?: number
   ): Promise<Expense> {
     const query = `
-      INSERT INTO expenses (user_id, description, amount, category, date)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO expenses (user_id, description, amount, category, date, wallet_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
     
@@ -709,7 +971,7 @@ export class ExpenseDatabase {
       finalDate = new Date(); // Use current time instead of midnight
     }
     
-    const values = [userId, description, amount, category, finalDate];
+    const values = [userId, description, amount, category, finalDate, walletId || null];
     
     try {
       const result = await pool.query(query, values);
@@ -874,11 +1136,12 @@ export class IncomeDatabase {
     description: string,
     amount: number,
     source: IncomeSource,
-    date?: Date
+    date?: Date,
+    walletId?: number
   ): Promise<Income> {
     const query = `
-      INSERT INTO income (user_id, description, amount, source, date)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO income (user_id, description, amount, source, date, wallet_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
     
@@ -888,7 +1151,7 @@ export class IncomeDatabase {
       finalDate = new Date(); // Use current time instead of midnight
     }
     
-    const values = [userId, description, amount, source, finalDate];
+    const values = [userId, description, amount, source, finalDate, walletId || null];
     
     try {
       const result = await pool.query(query, values);
@@ -1053,11 +1316,12 @@ export class InvestmentDatabase {
     description: string,
     amount: number,
     assetName?: string,
-    date?: Date
+    date?: Date,
+    walletId?: number
   ): Promise<Investment> {
     const query = `
-      INSERT INTO investments (user_id, description, amount, asset_name, date)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO investments (user_id, description, amount, asset_name, date, wallet_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
     
@@ -1067,7 +1331,7 @@ export class InvestmentDatabase {
       finalDate = new Date(); // Use current time instead of midnight
     }
     
-    const values = [userId, description, amount, assetName, finalDate];
+    const values = [userId, description, amount, assetName, finalDate, walletId || null];
     
     try {
       const result = await pool.query(query, values);
@@ -1084,7 +1348,8 @@ export class InvestmentDatabase {
     description: string,
     amount: number,
     assetName?: string,
-    date?: Date
+    date?: Date,
+    walletId?: number
   ): Promise<Investment> {
     try {
       // First, delete all existing investments for this user
@@ -1095,8 +1360,8 @@ export class InvestmentDatabase {
       
       // Then insert the new investment value
       const query = `
-        INSERT INTO investments (user_id, description, amount, asset_name, date)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO investments (user_id, description, amount, asset_name, date, wallet_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
       `;
       // If no date provided or date is date-only (midnight), use current timestamp
@@ -1105,7 +1370,7 @@ export class InvestmentDatabase {
         finalDate = new Date(); // Use current time instead of midnight
       }
       
-      const values = [userId, description, amount, assetName, finalDate];
+      const values = [userId, description, amount, assetName, finalDate, walletId || null];
       
       const result = await pool.query(query, values);
       return result.rows[0];
@@ -1207,11 +1472,12 @@ export class SavingsDatabase {
     description: string,
     amount: number,
     goalName?: string,
-    date?: Date
+    date?: Date,
+    walletId?: number
   ): Promise<Savings> {
     const query = `
-      INSERT INTO savings (user_id, description, amount, goal_name, date)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO savings (user_id, description, amount, goal_name, date, wallet_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
     
@@ -1221,7 +1487,7 @@ export class SavingsDatabase {
       finalDate = new Date(); // Use current time instead of midnight
     }
     
-    const values = [userId, description, amount, goalName, finalDate];
+    const values = [userId, description, amount, goalName, finalDate, walletId || null];
     
     try {
       const result = await pool.query(query, values);
@@ -1487,6 +1753,507 @@ export class BudgetDatabase {
       return result.rowCount !== null && result.rowCount > 0;
     } catch (error) {
       console.error('Error deleting budget:', error);
+      throw error;
+    }
+  }
+}
+
+// User Wallet database operations
+export class UserWalletDatabase {
+  // Create a new wallet
+  static async createWallet(
+    userId: number,
+    name: string,
+    type: string,
+    color: string = '#10B981',
+    icon: string = 'wallet'
+  ): Promise<UserWallet> {
+    const query = `
+      INSERT INTO user_wallets (user_id, name, type, color, icon)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `;
+    const values = [userId, name, type, color, icon];
+    
+    try {
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error creating wallet:', error);
+      throw error;
+    }
+  }
+
+  // Get all wallets for a user
+  static async getAllWallets(userId: number): Promise<UserWallet[]> {
+    const query = `
+      SELECT * FROM user_wallets 
+      WHERE user_id = $1 AND is_active = true
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting wallets:', error);
+      throw error;
+    }
+  }
+
+  // Update wallet balance
+  static async updateWalletBalance(
+    userId: number,
+    walletId: number,
+    newBalance: number
+  ): Promise<UserWallet> {
+    const query = `
+      UPDATE user_wallets 
+      SET balance = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2 AND user_id = $3
+      RETURNING *
+    `;
+    
+    console.log('updateWalletBalance called with:', {
+      userId,
+      walletId,
+      newBalance,
+      query: query.replace(/\s+/g, ' ').trim()
+    });
+    
+    try {
+      const result = await pool.query(query, [newBalance, walletId, userId]);
+      console.log('updateWalletBalance query result:', {
+        rowCount: result.rowCount,
+        rows: result.rows
+      });
+      
+      if (result.rows.length === 0) {
+        throw new Error('Wallet not found or access denied');
+      }
+      
+      console.log('Wallet balance updated successfully:', result.rows[0]);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error updating wallet balance:', error);
+      throw error;
+    }
+  }
+
+  // Update wallet details
+  static async updateWallet(
+    userId: number,
+    walletId: number,
+    updates: {
+      name?: string;
+      type?: string;
+      balance?: number;
+      color?: string;
+      icon?: string;
+    }
+  ): Promise<UserWallet> {
+    const setClause = Object.keys(updates)
+      .map((key, index) => `${key} = $${index + 3}`)
+      .join(', ');
+    
+    const query = `
+      UPDATE user_wallets 
+      SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND user_id = $2
+      RETURNING *
+    `;
+    
+    const values = [walletId, userId, ...Object.values(updates)];
+    
+    try {
+      const result = await pool.query(query, values);
+      if (result.rows.length === 0) {
+        throw new Error('Wallet not found or access denied');
+      }
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error updating wallet:', error);
+      throw error;
+    }
+  }
+
+  // Delete wallet (soft delete)
+  static async deleteWallet(userId: number, walletId: number): Promise<boolean> {
+    const query = `
+      UPDATE user_wallets 
+      SET is_active = false, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND user_id = $2
+    `;
+    
+    try {
+      const result = await pool.query(query, [walletId, userId]);
+      return result.rowCount !== null && result.rowCount > 0;
+    } catch (error) {
+      console.error('Error deleting wallet:', error);
+      throw error;
+    }
+  }
+
+  // Get total wallet balance for user (calculated from transactions)
+  static async getTotalWalletBalance(userId: number): Promise<number> {
+    const query = `
+      SELECT 
+        COALESCE(SUM(CASE WHEN i.amount IS NOT NULL THEN i.amount ELSE 0 END), 0) as total_income,
+        COALESCE(SUM(CASE WHEN e.amount IS NOT NULL THEN e.amount ELSE 0 END), 0) as total_expenses
+      FROM user_wallets w
+      LEFT JOIN income i ON w.id = i.wallet_id AND i.user_id = $1
+      LEFT JOIN expenses e ON w.id = e.wallet_id AND e.user_id = $1
+      WHERE w.user_id = $1 AND w.is_active = true
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId]);
+      const totalIncome = parseFloat(result.rows[0].total_income) || 0;
+      const totalExpenses = parseFloat(result.rows[0].total_expenses) || 0;
+      return totalIncome - totalExpenses;
+    } catch (error) {
+      console.error('Error getting total wallet balance:', error);
+      throw error;
+    }
+  }
+
+  // Calculate balance for a specific wallet from transactions
+  static async calculateWalletBalance(userId: number, walletId: number): Promise<number> {
+    try {
+      // Get balance from new transactions table
+      const transactionsQuery = `
+        SELECT 
+          COALESCE(SUM(
+            CASE 
+              WHEN type = 'income' OR type = 'transfer' THEN amount
+              WHEN type = 'expense' THEN -amount
+              ELSE 0
+            END
+          ), 0) as balance
+        FROM transactions
+        WHERE user_id = $1 AND wallet_id = $2
+      `;
+      
+      // Get balance from old tables (expenses and income)
+      const expensesQuery = `
+        SELECT COALESCE(SUM(amount), 0) as total_expenses
+        FROM expenses
+        WHERE user_id = $1 AND wallet_id = $2
+      `;
+      
+      const incomeQuery = `
+        SELECT COALESCE(SUM(amount), 0) as total_income
+        FROM income
+        WHERE user_id = $1 AND wallet_id = $2
+      `;
+      
+      // Execute all queries in parallel
+      const [transactionsResult, expensesResult, incomeResult] = await Promise.all([
+        pool.query(transactionsQuery, [userId, walletId]),
+        pool.query(expensesQuery, [userId, walletId]),
+        pool.query(incomeQuery, [userId, walletId])
+      ]);
+      
+      // Calculate balances from both systems
+      const newTransactionsBalance = parseFloat(transactionsResult.rows[0].balance) || 0;
+      const oldExpenses = parseFloat(expensesResult.rows[0].total_expenses) || 0;
+      const oldIncome = parseFloat(incomeResult.rows[0].total_income) || 0;
+      const oldTablesBalance = oldIncome - oldExpenses;
+      
+      // Combine both balances (new transactions + old tables)
+      const totalBalance = newTransactionsBalance + oldTablesBalance;
+      
+      return totalBalance;
+      
+    } catch (error) {
+      console.error('Error calculating wallet balance:', error);
+      throw error;
+    }
+  }
+
+  // Get all wallets with calculated balances
+  static async getAllWalletsWithBalances(userId: number): Promise<UserWallet[]> {
+    const query = `
+      SELECT * FROM user_wallets
+      WHERE user_id = $1 AND is_active = true
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId]);
+      const wallets = result.rows;
+      
+      // Calculate balance for each wallet
+      const walletsWithBalances = await Promise.all(
+        wallets.map(async (wallet) => {
+          const balance = await this.calculateWalletBalance(userId, wallet.id);
+          return {
+            ...wallet,
+            balance
+          };
+        })
+      );
+      
+      return walletsWithBalances;
+    } catch (error) {
+      console.error('Error getting wallets with balances:', error);
+      throw error;
+    }
+  }
+}
+
+// Wallet Balance Adjustment database operations
+export class WalletBalanceAdjustmentDatabase {
+  // Create a new wallet balance adjustment
+  static async createAdjustment(
+    userId: number,
+    walletId: number,
+    amount: number,
+    description: string,
+    adjustmentType: 'initial_balance' | 'manual_adjustment'
+  ): Promise<WalletBalanceAdjustment> {
+    const query = `
+      INSERT INTO wallet_balance_adjustments (user_id, wallet_id, amount, description, adjustment_type)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `;
+    const values = [userId, walletId, amount, description, adjustmentType];
+    
+    try {
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error creating wallet balance adjustment:', error);
+      throw error;
+    }
+  }
+
+  // Get all adjustments for a wallet
+  static async getWalletAdjustments(userId: number, walletId: number): Promise<WalletBalanceAdjustment[]> {
+    const query = `
+      SELECT * FROM wallet_balance_adjustments 
+      WHERE user_id = $1 AND wallet_id = $2
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId, walletId]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting wallet adjustments:', error);
+      throw error;
+    }
+  }
+
+  // Get total adjustments for a wallet
+  static async getWalletAdjustmentTotal(userId: number, walletId: number): Promise<number> {
+    const query = `
+      SELECT COALESCE(SUM(amount), 0) as total_adjustments
+      FROM wallet_balance_adjustments 
+      WHERE user_id = $1 AND wallet_id = $2
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId, walletId]);
+      return parseFloat(result.rows[0].total_adjustments) || 0;
+    } catch (error) {
+      console.error('Error getting wallet adjustment total:', error);
+      throw error;
+    }
+  }
+}
+
+// Transaction database operations
+export class TransactionDatabase {
+  // Create a new transaction
+  static async createTransaction(
+    userId: number,
+    description: string,
+    amount: number,
+    type: 'income' | 'expense' | 'transfer' | 'savings' | 'investment',
+    walletId?: number,
+    category?: string,
+    source?: string,
+    goalName?: string,
+    assetName?: string,
+    date?: Date
+  ): Promise<Transaction> {
+    const query = `
+      INSERT INTO transactions (user_id, description, amount, type, wallet_id, category, source, goal_name, asset_name, date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `;
+    const values = [
+      userId,
+      description,
+      amount,
+      type,
+      walletId || null,
+      category || null,
+      source || null,
+      goalName || null,
+      assetName || null,
+      date || new Date()
+    ];
+    
+    try {
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error creating transaction:', error);
+      throw error;
+    }
+  }
+
+  // Get all transactions for a user
+  static async getUserTransactions(userId: number, limit?: number, offset?: number): Promise<Transaction[]> {
+    const query = `
+      SELECT * FROM transactions 
+      WHERE user_id = $1
+      ORDER BY date DESC, created_at DESC
+      ${limit ? `LIMIT ${limit}` : ''}
+      ${offset ? `OFFSET ${offset}` : ''}
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting user transactions:', error);
+      throw error;
+    }
+  }
+
+  // Get transactions for a specific wallet
+  static async getWalletTransactions(userId: number, walletId: number): Promise<Transaction[]> {
+    const query = `
+      SELECT * FROM transactions 
+      WHERE user_id = $1 AND wallet_id = $2
+      ORDER BY date DESC, created_at DESC
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId, walletId]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting wallet transactions:', error);
+      throw error;
+    }
+  }
+
+  // Calculate wallet balance from transactions
+  static async calculateWalletBalance(userId: number, walletId: number): Promise<number> {
+    try {
+      // Get balance from new transactions table
+      const transactionsQuery = `
+        SELECT 
+          COALESCE(SUM(
+            CASE 
+              WHEN type = 'income' OR type = 'transfer' THEN amount
+              WHEN type = 'expense' THEN -amount
+              ELSE 0
+            END
+          ), 0) as balance
+        FROM transactions
+        WHERE user_id = $1 AND wallet_id = $2
+      `;
+      
+      // Get balance from old tables (expenses and income)
+      const expensesQuery = `
+        SELECT COALESCE(SUM(amount), 0) as total_expenses
+        FROM expenses
+        WHERE user_id = $1 AND wallet_id = $2
+      `;
+      
+      const incomeQuery = `
+        SELECT COALESCE(SUM(amount), 0) as total_income
+        FROM income
+        WHERE user_id = $1 AND wallet_id = $2
+      `;
+      
+      // Execute all queries in parallel
+      const [transactionsResult, expensesResult, incomeResult] = await Promise.all([
+        pool.query(transactionsQuery, [userId, walletId]),
+        pool.query(expensesQuery, [userId, walletId]),
+        pool.query(incomeQuery, [userId, walletId])
+      ]);
+      
+      // Calculate balances from both systems
+      const newTransactionsBalance = parseFloat(transactionsResult.rows[0].balance) || 0;
+      const oldExpenses = parseFloat(expensesResult.rows[0].total_expenses) || 0;
+      const oldIncome = parseFloat(incomeResult.rows[0].total_income) || 0;
+      const oldTablesBalance = oldIncome - oldExpenses;
+      
+      // Combine both balances (new transactions + old tables)
+      const totalBalance = newTransactionsBalance + oldTablesBalance;
+      
+      return totalBalance;
+      
+    } catch (error) {
+      console.error('Error calculating wallet balance:', error);
+      throw error;
+    }
+  }
+}
+
+// Wallet Transfer database operations
+export class WalletTransferDatabase {
+  // Create a new wallet transfer
+  static async createTransfer(
+    userId: number,
+    fromWalletId: number | undefined,
+    toWalletId: number | undefined,
+    toSavings: boolean,
+    amount: number,
+    description: string,
+    transferType: 'wallet_to_wallet' | 'wallet_to_savings' | 'savings_to_wallet'
+  ): Promise<WalletTransfer> {
+    const query = `
+      INSERT INTO wallet_transfers (user_id, from_wallet_id, to_wallet_id, to_savings, amount, description, transfer_type)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `;
+    const values = [userId, fromWalletId, toWalletId, toSavings, amount, description, transferType];
+    
+    try {
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error creating wallet transfer:', error);
+      throw error;
+    }
+  }
+
+  // Get all transfers for a user
+  static async getUserTransfers(userId: number): Promise<WalletTransfer[]> {
+    const query = `
+      SELECT * FROM wallet_transfers 
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting user transfers:', error);
+      throw error;
+    }
+  }
+
+  // Get transfers for a specific wallet
+  static async getWalletTransfers(userId: number, walletId: number): Promise<WalletTransfer[]> {
+    const query = `
+      SELECT * FROM wallet_transfers 
+      WHERE user_id = $1 AND (from_wallet_id = $2 OR to_wallet_id = $2)
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId, walletId]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting wallet transfers:', error);
       throw error;
     }
   }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ArrowUpRight, ArrowDownLeft, Car, Coffee, ShoppingBag, Utensils, Home, Calendar, Zap, Plane, Heart, GamepadIcon, CreditCard, Users, DollarSign, TrendingUp, Briefcase, Gift, Edit3, Trash2 } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import TransactionEditModal from './TransactionEditModal';
+import AddTransactionModal from './AddTransactionModal';
 
 interface Transaction {
   id: number;
@@ -14,6 +15,7 @@ interface Transaction {
   created_at: string;
   updated_at: string;
   type: 'income' | 'expense' | 'savings' | 'investment';
+  wallet_id?: number;
 }
 
 interface Expense {
@@ -57,6 +59,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     type: 'income' | 'expense' | 'savings' | 'investment';
   } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addModalType, setAddModalType] = useState<'income' | 'expense'>('income');
 
   // Handle delete transaction
   const handleDelete = async (transaction: Transaction) => {
@@ -277,9 +281,9 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
   if (loading) {
     return (
-      <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
-          <h2 className={`${widgetSize === 'square' ? 'text-base' : 'text-lg'} font-semibold text-slate-900 dark:text-white`}>
+          <h2 className={`${widgetSize === 'square' ? 'text-base' : 'text-lg'} font-semibold text-neutral-900 dark:text-neutral-100`}>
             Recent Transactions
           </h2>
           <div className="w-4 h-4 animate-spin border-2 border-emerald-400 border-t-transparent rounded-full"></div>
@@ -288,12 +292,12 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           {Array.from({ length: getTransactionLimit() }, (_, i) => (
             <div key={i} className="animate-pulse">
               <div className="flex items-center space-x-3 p-3">
-                <div className="w-8 h-8 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+                <div className="w-8 h-8 bg-neutral-200 dark:bg-neutral-700 rounded-lg"></div>
                 <div className="flex-1">
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
-                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+                  <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded w-1/2"></div>
                 </div>
-                <div className="w-16 h-4 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                <div className="w-16 h-4 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
               </div>
             </div>
           ))}
@@ -303,11 +307,11 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   }
 
   return (
-    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+    <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <h2 className={`${
           widgetSize === 'square' ? 'text-base' : 'text-lg'
-        } font-semibold text-slate-900 dark:text-white`}>
+        } font-semibold text-neutral-900 dark:text-neutral-100`}>
           Recent Transactions
         </h2>
       </div>
@@ -331,7 +335,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
             className={`px-3 py-1.5 rounded-lg text-sm border ${
               activeFilter === tab.key
                 ? 'bg-emerald-600 text-white border-emerald-600'
-                : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'
+                : 'bg-white dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 border-neutral-200 dark:border-neutral-600'
             }`}
           >
             {tab.label}
@@ -344,8 +348,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       }`}>
         {limitedTransactions.length === 0 && !loading ? (
           <div className="text-center py-8">
-            <Calendar className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-            <p className="text-slate-500 dark:text-slate-400 text-sm">
+            <Calendar className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">
               No transactions yet. Start by chatting with the AI assistant
             </p>
           </div>
@@ -362,7 +366,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
               key={transaction.uniqueKey}
               className={`flex items-center justify-between ${
                 widgetSize === 'square' ? 'p-2' : 'p-3'
-              } rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group`}
+              } rounded-xl hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors group`}
             >
               <div className="flex items-center min-w-0 flex-1">
                 <div className={`${
@@ -372,7 +376,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                     ? 'bg-emerald-100 dark:bg-emerald-900/30' 
                     : isSavings
                     ? 'bg-blue-100 dark:bg-blue-900/30'
-                    : 'bg-slate-100 dark:bg-slate-700'
+                    : 'bg-neutral-100 dark:bg-neutral-700'
                 }`}>
                   <IconComponent className={`${
                     widgetSize === 'square' ? 'w-4 h-4' : 'w-5 h-5'
@@ -381,11 +385,11 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                 <div className="min-w-0 flex-1">
                   <div className={`${
                     widgetSize === 'square' ? 'text-sm' : 'text-base'
-                  } font-medium text-slate-900 dark:text-white truncate`}>
+                  } font-medium text-neutral-900 dark:text-neutral-100 truncate`}>
                     {transaction.description}
                   </div>
                   {widgetSize !== 'square' && (
-                    <div className="text-sm text-slate-500 dark:text-slate-400 flex items-center">
+                    <div className="text-sm text-neutral-500 dark:text-neutral-400 flex items-center">
                       <span className="truncate">{transaction.category}</span>
                       <span className="mx-1">•</span>
                       <Calendar className="w-3 h-3 mr-1 flex-shrink-0" />
@@ -404,7 +408,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                 } transition-opacity`}>
                   <button
                     onClick={() => handleEdit(transaction)}
-                    className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-1 text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title={'Edit transaction'}
                   >
                     <Edit3 className="w-3 h-3" />
@@ -412,7 +416,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                   <button
                     onClick={() => handleDelete(transaction)}
                     disabled={isDeleting}
-                    className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
+                    className="p-1 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
                     title="Delete transaction"
                   >
                     {isDeleting ? (
@@ -437,7 +441,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                     {isIncome ? '+' : isSavings ? '💎' : '-'}{formatCurrency(transaction.amount)}
                   </div>
                   {widgetSize === 'square' && (
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
                       {formatDate(transaction.date)} • {formatTime(transaction.date)}
                     </div>
                   )}
@@ -450,7 +454,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
       {/* Quick Action - Add Activity chooser */}
       {widgetSize !== 'square' && (
-        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700 flex-shrink-0">
           <div className={`${widgetSize === 'half' ? 'w-full' : ''}`}>
             <details className="group">
               <summary className={`list-none cursor-pointer ${
@@ -470,8 +474,13 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                     key={opt.key}
                     className={`${opt.color} text-white font-medium py-2 px-3 rounded-lg text-sm`}
                     onClick={() => {
-                      // TODO: open the appropriate add modal/form
-                      alert(`Add ${opt.label} - coming soon`);
+                      if (opt.key === 'income' || opt.key === 'expense') {
+                        setAddModalType(opt.key);
+                        setShowAddModal(true);
+                      } else {
+                        // TODO: open the appropriate add modal/form for savings and investment
+                        alert(`Add ${opt.label} - coming soon`);
+                      }
                     }}
                   >
                     + {opt.label}
@@ -489,6 +498,18 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         isOpen={!!editingTransaction}
         onClose={handleCloseEdit}
         onSave={handleSaveEdit}
+      />
+
+      {/* Add Transaction Modal */}
+      <AddTransactionModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        transactionType={addModalType}
+        onTransactionAdded={() => {
+          // Refresh the financial data context
+          // The context will automatically refresh wallet data
+          setShowAddModal(false);
+        }}
       />
     </div>
   );

@@ -119,14 +119,14 @@ export default function DashboardEditor() {
   };
 
   return (
-    <div className="space-y-6 pb-32 animate-fade-in">
+    <div className="space-y-6 pb-32">
       <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
         {/* Left Side - 4 column grid */}
         <div className="lg:col-span-4 space-y-6">
           {/* Top Row: Balance Overview, Financial Summary, Income/Expense (2:1:1) */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Balance Overview - takes 2 columns */}
-            <div className="lg:col-span-2 hover-lift animate-stagger" style={{ animationDelay: '0.05s' }}>
+            <div className="lg:col-span-2 hover-lift">
               <DashboardWidgetWrapper 
                 componentKey="balance-overview" 
                 getColSpanClass={getColSpanClass}
@@ -134,7 +134,7 @@ export default function DashboardEditor() {
               />
             </div>
             {/* Financial Summary - takes 1 column */}
-            <div className="lg:col-span-1 hover-lift animate-stagger" style={{ animationDelay: '0.1s' }}>
+            <div className="lg:col-span-1 hover-lift">
               <DashboardWidgetWrapper 
                 componentKey="financial-summary" 
                 getColSpanClass={getColSpanClass}
@@ -142,7 +142,7 @@ export default function DashboardEditor() {
               />
             </div>
             {/* Income/Expense - takes 1 column */}
-            <div className="lg:col-span-1 hover-lift animate-stagger" style={{ animationDelay: '0.15s' }}>
+            <div className="lg:col-span-1 hover-lift">
               <DashboardWidgetWrapper 
                 componentKey="income-expense" 
                 getColSpanClass={getColSpanClass}
@@ -154,7 +154,7 @@ export default function DashboardEditor() {
           {/* Analytics Row: Analytics (3 columns) + Category Breakdown (1 column) */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Analytics - takes 3 columns */}
-            <div className="lg:col-span-3 hover-lift animate-stagger" style={{ animationDelay: '0.2s' }}>
+            <div className="lg:col-span-3 hover-lift">
               <DashboardWidgetWrapper 
                 componentKey="trends-chart" 
                 getColSpanClass={getColSpanClass}
@@ -162,7 +162,7 @@ export default function DashboardEditor() {
               />
             </div>
             {/* Category Breakdown - takes 1 column */}
-            <div className="lg:col-span-1 hover-lift animate-stagger" style={{ animationDelay: '0.25s' }}>
+            <div className="lg:col-span-1 hover-lift">
               <DashboardWidgetWrapper 
                 componentKey="category-breakdown" 
                 getColSpanClass={getColSpanClass}
@@ -172,7 +172,7 @@ export default function DashboardEditor() {
           </div>
           
           {/* Recent Transactions - takes 4 columns (full width) */}
-          <div className="hover-lift animate-stagger" style={{ animationDelay: '0.3s' }}>
+          <div className="hover-lift">
             <DashboardWidgetWrapper 
               componentKey="recent-transactions" 
               getColSpanClass={getColSpanClass}
@@ -184,7 +184,7 @@ export default function DashboardEditor() {
         {/* Right Side - 2 column grid */}
         <div className="lg:col-span-2 space-y-6">
           {/* Financial Health - takes 2 columns (full width) */}
-          <div className="hover-lift animate-stagger" style={{ animationDelay: '0.1s' }}>
+          <div className="hover-lift">
             <DashboardWidgetWrapper 
               componentKey="financial-health" 
               getColSpanClass={getColSpanClass}
@@ -193,7 +193,7 @@ export default function DashboardEditor() {
           </div>
           
           {/* Savings Goals - takes 2 columns (full width) */}
-          <div className="hover-lift animate-stagger" style={{ animationDelay: '0.2s' }}>
+          <div className="hover-lift">
             <DashboardWidgetWrapper 
               componentKey="savings-goals" 
               getColSpanClass={getColSpanClass}
@@ -202,7 +202,7 @@ export default function DashboardEditor() {
           </div>
           
           {/* Budget Tracking - takes 2 columns (full width) */}
-          <div className="hover-lift animate-stagger" style={{ animationDelay: '0.3s' }}>
+          <div className="hover-lift">
             <DashboardWidgetWrapper 
               componentKey="budget-tracking" 
               getColSpanClass={getColSpanClass}

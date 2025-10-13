@@ -159,12 +159,12 @@ export default function BudgetEditModal({
               </CardTitle>
               <button
                 onClick={handleCancel}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"
+                className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
               {mode === 'add' ? 'Set a spending budget for' : 'Update budget for'} {currentMonth}
             </p>
           </CardHeader>
@@ -179,14 +179,14 @@ export default function BudgetEditModal({
 
               {/* Category Field */}
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">
                   <Tag className="w-4 h-4" />
                   Category
                 </label>
                 <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={mode === 'edit'}
                   required
                 >
@@ -204,7 +204,7 @@ export default function BudgetEditModal({
 
               {/* Amount Field */}
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">
                   <DollarSign className="w-4 h-4" />
                   Budget Amount (IDR)
                 </label>
@@ -212,14 +212,14 @@ export default function BudgetEditModal({
                   type="number"
                   value={formData.amount}
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Enter budget amount..."
                   min="0"
                   step="10000"
                   required
                 />
                 {formData.amount && parseFloat(formData.amount) > 0 && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
                     Budget: {formatCurrency(parseFloat(formData.amount))}
                   </p>
                 )}
@@ -227,18 +227,18 @@ export default function BudgetEditModal({
 
               {/* Current spending info for edit mode */}
               {mode === 'edit' && budget && (
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700">
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-600 dark:text-slate-400">Current spent:</span>
+                      <span className="text-neutral-600 dark:text-neutral-400">Current spent:</span>
                       <span className="font-medium">{formatCurrency(budget.spent || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-600 dark:text-slate-400">Current budget:</span>
+                      <span className="text-neutral-600 dark:text-neutral-400">Current budget:</span>
                       <span className="font-medium">{formatCurrency(budget.budget || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-600 dark:text-slate-400">Usage:</span>
+                      <span className="text-neutral-600 dark:text-neutral-400">Usage:</span>
                       <span className={`font-medium ${
                         budget.budget && budget.budget > 0 && (budget.spent || 0) / budget.budget >= 1
                           ? 'text-red-600 dark:text-red-400'
@@ -269,7 +269,7 @@ export default function BudgetEditModal({
               <button
                 type="button"
                 onClick={handleCancel}
-                className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 rounded-lg transition-colors"
                 disabled={loading}
               >
                 Cancel

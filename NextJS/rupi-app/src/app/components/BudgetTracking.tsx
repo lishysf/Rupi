@@ -113,7 +113,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
     const percentage = (spent / budget) * 100;
     if (percentage >= 100) return 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800';
     if (percentage >= 80) return 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800';
-    return 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600';
+    return 'bg-neutral-50 dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-600';
   };
 
   const totalBudget = budgets.reduce((sum, item) => sum + item.budget, 0);
@@ -139,24 +139,52 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
   // Only show loading on initial load, not on updates
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center">
-          <Target className={`${widgetSize === 'half' ? 'w-4 h-4' : 'w-5 h-5'} text-emerald-600 dark:text-emerald-400 mr-2`} />
-          <h2 className={`${widgetSize === 'half' ? 'text-base' : 'text-lg'} font-semibold text-slate-900 dark:text-white`}>
-            Budget Tracking
-          </h2>
+          <div className="flex items-center">
+            <Target className={`${widgetSize === 'half' ? 'w-4 h-4' : 'w-5 h-5'} text-emerald-600 dark:text-emerald-400 mr-2`} />
+            <h2 className={`${widgetSize === 'half' ? 'text-base' : 'text-lg'} font-semibold text-neutral-900 dark:text-neutral-100`}>
+              Budget Tracking
+            </h2>
+          </div>
         </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-slate-500 dark:text-slate-400">Loading...</div>
+        
+        {/* Loading skeleton */}
+        <div className="flex-1 space-y-3">
+          {/* Overall budget skeleton */}
+          <div className="bg-gradient-to-r from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-700 rounded-lg p-3 animate-pulse">
+            <div className="flex justify-between items-center mb-2">
+              <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-24"></div>
+              <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-8"></div>
+            </div>
+            <div className="flex justify-between items-center mb-2">
+              <div className="h-5 bg-neutral-300 dark:bg-neutral-600 rounded w-20"></div>
+              <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-16"></div>
+            </div>
+            <div className="w-full bg-neutral-300 dark:bg-neutral-600 rounded-full h-1.5"></div>
+          </div>
+          
+          {/* Individual budget items skeleton */}
+          {Array.from({ length: getItemLimit() }).map((_, index) => (
+            <div key={index} className="bg-neutral-100 dark:bg-neutral-800 rounded-lg p-2 animate-pulse">
+              <div className="flex justify-between items-center mb-1">
+                <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-20"></div>
+                <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-6"></div>
+              </div>
+              <div className="flex justify-between items-center mb-1">
+                <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-16"></div>
+                <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-12"></div>
+              </div>
+              <div className="w-full bg-neutral-300 dark:bg-neutral-600 rounded-full h-1"></div>
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+    <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center">
           <Target className={`${
@@ -164,12 +192,12 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
           } text-emerald-600 dark:text-emerald-400 mr-2`} />
           <h2 className={`${
             widgetSize === 'half' ? 'text-base' : 'text-lg'
-          } font-semibold text-slate-900 dark:text-white`}>
+          } font-semibold text-neutral-900 dark:text-neutral-100`}>
             Budget Tracking
           </h2>
         </div>
         <div className="flex items-center space-x-2">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">
             {new Date().toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
           </div>
           <button
@@ -229,8 +257,8 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
       } overflow-y-auto`}>
         {budgets.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
-            <Target className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-4" />
-            <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
+            <Target className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mb-4" />
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm mb-4">
               No budgets set for this month
             </p>
             <button
@@ -257,7 +285,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                   <div className="flex items-center">
                     <span className={`${
                       widgetSize === 'half' ? 'text-xs' : 'text-sm'
-                    } font-medium text-slate-900 dark:text-white`}>
+                    } font-medium text-neutral-900 dark:text-neutral-100`}>
                       {budget.category}
                     </span>
                     {isOverspending && (
@@ -265,19 +293,19 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                     )}
                   </div>
                   <div className="flex items-center space-x-1">
-                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
                       {percentage.toFixed(0)}%
                     </span>
                     <button
                       onClick={() => startEdit(budget)}
-                      className="p-0.5 text-slate-400 hover:text-emerald-600"
+                      className="p-0.5 text-neutral-400 hover:text-emerald-600"
                       title="Edit Budget"
                     >
                       <Edit2 className="w-3 h-3" />
                     </button>
                     <button
                       onClick={() => handleDeleteBudget(budget.category)}
-                      className="p-0.5 text-slate-400 hover:text-red-600"
+                      className="p-0.5 text-neutral-400 hover:text-red-600"
                       title="Delete Budget"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -286,15 +314,15 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                 </div>
                 
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs text-slate-600 dark:text-slate-300">
+                  <span className="text-xs text-neutral-600 dark:text-neutral-300">
                     {formatCurrency(budget.spent)}
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
                     / {formatCurrency(budget.budget)}
                   </span>
                 </div>
 
-                <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1">
+                <div className="w-full bg-neutral-200 dark:bg-neutral-600 rounded-full h-1">
                   <div 
                     className={`h-1 rounded-full transition-all duration-300 ${getProgressColor(budget.spent, budget.budget)}`}
                     style={{ width: `${Math.min(percentage, 100)}%` }}
@@ -310,7 +338,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
       {budgets.length > 0 && (
         <div className={`${
           widgetSize === 'half' ? 'mt-2 pt-2' : 'mt-3 pt-3'
-        } border-t border-slate-200 dark:border-slate-700 flex-shrink-0`}>
+        } border-t border-neutral-200 dark:border-transparent flex-shrink-0`}>
           <div className="grid grid-cols-2 gap-2">
             <div className="text-center">
               <div className={`${
@@ -318,7 +346,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
               } font-bold text-emerald-600 dark:text-emerald-400`}>
                 {budgets.filter(b => (b.spent / b.budget) * 100 < 80).length}
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">
                 On Track
               </div>
             </div>
@@ -328,7 +356,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
               } font-bold text-red-600 dark:text-red-400`}>
                 {budgets.filter(b => (b.spent / b.budget) * 100 >= 100).length}
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">
                 Over Budget
               </div>
             </div>

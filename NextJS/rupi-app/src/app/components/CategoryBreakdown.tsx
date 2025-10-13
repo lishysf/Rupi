@@ -137,17 +137,17 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
 
   if (loading) {
     return (
-      <Card className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700 h-full flex flex-col">
+      <Card className="bg-white dark:bg-neutral-900 border-neutral-200 dark:border-transparent h-full flex flex-col">
         <CardContent className="flex-1 flex items-center justify-center p-6">
           <div className="animate-pulse space-y-4 w-full">
             <div className="flex items-center justify-center">
-              <div className="w-32 h-32 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
+              <div className="w-32 h-32 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {Array.from({ length: 6 }, (_, i) => (
                 <div key={i} className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
-                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded flex-1"></div>
+                  <div className="w-3 h-3 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
+                  <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded flex-1"></div>
                 </div>
               ))}
             </div>
@@ -159,16 +159,16 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
 
   if (chartData.length === 0 && !loading) {
     return (
-      <Card className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700 h-full flex flex-col">
+      <Card className="bg-white dark:bg-neutral-900 border-neutral-200 dark:border-transparent h-full flex flex-col">
         <CardContent className="flex-1 flex items-center justify-center p-6">
           <div className="text-center">
-            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <PieChartIcon className="w-8 h-8 text-slate-400" />
+            <div className="w-16 h-16 bg-neutral-100 dark:bg-neutral-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <PieChartIcon className="w-8 h-8 text-neutral-400" />
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm">
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">
               No expense data available
             </p>
-            <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">
+            <p className="text-neutral-400 dark:text-neutral-500 text-xs mt-1">
               Start tracking expenses with the AI chat
             </p>
           </div>
@@ -190,7 +190,7 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
   const largestCategory = chartData[0]; // First item is the largest since we sort by amount
 
   return (
-    <Card className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex flex-col h-full">
+    <Card className="bg-white dark:bg-neutral-900 flex flex-col h-full">
       <CardHeader className="items-center pb-0">
         <CardTitle className="text-lg">Expense Breakdown</CardTitle>
         <CardDescription>Category-wise spending analysis</CardDescription>

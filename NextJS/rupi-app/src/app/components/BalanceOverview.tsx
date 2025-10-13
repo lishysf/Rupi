@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, BarChart3, CreditCard } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, BarChart3, CreditCard, Settings } from 'lucide-react';
+import WalletModal from './WalletModal';
 
 interface FinancialTotal {
   currentMonthExpenses: number;
@@ -14,15 +15,28 @@ interface FinancialTotal {
   totalSavings: number;
 }
 
+interface UserWallet {
+  id: number;
+  name: string;
+  type: string;
+  balance: number;
+  color: string;
+  icon: string;
+  is_active: boolean;
+}
+
 interface BalanceOverviewProps {
   widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverviewProps) {
   const { state } = useFinancialData();
-  const { expenses, income, savings } = state.data;
+  const { expenses, income, savings, wallets } = state.data;
   const investments: any[] = (state.data as any).investments || [];
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
+  
+  // Wallet state
+  const [showWalletModal, setShowWalletModal] = useState(false);
 
   // Calculate financial totals from context data
   const financialData: FinancialTotal & { totalInvestments: number } = useMemo(() => {
@@ -82,10 +96,16 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
     };
   }, [expenses, income, savings, investments]);
 
+  // Wallet loading state from context - only show loading during initial load
+  const walletLoading = state.loading.wallets && state.loading.initial;
+
+  // Calculate wallet total balance
+  const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+
   // Calculate balances
-  // Main/Spending Card = income - expenses - savings transfers
-  const currentBalance = financialData.totalIncome - financialData.totalExpenses - financialData.totalSavings;
-  // Total assets = spendable (main) + savings + current investment portfolio value
+  // Main/Spending Card = wallet balance (user's actual available money)
+  const currentBalance = walletBalance;
+  // Total assets = wallet balance + savings + current investment portfolio value
   const totalAssets = currentBalance + financialData.totalSavings + financialData.totalInvestments;
   const monthChange = financialData.previousMonthExpenses - financialData.currentMonthExpenses; // Positive if spending less
   const isPositiveChange = monthChange > 0;
@@ -170,12 +190,23 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
                 <div className="absolute inset-0 w-3 h-3 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full animate-ping opacity-75"></div>
               </div>
               <div className="ml-3">
-                <h2 className="text-white font-bold text-base tracking-tight">Fundy Card</h2>
-                <p className="text-emerald-200 text-xs">Premium Banking</p>
+                <h2 className="text-white font-bold text-base tracking-tight">My Wallets</h2>
+                <p className="text-emerald-200 text-xs">
+                  {wallets.length > 0 ? `${wallets.length} wallet${wallets.length > 1 ? 's' : ''}` : 'No wallets added'}
+                </p>
               </div>
             </div>
-            <div className="text-emerald-200 text-xs font-semibold bg-emerald-600/20 px-2 py-1 rounded-full shadow-sm border border-emerald-500/30">
-              {currentMonthName} {new Date().getFullYear()}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="p-1.5 text-emerald-200 hover:text-white hover:bg-emerald-600/20 rounded-lg transition-colors"
+                title="Manage Wallets"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <div className="text-emerald-200 text-xs font-semibold bg-emerald-600/20 px-2 py-1 rounded-full shadow-sm border border-emerald-500/30">
+                {currentMonthName} {new Date().getFullYear()}
+              </div>
             </div>
           </div>
 
@@ -183,18 +214,22 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
           <div className="flex-1 flex flex-col justify-center">
             <div className="mb-4">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-emerald-200 text-sm font-medium">Main Card Balance</div>
+                <div className="text-emerald-200 text-sm font-medium">Total Wallet Balance</div>
                 <div className="flex items-center text-xs text-emerald-300">
-                  <CreditCard className="w-3 h-3 mr-1" />
+                  <Wallet className="w-3 h-3 mr-1" />
                   Available
                 </div>
               </div>
               <div className="text-3xl font-bold text-white tracking-tight mb-3">
-                {formatCurrency(currentBalance)}
+                {walletLoading ? (
+                  <div className="w-48 h-8 bg-emerald-400/30 rounded animate-pulse"></div>
+                ) : (
+                  formatCurrency(currentBalance)
+                )}
               </div>
               <div className="flex items-center text-emerald-200 text-sm">
                 <Wallet className="w-4 h-4 mr-2" />
-                Available for Spending
+                {wallets.length > 0 ? `Across ${wallets.length} wallet${wallets.length > 1 ? 's' : ''}` : 'Add wallets to track balance'}
               </div>
             </div>
           </div>
@@ -208,6 +243,15 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
           50% { transform: translateY(-10px) rotate(180deg); }
         }
       `}</style>
+      
+      {/* Wallet Management Modal */}
+      <WalletModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onWalletUpdate={() => {
+          // Wallet updates are handled by the context
+        }}
+      />
     </div>
   );
 }

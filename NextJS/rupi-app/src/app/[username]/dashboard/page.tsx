@@ -30,12 +30,12 @@ export default function UserDashboardPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="text-center">
           <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
             Fundy
           </div>
-          <div className="text-slate-600 dark:text-slate-400">Loading...</div>
+          <div className="text-muted-foreground">Loading...</div>
         </div>
       </div>
     );

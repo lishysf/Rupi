@@ -1,9 +1,9 @@
 'use client';
 
-import { Target, Laptop, Car, Home, Plane, Plus, Trash2 } from 'lucide-react';
+import { Target, Laptop, Car, Home, Plane, Plus, Trash2, Wallet, ExternalLink } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import { useState, useEffect } from 'react';
-import SavingsGoalModal from './SavingsGoalModal';
+import SavingsGoalsPopup from './SavingsGoalsPopup';
 
 interface SavingsGoalsProps {
   widgetSize?: 'square' | 'half' | 'medium' | 'long';
@@ -24,10 +24,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
   const { savings } = state.data;
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showDistribution, setShowDistribution] = useState(false);
-  const [allocations, setAllocations] = useState<Record<number, number>>({});
+  const [showPopup, setShowPopup] = useState(false);
 
   // Calculate total saved money from savings transactions
   const totalSaved = savings.reduce((sum: number, saving: any) => {
@@ -44,17 +41,10 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           const data = await response.json();
           if (data.success) {
             setGoals(data.data || []);
-            // Initialize allocations with current amounts
-            const initialAllocations: Record<number, number> = {};
-            (data.data || []).forEach((goal: SavingsGoal) => {
-              initialAllocations[goal.id] = goal.current_amount || 0;
-            });
-            setAllocations(initialAllocations);
           }
         }
       } catch (error) {
         console.error('Error fetching savings goals:', error);
-        setError('Failed to load savings goals');
       } finally {
         setLoading(false);
       }
@@ -63,7 +53,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
     fetchGoals();
   }, []);
 
-  // Refresh goals when savings data changes (when new savings are added)
+  // Refresh goals when savings data changes
   useEffect(() => {
     if (savings.length > 0) {
       const refreshGoals = async () => {
@@ -81,180 +71,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
       };
       refreshGoals();
     }
-  }, [savings.length]); // Trigger when savings count changes
-
-  // Handle creating new savings goal
-  const handleCreateGoal = async (goalData: any) => {
-    try {
-      setError(null);
-      const response = await fetch('/api/savings-goals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(goalData),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          // Refresh goals list
-          const refreshResponse = await fetch('/api/savings-goals');
-          if (refreshResponse.ok) {
-            const refreshData = await refreshResponse.json();
-            if (refreshData.success) {
-              setGoals(refreshData.data || []);
-            }
-          }
-          return true;
-        }
-      }
-      return false;
-    } catch (error) {
-      console.error('Error creating savings goal:', error);
-      setError('Failed to create savings goal');
-      return false;
-    }
-  };
-
-  // Handle close modal
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setError(null);
-  };
-
-  // Handle delete goal
-  const handleDeleteGoal = async (goalId: number, goalName: string) => {
-    if (!confirm(`Are you sure you want to delete the goal "${goalName}"? This will also delete all associated savings records.`)) {
-      return;
-    }
-
-    try {
-      setError(null);
-      const response = await fetch(`/api/savings-goals/${goalId}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        // Refresh goals list
-        const refreshResponse = await fetch('/api/savings-goals');
-        if (refreshResponse.ok) {
-          const refreshData = await refreshResponse.json();
-          if (refreshData.success) {
-            setGoals(refreshData.data || []);
-            // Update allocations to remove deleted goal
-            setAllocations(prev => {
-              const newAllocations = { ...prev };
-              delete newAllocations[goalId];
-              return newAllocations;
-            });
-          }
-        }
-      } else {
-        const errorData = await response.json();
-        setError(`Failed to delete goal: ${errorData.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error deleting goal:', error);
-      setError('Failed to delete goal');
-    }
-  };
-
-  // Handle allocation changes
-  const handleAllocationChange = (goalId: number, amount: number) => {
-    // Ensure amount is non-negative
-    const validAmount = Math.max(0, amount || 0);
-    
-    // Find the goal to get its target amount
-    const goal = goals.find(g => g.id === goalId);
-    const goalTarget = goal?.target_amount || 0;
-    
-    // Calculate current total allocation excluding this goal
-    const currentTotalExcludingThis = Object.entries(allocations)
-      .filter(([id]) => Number(id) !== goalId)
-      .reduce((sum, [, allocAmount]) => sum + (allocAmount || 0), 0);
-    
-    // Calculate maximum allowed: min of (goal target, remaining total savings)
-    const maxFromTotalSavings = totalSaved - currentTotalExcludingThis;
-    const maxAllowed = Math.min(goalTarget, maxFromTotalSavings);
-    const finalAmount = Math.min(validAmount, maxAllowed);
-    
-    // Debug logging
-    console.log('Allocation change:', {
-      goalId,
-      goalTarget,
-      requestedAmount: validAmount,
-      maxFromTotalSavings,
-      maxAllowed,
-      finalAmount,
-      currentTotalExcludingThis,
-      totalSaved
-    });
-    
-    setAllocations(prev => ({
-      ...prev,
-      [goalId]: finalAmount
-    }));
-  };
-
-  // Calculate total allocated amount
-  const totalAllocated = Object.values(allocations).reduce((sum, amount) => {
-    const validAmount = isNaN(amount) ? 0 : amount;
-    return sum + validAmount;
-  }, 0);
-  const remainingToAllocate = totalSaved - totalAllocated;
-
-  // Debug logging
-  console.log('SavingsGoals Debug:', {
-    savings: savings,
-    totalSaved: totalSaved,
-    allocations: allocations,
-    totalAllocated: totalAllocated,
-    remainingToAllocate: remainingToAllocate
-  });
-
-  // Handle save allocations
-  const handleSaveAllocations = async () => {
-    try {
-      setError(null);
-      console.log('Saving allocations:', allocations);
-      
-      // Update each goal's current_amount
-      for (const [goalId, amount] of Object.entries(allocations)) {
-        const validAmount = Math.max(0, Number(amount) || 0);
-        console.log(`Updating goal ${goalId} with amount ${validAmount}`);
-        const response = await fetch(`/api/savings-goals/${goalId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ currentAmount: validAmount }),
-        });
-        
-        const responseData = await response.json();
-        console.log(`Response for goal ${goalId}:`, responseData);
-        
-        if (!response.ok) {
-          throw new Error(`Failed to update goal ${goalId}: ${responseData.error || 'Unknown error'}`);
-        }
-      }
-      
-      // Refresh goals
-      const refreshResponse = await fetch('/api/savings-goals');
-      if (refreshResponse.ok) {
-        const refreshData = await refreshResponse.json();
-        if (refreshData.success) {
-          setGoals(refreshData.data || []);
-          console.log('Goals refreshed:', refreshData.data);
-        }
-      }
-      
-      setShowDistribution(false);
-    } catch (error) {
-      console.error('Error saving allocations:', error);
-      setError(`Failed to save allocations: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
+  }, [savings.length]);
 
   // Get icon component based on icon name
   const getIconComponent = (iconName: string | null) => {
@@ -339,9 +156,9 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
 
   if (loading) {
     return (
-      <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
             Savings Goals
           </h2>
           <div className="w-4 h-4 animate-spin border-2 border-emerald-400 border-t-transparent rounded-full"></div>
@@ -349,9 +166,9 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
         <div className="flex-1 space-y-3">
           {Array.from({ length: 2 }, (_, i) => (
             <div key={i} className="animate-pulse">
-              <div className="p-3 rounded-lg border bg-slate-100 dark:bg-slate-700">
-                <div className="h-4 bg-slate-200 dark:bg-slate-600 rounded w-3/4 mb-2"></div>
-                <div className="h-3 bg-slate-200 dark:bg-slate-600 rounded w-1/2"></div>
+              <div className="p-3 rounded-lg border bg-neutral-100 dark:bg-neutral-700">
+                <div className="h-4 bg-neutral-200 dark:bg-neutral-600 rounded w-3/4 mb-2"></div>
+                <div className="h-3 bg-neutral-200 dark:bg-neutral-600 rounded w-1/2"></div>
               </div>
             </div>
           ))}
@@ -361,41 +178,21 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
   }
 
   return (
-    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+    <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center">
           <Target className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mr-2" />
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
             Savings Goals
           </h2>
         </div>
-        <div className="flex gap-2">
-          {totalSaved > 0 && goals.length > 0 && (
-            <button 
-              onClick={() => {
-                if (!showDistribution) {
-                  // Reset allocations to current amounts when entering distribution mode
-                  const resetAllocations: Record<number, number> = {};
-                  goals.forEach(goal => {
-                    resetAllocations[goal.id] = goal.current_amount;
-                  });
-                  setAllocations(resetAllocations);
-                }
-                setShowDistribution(!showDistribution);
-              }}
-              className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
-            >
-              {showDistribution ? 'Cancel' : 'Distribute'}
-            </button>
-          )}
-          <button 
-            onClick={() => setShowModal(true)}
-            className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
-          >
-            <Plus className="w-3 h-3 inline mr-1" />
-            Add Goal
-          </button>
-        </div>
+        <button 
+          onClick={() => setShowPopup(true)}
+          className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium flex items-center gap-1"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Manage Goals
+        </button>
       </div>
 
       {/* Total Saved Money Display */}
@@ -409,11 +206,11 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           </div>
           <div className="text-right">
             <div className="text-xs text-emerald-600 dark:text-emerald-400">
-              {totalAllocated > 0 ? `${formatCurrency(totalAllocated)} allocated` : 'Not allocated'}
+              {goals.length > 0 ? `${goals.length} goal${goals.length !== 1 ? 's' : ''} set` : 'No goals yet'}
             </div>
-            {remainingToAllocate !== 0 && (
-              <div className={`text-xs ${remainingToAllocate > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                {remainingToAllocate > 0 ? `${formatCurrency(remainingToAllocate)} remaining` : `${formatCurrency(Math.abs(remainingToAllocate))} over-allocated`}
+            {goals.length > 0 && (
+              <div className="text-xs text-emerald-600 dark:text-emerald-400">
+                {formatCurrency(goals.reduce((sum, goal) => sum + (goal.current_amount || 0), 0))} allocated
               </div>
             )}
           </div>
@@ -423,25 +220,30 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
       <div className="flex-1 space-y-3 overflow-y-auto">
         {goals.length === 0 ? (
           <div className="text-center py-8">
-            <Target className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-            <p className="text-slate-500 dark:text-slate-400 text-sm">
-              No savings goals yet. Create your first goal
+            <Target className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm mb-4">
+              No savings goals yet
             </p>
+            <button
+              onClick={() => setShowPopup(true)}
+              className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
+            >
+              Create your first goal
+            </button>
           </div>
         ) : (
           goals.slice(0, 2).map((goal) => {
-            const currentAmount = showDistribution ? (allocations[goal.id] || 0) : (goal.current_amount || 0);
+            const currentAmount = goal.current_amount || 0;
             const targetAmount = goal.target_amount || 0;
             const percentage = targetAmount > 0 ? Math.min(100, (currentAmount / targetAmount) * 100) : 0;
-            const remaining = Math.max(0, targetAmount - currentAmount);
             const IconComponent = getIconComponent(goal.icon);
             const colors = getColorClasses(goal.color || 'blue');
-            const { monthlyAmount, monthsToComplete, estimatedDate } = calculateMonthlySavings({...goal, current_amount: currentAmount});
             
             return (
               <div
                 key={goal.id}
-                className={`p-3 rounded-lg border ${colors.bg} ${colors.border}`}
+                className={`p-3 rounded-lg border ${colors.bg} ${colors.border} cursor-pointer hover:shadow-md transition-shadow`}
+                onClick={() => setShowPopup(true)}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center">
@@ -449,182 +251,60 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
                       <IconComponent className={`w-4 h-4 ${colors.text}`} />
                     </div>
                     <div>
-                      <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
                         {goal.goal_name}
                       </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
                         {goal.target_date ? `Target: ${formatDate(goal.target_date)}` : 'No deadline set'}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-right">
-                      <div className={`text-sm font-bold ${colors.text}`}>
-                        {percentage.toFixed(0)}%
-                      </div>
+                  <div className="text-right">
+                    <div className={`text-sm font-bold ${colors.text}`}>
+                      {percentage.toFixed(0)}%
                     </div>
-                    {!showDistribution && (
-                      <button
-                        onClick={() => handleDeleteGoal(goal.id, goal.name)}
-                        className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                        title="Delete goal"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
                   </div>
                 </div>
 
-                {showDistribution ? (
-                  // Distribution mode - show slider and quick buttons
-                  <div className="mb-2">
-                    <div className="mb-2">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs text-slate-600 dark:text-slate-300">
-                          {formatCurrency(allocations[goal.id] || 0)}
-                        </span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          Target: {formatCurrency(goal.target_amount)}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                        Max: {formatCurrency(Math.min(goal.target_amount, totalSaved - (totalAllocated - (allocations[goal.id] || 0))))}
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max={Math.min(goal.target_amount, totalSaved - (totalAllocated - (allocations[goal.id] || 0)))}
-                        step="100000"
-                        value={allocations[goal.id] || 0}
-                        onChange={(e) => handleAllocationChange(goal.id, parseInt(e.target.value))}
-                        className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer slider"
-                      />
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleAllocationChange(goal.id, 0)}
-                        className="flex-1 px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                      >
-                        Clear
-                      </button>
-                      <button
-                        onClick={() => {
-                          const currentAllocation = allocations[goal.id] || 0;
-                          const maxFromTotalSavings = totalSaved - (totalAllocated - currentAllocation);
-                          const fillAmount = Math.min(goal.target_amount, maxFromTotalSavings);
-                          handleAllocationChange(goal.id, fillAmount);
-                        }}
-                        className="flex-1 px-2 py-1 text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded hover:bg-emerald-200 dark:hover:bg-emerald-800/50 transition-colors"
-                      >
-                        Fill Goal
-                      </button>
-                      <button
-                        onClick={() => handleAllocationChange(goal.id, Math.floor(remainingToAllocate / goals.length) + (allocations[goal.id] || 0))}
-                        className="flex-1 px-2 py-1 text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded hover:bg-emerald-200 dark:hover:bg-emerald-800/50 transition-colors"
-                      >
-                        Equal Split
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  // Normal mode - show progress bar
-                  <div className="mb-2">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-600 dark:text-slate-300">
-                        {formatCurrency(currentAmount)}
-                      </span>
-                      <span className="text-slate-600 dark:text-slate-300">
-                        {formatCurrency(goal.target_amount)}
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-1.5">
-                      <div 
-                        className={`h-1.5 rounded-full transition-all duration-300 ${colors.progress}`}
-                        style={{ width: `${Math.min(percentage, 100)}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {formatCurrency(remaining)} left
+                {/* Progress bar */}
+                <div className="mb-2">
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-neutral-600 dark:text-neutral-300">
+                      {formatCurrency(currentAmount)}
                     </span>
+                    <span className="text-neutral-600 dark:text-neutral-300">
+                      {formatCurrency(goal.target_amount)}
+                    </span>
+                  </div>
+                  <div className="w-full bg-neutral-200 dark:bg-neutral-600 rounded-full h-1.5">
+                    <div 
+                      className={`h-1.5 rounded-full transition-all duration-300 ${colors.progress}`}
+                      style={{ width: `${Math.min(percentage, 100)}%` }}
+                    ></div>
                   </div>
                 </div>
               </div>
             );
           })
         )}
+        
+        {goals.length > 2 && (
+          <div className="text-center py-2">
+            <button
+              onClick={() => setShowPopup(true)}
+              className="text-xs text-neutral-500 dark:text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+            >
+              View all {goals.length} goals
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Distribution Controls */}
-      {showDistribution && (
-        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
-          <div className="flex gap-2">
-            <button
-              onClick={handleSaveAllocations}
-              disabled={remainingToAllocate < 0}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-medium py-2 px-3 rounded-lg text-sm transition-colors"
-            >
-              Save Allocations
-            </button>
-            <button
-              onClick={() => setShowDistribution(false)}
-              className="flex-1 bg-slate-600 hover:bg-slate-700 text-white font-medium py-2 px-3 rounded-lg text-sm transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-          {remainingToAllocate < 0 && (
-            <div className="mt-2 text-xs text-red-600 dark:text-red-400 text-center">
-              You've allocated more than your total savings. Please adjust the amounts.
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Summary Stats */}
-      {goals.length > 0 && !showDistribution && (
-        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="text-center">
-              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                {formatCurrency(goals.reduce((sum, goal) => sum + (goal.current_amount || 0), 0))}
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Allocated
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                {goals.length > 0 ? ((goals.reduce((sum, goal) => {
-                  const current = goal.current_amount || 0;
-                  const target = goal.target_amount || 0;
-                  return sum + (target > 0 ? (current / target) : 0);
-                }, 0) / goals.length) * 100).toFixed(0) : 0}%
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Avg Progress
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Error Display */}
-      {error && (
-        <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-        </div>
-      )}
-
-      {/* Savings Goal Modal */}
-      <SavingsGoalModal
-        isOpen={showModal}
-        onClose={handleCloseModal}
-        onSave={handleCreateGoal}
+      {/* Savings Goals Popup */}
+      <SavingsGoalsPopup
+        isOpen={showPopup}
+        onClose={() => setShowPopup(false)}
       />
     </div>
   );

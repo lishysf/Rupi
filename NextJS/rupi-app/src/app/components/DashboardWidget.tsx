@@ -13,8 +13,8 @@ interface DashboardWidgetProps {
 
 // Define which data each widget depends on
 const DASHBOARD_DATA_KEYS = {
-  'balance-overview': ['transactions', 'expenses', 'income'],
-  'financial-summary': ['transactions', 'expenses', 'income'],
+  'balance-overview': ['transactions', 'expenses', 'income', 'wallets'],
+  'financial-summary': ['transactions', 'expenses', 'income', 'wallets'],
   'income-expense': ['expenses', 'income'],
   'category-breakdown': ['expenses'],
   'trends-chart': ['expenses'],
@@ -48,14 +48,14 @@ export default function DashboardWidget({
   // Show skeleton if data is loading and skeleton is enabled
   if (showSkeleton && (isDataLoading || !isDataLoaded)) {
     return (
-      <div className={`${className} animate-fade-in`}>
+      <div className={className}>
         <LoadingSkeleton type={dataKey} />
       </div>
     );
   }
   
   return (
-    <div className={`${className} content-ready`}>
+    <div className={className}>
       {children}
     </div>
   );

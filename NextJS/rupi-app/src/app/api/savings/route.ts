@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-import { initializeDatabase } from '@/lib/database';
+import { initializeDatabase, UserWalletDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // Database connection
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     const body = await request.json();
-    const { description, amount, goalId, goalName, type = 'deposit' } = body;
+    const { description, amount, goalId, goalName, type = 'deposit', walletId } = body;
 
     // Validate required fields
     if (!description || !amount) {
@@ -115,6 +115,17 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: 'Missing required fields: description, amount'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate wallet requirement for deposits
+    if (type === 'deposit' && !walletId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Wallet is required for savings deposits. Please specify which wallet to transfer from.'
         },
         { status: 400 }
       );
@@ -143,33 +154,96 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Handle wallet validation and balance checks
+    if (type === 'deposit' || type === 'transfer') {
+      // Verify wallet exists and has sufficient balance
+      const wallets = await UserWalletDatabase.getAllWallets(user.id);
+      const wallet = wallets.find(w => w.id === walletId);
+      
+      if (!wallet) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Specified wallet not found'
+          },
+          { status: 400 }
+        );
+      }
+      
+      const currentBalance = await UserWalletDatabase.calculateWalletBalance(user.id, walletId);
+      
+      if (currentBalance < amount) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Insufficient balance in ${wallet.name}. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`
+          },
+          { status: 400 }
+        );
+      }
+    } else if (type === 'withdrawal') {
+      // For withdrawals, check if savings balance is sufficient
+      const allSavings = await pool.query(
+        'SELECT COALESCE(SUM(amount), 0) as total_savings FROM savings WHERE user_id = $1',
+        [user.id]
+      );
+      const totalSavings = parseFloat(allSavings.rows[0].total_savings);
+      
+      if (totalSavings < amount) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Insufficient savings balance. Current savings: Rp${totalSavings.toLocaleString()}, Required: Rp${amount.toLocaleString()}`
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Start transaction
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // Insert savings record
+      // Insert savings record (use negative amount for withdrawals)
+      const finalAmount = type === 'withdrawal' ? -amount : amount;
       const savingsQuery = `
-        INSERT INTO savings (user_id, description, amount, goal_name, date)
-        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+        INSERT INTO savings (user_id, description, amount, goal_name, wallet_id, date)
+        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
         RETURNING *
       `;
       
       const savingsResult = await client.query(savingsQuery, [
         user.id,
         description,
-        amount,
-        goalName || null
+        finalAmount,
+        goalName || null,
+        walletId || null
       ]);
 
-      // If this is a deposit and has a goal, update the goal's current amount
-      if (type === 'deposit' && goalName) {
+      // Create wallet transfer record for deposits (NOT an expense - just money movement)
+      if (type === 'deposit' || type === 'transfer') {
+        const { WalletTransferDatabase } = await import('@/lib/database');
+        await WalletTransferDatabase.createTransfer(
+          user.id,
+          walletId, // from wallet
+          undefined, // to wallet (none, going to savings)
+          true, // to savings
+          amount,
+          `Savings: ${description}`,
+          'wallet_to_savings'
+        );
+      }
+
+      // Update goal's current amount based on transaction type
+      if (goalName) {
+        const goalAmountChange = type === 'withdrawal' ? -amount : amount;
         const updateGoalQuery = `
           UPDATE savings_goals 
           SET current_amount = current_amount + $1, updated_at = CURRENT_TIMESTAMP
           WHERE goal_name = $2 AND user_id = $3
         `;
-        await client.query(updateGoalQuery, [amount, goalName, user.id]);
+        await client.query(updateGoalQuery, [goalAmountChange, goalName, user.id]);
       }
 
       await client.query('COMMIT');

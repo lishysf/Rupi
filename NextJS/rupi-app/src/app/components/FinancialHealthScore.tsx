@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Heart, TrendingUp, Activity, PiggyBank } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 
@@ -16,14 +16,28 @@ interface FinancialData {
   investments: Array<{ amount: string; date: string }>;
 }
 
+interface UserWallet {
+  id: number;
+  name: string;
+  type: string;
+  balance: number;
+  color: string;
+  icon: string;
+  is_active: boolean;
+}
+
 interface FinancialHealthScoreProps {
   widgetSize?: 'square' | 'half' | 'medium' | 'long';
 }
 
 export default function FinancialHealthScore({ widgetSize = 'square' }: FinancialHealthScoreProps) {
   const { state } = useFinancialData();
-  const { expenses, income, savings, investments } = state.data;
+  const { expenses, income, savings, investments, wallets } = state.data;
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
+  
+  // Wallet loading state from context - only show loading during initial load
+  const walletLoading = state.loading.wallets && state.loading.initial;
+
   
   // Debug log to check data
   console.log('Financial Data:', {
@@ -78,6 +92,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
       currentMonthExpenses,
       previousMonthExpenses,
       savingsRate,
+      currentBalance: 0, // Will be calculated from wallets
       savings,
       investments
     };
@@ -106,9 +121,11 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
     // 0 points if no savings
     
     // Factor 2: Total Assets (50% of total score)
-    // Total aset (main card balance + savings + investments)
-    const mainCardBalance = Math.max(0, financialData.currentBalance || 0);
-    const totalAssets = mainCardBalance + (financialData.totalSavings || 0) + (financialData.totalInvestments || 0);
+    // Total aset (wallet balance + savings + investments)
+    const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+    const totalSavings = financialData.savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
+    const totalInvestments = financialData.investments.reduce((sum, investment) => sum + parseFloat(investment.amount), 0);
+    const totalAssets = walletBalance + totalSavings + totalInvestments;
     
     // Score based on total assets (max 50 points)
     // More achievable targets for total assets
@@ -152,20 +169,18 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
   };
 
   const calculateTotalAssets = () => {
-      // Calculate main card balance (spendable)
-      // Only deduct savings from income since investments are managed separately
-      const currentBalance = financialData.totalIncome - financialData.totalExpenses - 
-                          financialData.savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
+      // Calculate wallet total balance (user's actual available money)
+      const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
   
       // Calculate total savings and investments
       const totalSavings = financialData.savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
       const totalInvestments = financialData.investments.reduce((sum, investment) => sum + parseFloat(investment.amount), 0);
   
-      // Total assets = spendable (main) + savings + investments
-      // Investments are added to total assets but weren't deducted from main balance
-      const totalAssets = Math.max(0, currentBalance) + totalSavings + totalInvestments;
+      // Total assets = wallet balance + savings + investments
+      const totalAssets = walletBalance + totalSavings + totalInvestments;
     
     console.log('Assets Calculation:', {
+      walletBalance,
       savings: financialData.savings,
       investments: financialData.investments,
       totalSavings,
@@ -225,26 +240,26 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
 
   if (loading) {
     return (
-      <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 h-full flex flex-col">
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
         <div className="flex items-center mb-4 flex-shrink-0">
           <Heart className="w-5 h-5 text-emerald-500 mr-2" />
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
             Financial Health
           </h2>
         </div>
         <div className="flex-1 animate-pulse space-y-4">
           <div className="flex items-center justify-between">
-            <div className="w-12 h-12 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
+            <div className="w-12 h-12 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
             <div className="space-y-2">
-              <div className="w-16 h-6 bg-slate-200 dark:bg-slate-700 rounded"></div>
-              <div className="w-12 h-4 bg-slate-200 dark:bg-slate-700 rounded"></div>
+              <div className="w-16 h-6 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
+              <div className="w-12 h-4 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
             </div>
           </div>
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center justify-between">
-                <div className="w-20 h-4 bg-slate-200 dark:bg-slate-700 rounded"></div>
-                <div className="w-16 h-2 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                <div className="w-20 h-4 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
+                <div className="w-16 h-2 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
               </div>
             ))}
           </div>
@@ -280,12 +295,12 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
 
 
   return (
-    <div className="bg-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-600 p-3 h-full flex flex-col group hover:shadow-2xl transition-all duration-300">
+    <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-transparent p-3 h-full flex flex-col group hover:shadow-2xl transition-all duration-300">
       <div className="flex items-center mb-2 flex-shrink-0">
         <div className="w-4 h-4 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center mr-2 shadow-lg">
           <Heart className="w-2.5 h-2.5 text-white" />
         </div>
-        <h2 className="text-xs font-bold text-slate-900 dark:text-white">
+        <h2 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
           Financial Health
         </h2>
       </div>
@@ -299,25 +314,25 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
             <div className={`text-3xl font-bold ${getScoreColor(healthScore)}`}>
               {healthScore}
             </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
               Financial Score
             </div>
           </div>
         </div>
 
         {/* Separator */}
-        <div className="w-px bg-slate-200 dark:bg-slate-600 my-2"></div>
+        <div className="w-px bg-neutral-200 dark:bg-neutral-600 my-2"></div>
 
         {/* Right Side - Progress Bars */}
         <div className="flex-1 space-y-4 min-h-0 pt-4">
           {factors.map((factor, index) => {
             const IconComponent = factor.icon;
             return (
-              <div key={index} className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+              <div key={index} className="bg-neutral-50 dark:bg-neutral-800/50 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center">
-                    <IconComponent className="w-4 h-4 text-slate-500 dark:text-slate-400 mr-2" />
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <IconComponent className="w-4 h-4 text-neutral-500 dark:text-neutral-400 mr-2" />
+                    <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">
                       {factor.name}
                     </span>
                   </div>
@@ -325,7 +340,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
                     {factor.detail}
                   </span>
                 </div>
-                <div className="relative h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
+                <div className="relative h-3 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden shadow-inner">
                   <div 
                     className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 ease-out ${getProgressColor(factor.score)} shadow-sm`}
                     style={{ width: `${Math.min(100, Math.max(0, factor.score))}%` }}

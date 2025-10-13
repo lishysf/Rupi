@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
+import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, UserWalletDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     const body = await request.json();
-    const { description, amount, category, date } = body;
+    const { description, amount, category, date, walletId } = body;
 
     // Validate required fields
     if (!description || !amount || !category) {
@@ -108,35 +108,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if main balance is sufficient for expense
-    const [allExpenses, allIncome, allSavings] = await Promise.all([
-      ExpenseDatabase.getAllExpenses(user.id, 100, 0),
-      IncomeDatabase.getAllIncome(user.id, 100, 0),
-      SavingsDatabase.getAllSavings(user.id, 100, 0)
-    ]);
+    // Handle wallet selection for expense
+    let selectedWalletId: number;
     
-    const totalIncome = allIncome.reduce((sum, income) => sum + (typeof income.amount === 'string' ? parseFloat(income.amount) : income.amount), 0);
-    const totalExpenses = allExpenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
-    const totalSavings = allSavings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
-    const mainBalance = totalIncome - totalExpenses - totalSavings;
-    
-    if (mainBalance < amount) {
+    if (walletId) {
+      // User selected a specific wallet
+      const wallets = await UserWalletDatabase.getAllWallets(user.id);
+      const selectedWallet = wallets.find(w => w.id === walletId);
+      
+      if (!selectedWallet) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Selected wallet not found'
+          },
+          { status: 400 }
+        );
+      }
+      
+      // Check if wallet balance is sufficient for expense (calculated from transactions)
+      const currentBalance = await UserWalletDatabase.calculateWalletBalance(user.id, walletId);
+      if (currentBalance < amount) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Insufficient balance in ${selectedWallet.name}. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`
+          },
+          { status: 400 }
+        );
+      }
+      
+      selectedWalletId = walletId;
+    } else {
+      // No wallet selected - require wallet selection
       return NextResponse.json(
         {
           success: false,
-          error: `Insufficient main balance. Current balance: Rp${mainBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`
+          error: 'Please select a wallet for this expense. You must specify which wallet to use for all transactions.'
         },
         { status: 400 }
       );
     }
 
-    // Create expense
+    // Create expense with wallet ID
     const expense = await ExpenseDatabase.createExpense(
       user.id,
       description,
       amount,
       category,
-      date ? new Date(date) : undefined
+      date ? new Date(date) : undefined,
+      selectedWalletId
     );
 
     return NextResponse.json({

@@ -31,6 +31,13 @@ import {
 interface AnalyticsData {
   date: string;
   value: number;
+  income?: number;
+  expenses?: number;
+  savings?: number;
+  investments?: number;
+  net?: number;
+  total_assets?: number;
+  top_expenses?: Array<{category: string, amount: number, count: number}>;
 }
 
 
@@ -38,6 +45,22 @@ const chartConfig = {
   value: {
     label: "Value",
     color: "#10b981", // emerald-500 - Fundy green
+  },
+  total_assets: {
+    label: "Assets",
+    color: "#10b981", // Green color for assets
+  },
+  expenses: {
+    label: "Expenses",
+    color: "#ef4444", // Red color for expenses
+  },
+  savings: {
+    label: "Savings",
+    color: "#eab308", // Yellow color for savings
+  },
+  income: {
+    label: "Income",
+    color: "#3b82f6", // Blue color for income
   },
 } satisfies ChartConfig
 
@@ -48,10 +71,11 @@ interface TrendsChartProps {
 export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
   const { fetchTrends, state } = useFinancialData()
   const [timeRange, setTimeRange] = React.useState("month")
-  const [dataType, setDataType] = React.useState("savings")
+  const [dataType, setDataType] = React.useState("total_assets")
   const [analyticsData, setAnalyticsData] = React.useState<AnalyticsData[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [isUpdating, setIsUpdating] = React.useState(false)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -62,143 +86,156 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
     }).format(amount);
   };
 
-  // Fetch real analytics data from API
-  const fetchAnalyticsData = React.useCallback(async () => {
+  // Calculate analytics data from context (same as Financial Summary)
+  const calculateAnalyticsData = React.useCallback(() => {
     try {
-      setLoading(true)
       setError(null)
       
-      // Map timeRange to API format
-      const apiRange = timeRange === 'week' ? '7d' : 'current_month'
+      // Get data from context (same as Financial Summary)
+      const { wallets, savings, income, expenses, investments } = state.data
       
-      const response = await fetch(`/api/expenses/trends?range=${apiRange}`)
+      // Calculate total assets (same logic as Financial Summary)
+      const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0)
+      const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0)
+      const totalInvestments = (investments || []).reduce((sum: number, inv: any) => sum + parseFloat(inv.amount), 0)
+      const totalAssets = walletBalance + totalSavings + totalInvestments
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch trends data')
+      // Calculate other totals
+      const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0)
+      const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0)
+      
+      // Create data points for the selected time range
+      const now = new Date()
+      let startDate: Date
+      let endDate: Date
+      
+      if (timeRange === 'week') {
+        endDate = new Date()
+        startDate = new Date()
+        startDate.setDate(startDate.getDate() - 6) // 7 days total including today
+      } else { // month
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
       }
       
-      const result = await response.json()
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch trends data')
+      // Generate date series
+      const dateSeries = []
+      const currentDate = new Date(startDate)
+      while (currentDate <= endDate) {
+        dateSeries.push(new Date(currentDate))
+        currentDate.setDate(currentDate.getDate() + 1)
       }
       
-      // Debug: Log the received data
-      console.log('Trends API response for', timeRange, ':', result.data)
-      
-      // Handle empty data case
-      if (!result.data || result.data.length === 0) {
-        console.log('No trends data available')
-        setAnalyticsData([])
-        return
-      }
-      
-      // Ensure we have at least 2 data points for proper chart rendering
-      if (result.data.length === 1) {
-        console.log('Only 1 data point available, duplicating for chart visibility')
-        const singlePoint = result.data[0]
-        result.data.push({
-          ...singlePoint,
-          date: new Date(new Date(singlePoint.date).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] // Add 1 day
-        })
-      }
-      
-      // Transform API data to chart format
-      const transformedData = result.data.map((item: any) => {
-        // Handle date parsing more safely
-        let date: Date
-        try {
-          // Try parsing the date string directly
-          date = new Date(item.date)
+      // Transform to chart format
+      const transformedData = dateSeries.map((date, index) => {
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        const displayDate = `${month}/${day}`
+        const dateString = date.toISOString().split('T')[0]
+        
+        // Calculate daily amounts for each date
+        let dailyValue = 0
+        let dailyIncome = 0
+        let dailyExpenses = 0
+        let dailySavings = 0
+        
+        if (dataType === 'total_assets') {
+          // For assets, use the same calculation as Financial Summary
+          // Total assets = wallet balance + savings + investments
+          // But for historical data, we need to calculate cumulative values
           
-          // Check if the date is valid
-          if (isNaN(date.getTime())) {
-            // If invalid, try parsing as ISO string
-            date = new Date(item.date + 'T00:00:00')
-            if (isNaN(date.getTime())) {
-              console.warn('Invalid date:', item.date)
-              date = new Date() // Fallback to current date
-            }
+          // Find the earliest transaction date
+          const allDates = [
+            ...income.map(item => new Date(item.date).toISOString().split('T')[0]),
+            ...expenses.map(item => new Date(item.date).toISOString().split('T')[0]),
+            ...savings.map(item => new Date(item.date).toISOString().split('T')[0]),
+            ...(investments || []).map(item => new Date(item.date).toISOString().split('T')[0])
+          ].filter(Boolean).sort()
+          
+          const earliestDate = allDates.length > 0 ? allDates[0] : null
+          
+          // If this date is before any transactions, show 0
+          if (earliestDate && dateString < earliestDate) {
+            dailyValue = 0
+          } else {
+            // For now, show current total assets for all dates
+            // This matches the Financial Summary calculation exactly
+            dailyValue = totalAssets
           }
-        } catch (error) {
-          console.warn('Date parsing error:', error, 'for date:', item.date)
-          date = new Date() // Fallback to current date
-        }
-        
-        let displayDate: string
-        
-        if (timeRange === 'week') {
-          // For weekly view, show actual dates (MM/DD format)
-          const month = String(date.getMonth() + 1).padStart(2, '0')
-          const day = String(date.getDate()).padStart(2, '0')
-          displayDate = `${month}/${day}`
         } else {
-          // For monthly view, show actual dates (MM/DD format)
-          const month = String(date.getMonth() + 1).padStart(2, '0')
-          const day = String(date.getDate()).padStart(2, '0')
-          displayDate = `${month}/${day}`
+          // For income, expenses, savings - calculate daily amounts
+          if (dataType === 'income') {
+            dailyIncome = income
+              .filter(item => {
+                const itemDate = new Date(item.date).toISOString().split('T')[0]
+                // Exclude initial wallet balance transactions
+                const isInitialBalance = item.description && (
+                  item.description.toLowerCase().includes('initial balance') ||
+                  item.description.toLowerCase().includes('wallet creation') ||
+                  item.description.toLowerCase().includes('starting balance')
+                )
+                return itemDate === dateString && !isInitialBalance
+              })
+              .reduce((sum, item) => sum + parseFloat(item.amount), 0)
+            dailyValue = dailyIncome
+          } else if (dataType === 'expense') {
+            dailyExpenses = expenses
+              .filter(item => {
+                const itemDate = new Date(item.date).toISOString().split('T')[0]
+                return itemDate === dateString
+              })
+              .reduce((sum, item) => sum + parseFloat(item.amount), 0)
+            dailyValue = dailyExpenses
+          } else if (dataType === 'savings') {
+            dailySavings = savings
+              .filter(item => {
+                const itemDate = new Date(item.date).toISOString().split('T')[0]
+                return itemDate === dateString
+              })
+              .reduce((sum, item) => sum + parseFloat(item.amount), 0)
+            dailyValue = dailySavings
+          }
         }
         
-        // Choose value based on dataType
-        let value = 0
-        if (dataType === 'savings') {
-          value = item.net || 0 // Net savings (income - expenses)
-        } else if (dataType === 'expense') {
-          value = item.expenses || 0
-        }
-        
-        // Convert to thousands for better chart display
         return {
           date: displayDate,
-          fullDate: item.date, // Keep original date for tooltip
-          value: Math.max(0, value / 1000) // Convert to thousands, ensure non-negative
+          fullDate: dateString,
+          value: Math.max(0, dailyValue / 1000), // Convert to thousands
+          income: dailyIncome,
+          expenses: dailyExpenses,
+          savings: dailySavings,
+          investments: totalInvestments, // Keep total for investments
+          net: dailyIncome - dailyExpenses,
+          total_assets: totalAssets, // Keep total for assets
+          top_expenses: []
         }
       })
       
-      // Sort data by date to ensure proper chronological order
-      const sortedData = transformedData.sort((a: any, b: any) => {
-        const dateA = new Date(a.fullDate || a.date)
-        const dateB = new Date(b.fullDate || b.date)
-        return dateA.getTime() - dateB.getTime()
-      })
-      
-      // Filter out any invalid data points
-      const validData = sortedData.filter((item: any) => 
-        item.value !== undefined && 
-        item.value !== null && 
-        !isNaN(item.value) &&
-        item.date && 
-        item.date.trim() !== ''
-      )
-      
-      // For very few data points, ensure minimum visibility
-      if (validData.length > 0 && validData.length < 3) {
-        console.log('Few data points detected, ensuring visibility')
-        // Add a small baseline value to make the chart more visible
-        validData.forEach((item: any) => {
-          if (item.value === 0) {
-            item.value = 0.1 // Small non-zero value for visibility
-          }
-        })
-      }
-      
-      // Debug: Log the transformed data
-      console.log('Transformed data for chart:', validData)
-      console.log('Data points count:', validData.length)
-      
-      setAnalyticsData(validData)
+      setAnalyticsData(transformedData)
+      setLoading(false) // Ensure loading is set to false
     } catch (err) {
-      setError('Failed to fetch analytics data')
-      console.error('Error fetching analytics data:', err)
-    } finally {
-      setLoading(false)
+      setError('Failed to calculate analytics data')
+      console.error('Error calculating analytics data:', err)
+      setLoading(false) // Ensure loading is set to false even on error
     }
-  }, [timeRange, dataType])
+  }, [timeRange, dataType, state.data.wallets, state.data.savings, state.data.income, state.data.expenses, state.data.investments])
 
-  // Fetch data on component mount or when filters change
+  // Calculate data when component mounts or when filters change
   React.useEffect(() => {
-    fetchAnalyticsData()
-  }, [fetchAnalyticsData])
+    if (!state.loading.initial) {
+      setLoading(true)
+      calculateAnalyticsData()
+    }
+  }, [timeRange, dataType, state.loading.initial])
+
+  // Refresh data when context data changes (like other components)
+  React.useEffect(() => {
+    // Only refresh if we have data and it's not the initial load
+    if (!state.loading.initial && !loading && (state.data.wallets?.length > 0 || state.data.savings?.length > 0 || state.data.investments?.length > 0)) {
+      setIsUpdating(true)
+      calculateAnalyticsData()
+    }
+  }, [state.data.wallets, state.data.savings, state.data.investments, state.data.expenses, state.data.income, state.loading.initial, loading])
 
   // Calculate peak value for highlighting
   const peakValue = analyticsData.length > 0 ? Math.max(...analyticsData.map(d => d.value)) : 0
@@ -211,41 +248,51 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
   const yAxisMin = Math.max(0, Math.floor(minValue * 0.8)) // Add some padding below minimum
 
   return (
-    <Card className="bg-white dark:from-slate-800 dark:via-slate-700 dark:to-slate-800 border-slate-200 dark:border-slate-700 h-full flex flex-col">
-      <CardHeader className={`flex items-center gap-2 space-y-0 border-b border-slate-200 dark:border-slate-700 sm:flex-row flex-shrink-0 ${
+    <Card className="bg-white dark:bg-neutral-900 border-neutral-200 dark:border-transparent h-full flex flex-col">
+      <CardHeader className={`flex items-center gap-2 space-y-0 border-b border-neutral-200 dark:border-transparent sm:flex-row flex-shrink-0 ${
         widgetSize === 'square' ? 'py-2 px-3' : 'py-3 px-6'
       }`}>
         <div className="grid flex-1 gap-1 min-w-0">
-          <CardTitle className={`text-slate-900 dark:text-white ${
+          <CardTitle className={`text-neutral-900 dark:text-neutral-100 ${
             widgetSize === 'square' ? 'text-sm' :
             widgetSize === 'half' ? 'text-base' : 'text-lg'
-          } truncate`}>Analytics</CardTitle>
+          } truncate flex items-center gap-2`}>
+            {dataType === 'total_assets' ? 'Assets' :
+             dataType === 'savings' ? 'Savings' :
+             dataType === 'expense' ? 'Expenses' :
+             dataType === 'income' ? 'Income' : 'Analytics'}
+            {isUpdating && (
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+            )}
+          </CardTitle>
         </div>
         <div className="flex gap-2">
           <Select value={dataType} onValueChange={setDataType}>
             <SelectTrigger
               className={`${
                 widgetSize === 'square' ? 'w-[90px]' : 'w-[120px]'
-              } rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs flex-shrink-0 min-w-0`}
+              } rounded-lg border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-xs flex-shrink-0 min-w-0`}
               aria-label="Select data type"
             >
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
-            <SelectContent className="rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 min-w-[120px]">
+            <SelectContent className="rounded-xl border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 min-w-[120px]">
+              <SelectItem value="total_assets" className="rounded-lg text-xs cursor-pointer">Assets</SelectItem>
               <SelectItem value="savings" className="rounded-lg text-xs cursor-pointer">Savings</SelectItem>
-              <SelectItem value="expense" className="rounded-lg text-xs cursor-pointer">Expense</SelectItem>
+              <SelectItem value="expense" className="rounded-lg text-xs cursor-pointer">Expenses</SelectItem>
+              <SelectItem value="income" className="rounded-lg text-xs cursor-pointer">Income</SelectItem>
             </SelectContent>
           </Select>
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger
               className={`${
                 widgetSize === 'square' ? 'w-[70px]' : 'w-[100px]'
-              } rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs flex-shrink-0 min-w-0`}
+              } rounded-lg border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-xs flex-shrink-0 min-w-0`}
               aria-label="Select time range"
             >
               <SelectValue placeholder="Select range" />
             </SelectTrigger>
-            <SelectContent className="rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 min-w-[100px]">
+            <SelectContent className="rounded-xl border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 min-w-[100px]">
               <SelectItem value="week" className="rounded-lg text-xs cursor-pointer">Week</SelectItem>
               <SelectItem value="month" className="rounded-lg text-xs cursor-pointer">Month</SelectItem>
             </SelectContent>
@@ -257,7 +304,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
       }`}>
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
-            <div className="text-sm text-slate-600 dark:text-slate-300">Loading analytics...</div>
+            <div className="text-sm text-neutral-600 dark:text-neutral-300">Loading analytics...</div>
           </div>
         ) : error ? (
           <div className="flex-1 flex items-center justify-center">
@@ -266,8 +313,8 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
         ) : analyticsData.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-sm text-slate-500 dark:text-slate-400 mb-2">No data available</div>
-              <div className="text-xs text-slate-400 dark:text-slate-500">Start tracking expenses to see trends</div>
+              <div className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">No data available</div>
+              <div className="text-xs text-neutral-400 dark:text-neutral-500">Start tracking expenses to see trends</div>
             </div>
           </div>
         ) : (
@@ -280,6 +327,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
             <AreaChart 
               data={analyticsData}
               margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
+              className={`transition-all duration-500 ease-in-out ${isUpdating ? 'opacity-80' : 'opacity-100'}`}
             >
             <defs>
               <linearGradient id="fillValue" x1="0" y1="0" x2="0" y2="1">
@@ -291,6 +339,54 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                 <stop
                   offset="95%"
                   stopColor="var(--color-value)"
+                  stopOpacity={0.1}
+                />
+              </linearGradient>
+              <linearGradient id="fillExpenses" x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="5%"
+                  stopColor="var(--color-expenses)"
+                  stopOpacity={0.8}
+                />
+                <stop
+                  offset="95%"
+                  stopColor="var(--color-expenses)"
+                  stopOpacity={0.1}
+                />
+              </linearGradient>
+              <linearGradient id="fillSavings" x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="5%"
+                  stopColor="var(--color-savings)"
+                  stopOpacity={0.8}
+                />
+                <stop
+                  offset="95%"
+                  stopColor="var(--color-savings)"
+                  stopOpacity={0.1}
+                />
+              </linearGradient>
+              <linearGradient id="fillIncome" x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="5%"
+                  stopColor="var(--color-income)"
+                  stopOpacity={0.8}
+                />
+                <stop
+                  offset="95%"
+                  stopColor="var(--color-income)"
+                  stopOpacity={0.1}
+                />
+              </linearGradient>
+              <linearGradient id="fillAssets" x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="5%"
+                  stopColor="var(--color-total_assets)"
+                  stopOpacity={0.8}
+                />
+                <stop
+                  offset="95%"
+                  stopColor="var(--color-total_assets)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
@@ -343,12 +439,23 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                   }
                 };
                 
+                // Determine tooltip color and content based on data type
+                const isExpense = dataType === 'expense';
+                const isAssets = dataType === 'total_assets';
+                const isSavings = dataType === 'savings';
+                const isIncome = dataType === 'income';
+                
+                const bgColor = isExpense ? 'bg-red-600' : 
+                               isAssets ? 'bg-emerald-600' :
+                               isSavings ? 'bg-yellow-600' :
+                               isIncome ? 'bg-blue-600' : 'bg-emerald-600';
+                
                 return (
-                  <div className="bg-emerald-600 text-white rounded-lg shadow-lg p-3 min-w-[140px] text-center">
+                  <div className={`${bgColor} text-white rounded-lg shadow-lg p-3 min-w-[200px]`}>
                     <div className="text-xs opacity-90 mb-1">
                       {data?.fullDate ? formatDate(data.fullDate) : label}
                     </div>
-                    <div className="text-sm font-medium">
+                    <div className="text-sm font-medium mb-2">
                       {new Intl.NumberFormat('id-ID', {
                         style: 'currency',
                         currency: 'IDR',
@@ -356,9 +463,34 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                         maximumFractionDigits: 0,
                       }).format(Number(entry.value) * 1000)}
                     </div>
-                    <div className="text-xs opacity-80">
-                      {dataType === 'savings' ? 'Net Savings' : 'Expenses'}
+                    <div className="text-xs opacity-80 mb-2">
+                      {dataType === 'total_assets' ? 'Assets' :
+                       dataType === 'savings' ? 'Savings' :
+                       dataType === 'expense' ? 'Expenses' :
+                       dataType === 'income' ? 'Income' : 'Assets'}
                     </div>
+                    
+                    {/* Show top 3 expense categories for expense charts */}
+                    {isExpense && data?.top_expenses && data.top_expenses.length > 0 && (
+                      <div className="border-t border-white/20 pt-2 mt-2">
+                        <div className="text-xs opacity-90 mb-1">Top Categories:</div>
+                        {data.top_expenses.slice(0, 3).map((category: any, index: number) => (
+                          <div key={index} className="text-xs opacity-80 flex justify-between">
+                            <span className="truncate max-w-[120px]" title={category.category}>
+                              {category.category}
+                            </span>
+                            <span className="ml-2">
+                              {new Intl.NumberFormat('id-ID', {
+                                style: 'currency',
+                                currency: 'IDR',
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              }).format(category.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               }}
@@ -366,10 +498,20 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
             <Area
               dataKey="value"
               type="monotone"
-              fill="url(#fillValue)"
-              stroke="var(--color-value)"
+              fill={dataType === 'expense' ? "url(#fillExpenses)" : 
+                    dataType === 'savings' ? "url(#fillSavings)" : 
+                    dataType === 'income' ? "url(#fillIncome)" :
+                    dataType === 'total_assets' ? "url(#fillAssets)" :
+                    "url(#fillValue)"}
+              stroke={dataType === 'expense' ? "var(--color-expenses)" : 
+                     dataType === 'savings' ? "var(--color-savings)" : 
+                     dataType === 'income' ? "var(--color-income)" :
+                     dataType === 'total_assets' ? "var(--color-total_assets)" :
+                     "var(--color-value)"}
               strokeWidth={2}
               fillOpacity={0.6}
+              animationDuration={500}
+              animationEasing="ease-in-out"
             />
             </AreaChart>
           </ChartContainer>

@@ -13,6 +13,7 @@ interface Transaction {
   created_at: string;
   updated_at: string;
   type: 'income' | 'expense' | 'savings';
+  wallet_id?: number;
 }
 
 interface Budget {
@@ -31,6 +32,7 @@ interface FinancialData {
   income: any[];
   savings: any[];
   investments: any[];
+  wallets: any[];
   lastUpdated: {
     transactions: number;
     budgets: number;
@@ -38,6 +40,7 @@ interface FinancialData {
     income: number;
     savings: number;
     investments: number;
+    wallets: number;
   };
 }
 
@@ -51,6 +54,7 @@ interface FinancialDataState {
     income: boolean;
     savings: boolean;
     investments: boolean;
+    wallets: boolean;
   };
   error: string | null;
 }
@@ -65,6 +69,7 @@ type FinancialDataAction =
   | { type: 'SET_INCOME'; payload: any[] }
   | { type: 'SET_SAVINGS'; payload: any[] }
   | { type: 'SET_INVESTMENTS'; payload: any[] }
+  | { type: 'SET_WALLETS'; payload: any[] }
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
   | { type: 'DELETE_TRANSACTION'; payload: string | number }
@@ -73,77 +78,35 @@ type FinancialDataAction =
   | { type: 'DELETE_BUDGET'; payload: string }
   | { type: 'REFRESH_ALL' };
 
-// Helper function to load cached data
-const loadCachedData = (): Partial<FinancialDataState> => {
-  if (typeof window === 'undefined') return {};
-  
-  try {
-    const cached = localStorage.getItem('financial-data-cache');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      // Check if cache is less than 5 minutes old
-      if (Date.now() - parsed.timestamp < 5 * 60 * 1000) {
-        return {
-          data: parsed.data,
-          loading: {
-            initial: false,
-            transactions: false,
-            budgets: false,
-            expenses: false,
-            income: false,
-            savings: false,
-            investments: false,
-          }
-        };
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to load cached data:', error);
-  }
-  return {};
-};
-
-// Helper function to save data to cache
-const saveCachedData = (data: FinancialData) => {
-  if (typeof window === 'undefined') return;
-  
-  try {
-    localStorage.setItem('financial-data-cache', JSON.stringify({
-      data,
-      timestamp: Date.now()
-    }));
-  } catch (error) {
-    console.warn('Failed to save cached data:', error);
-  }
-};
-
-// Initial state with cached data
-const cachedData = loadCachedData();
+// Initial state without caching
 const initialState: FinancialDataState = {
   data: {
-    transactions: cachedData.data?.transactions || [],
-    budgets: cachedData.data?.budgets || [],
-    expenses: cachedData.data?.expenses || [],
-    income: cachedData.data?.income || [],
-    savings: cachedData.data?.savings || [],
-    investments: cachedData.data?.investments || [],
-    lastUpdated: cachedData.data?.lastUpdated || {
+    transactions: [],
+    budgets: [],
+    expenses: [],
+    income: [],
+    savings: [],
+    investments: [],
+    wallets: [],
+    lastUpdated: {
       transactions: 0,
       budgets: 0,
       expenses: 0,
       income: 0,
       savings: 0,
       investments: 0,
+      wallets: 0,
     },
   },
   loading: {
-    initial: false, // Never show initial loading - always show dashboard immediately
+    initial: true, // Show initial loading since we're not using cache
     transactions: false,
     budgets: false,
     expenses: false,
     income: false,
     savings: false,
     investments: false,
+    wallets: false,
   },
   error: null,
 };
@@ -167,7 +130,7 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
       };
 
     case 'SET_TRANSACTIONS':
-      const newStateTransactions = {
+      return {
         ...state,
         data: {
           ...state.data,
@@ -178,11 +141,9 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
-      saveCachedData(newStateTransactions.data);
-      return newStateTransactions;
 
     case 'SET_BUDGETS':
-      const newStateBudgets = {
+      return {
         ...state,
         data: {
           ...state.data,
@@ -193,11 +154,9 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
-      saveCachedData(newStateBudgets.data);
-      return newStateBudgets;
 
     case 'SET_EXPENSES':
-      const newStateExpenses = {
+      return {
         ...state,
         data: {
           ...state.data,
@@ -208,11 +167,9 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
-      saveCachedData(newStateExpenses.data);
-      return newStateExpenses;
 
     case 'SET_INCOME':
-      const newStateIncome = {
+      return {
         ...state,
         data: {
           ...state.data,
@@ -223,11 +180,9 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
-      saveCachedData(newStateIncome.data);
-      return newStateIncome;
 
     case 'SET_SAVINGS':
-      const newStateSavings = {
+      return {
         ...state,
         data: {
           ...state.data,
@@ -238,11 +193,9 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
-      saveCachedData(newStateSavings.data);
-      return newStateSavings;
 
     case 'SET_INVESTMENTS':
-      const newStateInvestments = {
+      return {
         ...state,
         data: {
           ...state.data,
@@ -253,8 +206,19 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           },
         },
       };
-      saveCachedData(newStateInvestments.data);
-      return newStateInvestments;
+
+    case 'SET_WALLETS':
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          wallets: action.payload,
+          lastUpdated: {
+            ...state.data.lastUpdated,
+            wallets: Date.now(),
+          },
+        },
+      };
 
     case 'ADD_TRANSACTION':
       return {
@@ -350,6 +314,7 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
             income: Date.now(),
             savings: Date.now(),
             investments: Date.now(),
+            wallets: Date.now(),
           },
         },
       };
@@ -364,12 +329,13 @@ interface FinancialDataContextType {
   state: FinancialDataState;
   dispatch: React.Dispatch<FinancialDataAction>;
   // Data fetchers
-  fetchTransactions: () => Promise<void>;
+  fetchTransactions: (showLoading?: boolean) => Promise<void>;
   fetchBudgets: () => Promise<void>;
   fetchExpenses: () => Promise<void>;
   fetchIncome: () => Promise<void>;
   fetchSavings: () => Promise<void>;
   fetchInvestments: () => Promise<void>;
+  fetchWallets: () => Promise<void>;
   fetchTrends: (timeRange: string) => Promise<any>;
   // Transaction actions
   deleteTransaction: (id: string | number, type: 'income' | 'expense') => Promise<boolean>;
@@ -385,6 +351,8 @@ interface FinancialDataContextType {
   deleteBudget: (category: string) => Promise<boolean>;
   // Refresh function
   refreshAll: () => Promise<void>;
+  // Transaction refresh function
+  refreshAfterTransaction: () => Promise<void>;
 }
 
 const FinancialDataContext = createContext<FinancialDataContextType | null>(null);
@@ -431,14 +399,16 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         dispatch({ type: 'SET_LOADING', payload: { key: 'transactions', value: true } });
       }
       
-      const [expensesResponse, incomeResponse] = await Promise.all([
+      const [expensesResponse, incomeResponse, savingsResponse] = await Promise.all([
         fetchWithRetry('/api/expenses?limit=50'),
-        fetchWithRetry('/api/income?limit=50')
+        fetchWithRetry('/api/income?limit=50'),
+        fetchWithRetry('/api/savings?limit=50')
       ]);
 
-      const [expensesData, incomeData] = await Promise.all([
+      const [expensesData, incomeData, savingsData] = await Promise.all([
         expensesResponse.json(),
-        incomeResponse.json()
+        incomeResponse.json(),
+        savingsResponse.json()
       ]);
 
       let allTransactions: Transaction[] = [];
@@ -448,7 +418,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
           ...expense,
           id: `expense-${expense.id}`, // Make ID unique by prefixing type
           type: 'expense' as const,
-          category: expense.category
+          category: expense.category,
+          wallet_id: expense.wallet_id // Preserve wallet information
         }));
         allTransactions = [...allTransactions, ...expenseTransactions];
       }
@@ -458,9 +429,21 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
           ...income,
           id: `income-${income.id}`, // Make ID unique by prefixing type
           type: 'income' as const,
-          category: income.source
+          category: income.source,
+          wallet_id: income.wallet_id // Preserve wallet information
         }));
         allTransactions = [...allTransactions, ...incomeTransactions];
+      }
+
+      if (savingsData.success) {
+        const savingsTransactions = savingsData.data.map((saving: any) => ({
+          ...saving,
+          id: `savings-${saving.id}`, // Make ID unique by prefixing type
+          type: 'savings' as const,
+          category: saving.goal_name || 'Savings', // Use goal_name as category
+          wallet_id: saving.wallet_id // Preserve wallet information
+        }));
+        allTransactions = [...allTransactions, ...savingsTransactions];
       }
 
       allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -477,6 +460,16 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
 
   const fetchBudgets = useCallback(async (showLoading = false) => {
     if (!session) return;
+    
+    // Check if we have recent budget data (within last 2 minutes) to avoid unnecessary requests
+    const now = Date.now();
+    const lastUpdated = state.data.lastUpdated.budgets;
+    const isRecent = (now - lastUpdated) < 2 * 60 * 1000; // 2 minutes
+    
+    if (isRecent && state.data.budgets.length > 0 && !showLoading) {
+      console.log('Using cached budget data');
+      return;
+    }
     
     try {
       if (showLoading) {
@@ -500,7 +493,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         dispatch({ type: 'SET_LOADING', payload: { key: 'budgets', value: false } });
       }
     }
-  }, [session]);
+  }, [session, state.data.lastUpdated.budgets]);
 
   const fetchExpenses = useCallback(async (showLoading = false) => {
     if (!session) return;
@@ -598,6 +591,30 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }
   }, [session]);
 
+  const fetchWallets = useCallback(async (showLoading = false) => {
+    if (!session) return;
+    
+    try {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'wallets', value: true } });
+      }
+      
+      const response = await fetchWithRetry('/api/wallets');
+      
+      const data = await response.json();
+      if (data.success) {
+        dispatch({ type: 'SET_WALLETS', payload: data.data || [] });
+      }
+    } catch (error) {
+      console.error('Error fetching wallets:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load wallets' });
+    } finally {
+      if (showLoading) {
+        dispatch({ type: 'SET_LOADING', payload: { key: 'wallets', value: false } });
+      }
+    }
+  }, [session]);
+
   const fetchTrends = useCallback(async (timeRange: string) => {
     try {
       const response = await fetch(`/api/expenses/trends?range=${timeRange}`);
@@ -660,8 +677,15 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       console.log('Context: Budget API success response:', data);
       
       if (data.success) {
-        // Refresh budgets data
-        await fetchBudgets(false);
+        // Update budget in local state immediately for instant UI feedback
+        const updatedBudget = {
+          ...data.data,
+          spent: 0 // Will be updated when we refresh
+        };
+        dispatch({ type: 'UPDATE_BUDGET', payload: updatedBudget });
+        
+        // Refresh budgets data in background to get accurate spending
+        setTimeout(() => fetchBudgets(false), 100);
         return true;
       }
       return false;
@@ -742,7 +766,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
           fetchExpenses(false),
           fetchIncome(false),
           fetchSavings(false),
-          fetchInvestments(false)
+          fetchInvestments(false),
+          fetchWallets(false)
         ]);
         
         return true;
@@ -788,7 +813,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
           fetchExpenses(false),
           fetchIncome(false),
           fetchSavings(false),
-          fetchInvestments(false)
+          fetchInvestments(false),
+          fetchWallets(false)
         ]);
         
         return true;
@@ -891,7 +917,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         fetchExpenses(false),
         fetchIncome(false),
         fetchSavings(false),
-        fetchInvestments(false)
+        fetchInvestments(false),
+        fetchWallets(false)
       ]);
       
       dispatch({ type: 'REFRESH_ALL' });
@@ -900,7 +927,23 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } finally {
       isRefreshing.current = false;
     }
-  }, [fetchTransactions, fetchBudgets, fetchExpenses, fetchIncome, fetchSavings]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refresh function specifically for after adding transactions
+  const refreshAfterTransaction = useCallback(async () => {
+    try {
+      // Refresh all data including wallets and savings to show updated balances
+      await Promise.all([
+        fetchTransactions(false),
+        fetchExpenses(false),
+        fetchIncome(false),
+        fetchSavings(false),
+        fetchWallets(false)
+      ]);
+    } catch (error) {
+      console.error('Error refreshing after transaction:', error);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial data load with progressive loading
   useEffect(() => {
@@ -915,6 +958,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         dispatch({ type: 'SET_INCOME', payload: [] });
         dispatch({ type: 'SET_SAVINGS', payload: [] });
         dispatch({ type: 'SET_INVESTMENTS', payload: [] });
+        dispatch({ type: 'SET_WALLETS', payload: [] });
         dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: false } });
         return;
       }
@@ -922,31 +966,34 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       // Always show dashboard immediately - no initial loading state
       
       try {
-        // Load all data in parallel for balanced loading across left and right sides
-        // Only show loading states for initial load (when no cached data exists)
-        const hasCachedData = state.data.transactions.length > 0 || 
-                             state.data.expenses.length > 0 || 
-                             state.data.income.length > 0;
-        
+        // Prioritize budget data for faster loading
         await Promise.all([
-          fetchTransactions(!hasCachedData), // Show loading only if no cached data
-          fetchExpenses(!hasCachedData),
-          fetchIncome(!hasCachedData),
-          fetchBudgets(!hasCachedData),
-          fetchSavings(!hasCachedData),
-          fetchInvestments(!hasCachedData)
+          fetchBudgets(true), // Load budgets first for immediate display
+          fetchWallets(true), // Load wallets for balance calculations
         ]);
         
-        // All data loaded - components will transition from skeleton to content
+        // Load other data in background
+        await Promise.all([
+          fetchTransactions(false), // No loading state for background
+          fetchExpenses(false),
+          fetchIncome(false),
+          fetchSavings(false),
+          fetchInvestments(false)
+        ]);
+        
+        // Clear initial loading state after successful data load
+        dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: false } });
         
       } catch (error) {
         console.error('Error loading initial data:', error);
         dispatch({ type: 'SET_ERROR', payload: 'Failed to load financial data' });
+        // Clear initial loading state even on error
+        dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: false } });
       }
     };
 
     loadInitialData();
-  }, [session, status, fetchTransactions, fetchBudgets, fetchExpenses, fetchIncome, fetchSavings, fetchInvestments, state.data.transactions.length, state.data.expenses.length, state.data.income.length]);
+  }, [session, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Background refresh every 5 minutes
   useEffect(() => {
@@ -958,7 +1005,8 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }, 5 * 60 * 1000); // 5 minutes
     
     return () => clearInterval(interval);
-  }, [session, refreshAll]);
+  }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const contextValue: FinancialDataContextType = {
     state,
@@ -969,6 +1017,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     fetchIncome,
     fetchSavings,
     fetchInvestments,
+    fetchWallets,
     fetchTrends,
     deleteTransaction,
     updateTransaction,
@@ -979,6 +1028,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     saveBudget,
     deleteBudget,
     refreshAll,
+    refreshAfterTransaction,
   };
 
   return (

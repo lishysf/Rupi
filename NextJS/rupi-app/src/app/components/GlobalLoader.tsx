@@ -14,14 +14,14 @@ export default function GlobalLoader({ children }: GlobalLoaderProps) {
   // Only show loading screen for session authentication
   if (status === 'loading' || !session) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="text-center">
           {/* Logo */}
           <div className="mb-8">
             <div className="text-4xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
               Fundy
             </div>
-            <div className="text-slate-600 dark:text-slate-400">
+            <div className="text-muted-foreground">
               Your Personal Finance Dashboard
             </div>
           </div>
@@ -35,7 +35,7 @@ export default function GlobalLoader({ children }: GlobalLoaderProps) {
             </div>
 
             {/* Loading Text */}
-            <div className="text-slate-600 dark:text-slate-400 text-sm">
+            <div className="text-muted-foreground text-sm">
               Authenticating...
             </div>
           </div>
