@@ -43,7 +43,7 @@ interface RecentTransactionsProps {
 }
 
 export default function RecentTransactions({ widgetSize = 'long' }: RecentTransactionsProps) {
-  const { state, deleteTransaction, updateTransaction, deleteSavings, updateSavings, fetchSavings, updateInvestment, fetchInvestments, deleteInvestment } = useFinancialData();
+  const { state, deleteTransaction, updateTransaction, deleteSavings, updateSavings, updateInvestment, deleteInvestment, fetchTransactions } = useFinancialData();
   const { transactions, savings } = state.data as any;
   const loading = state.loading.initial && transactions.length === 0;
   const [error, setError] = useState<string | null>(null);
@@ -71,18 +71,26 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       setError(null);
       
       if (transaction.type === 'savings') {
-        const success = await deleteSavings(transaction.id);
+        // Extract original ID from prefixed ID (e.g., "savings-1" -> 1)
+        const originalId = typeof transaction.id === 'string' 
+          ? parseInt((transaction.id as string).split('-')[1]) 
+          : transaction.id as number;
+        const success = await deleteSavings(originalId);
         if (!success) {
           setError('Failed to delete savings transaction');
         } else {
-          await fetchSavings();
+          await fetchTransactions();
         }
       } else if (transaction.type === 'investment') {
-        const success = await deleteInvestment(transaction.id);
+        // Extract original ID from prefixed ID (e.g., "investment-1" -> 1)
+        const originalId = typeof transaction.id === 'string' 
+          ? parseInt((transaction.id as string).split('-')[1]) 
+          : transaction.id as number;
+        const success = await deleteInvestment(originalId);
         if (!success) {
           setError('Failed to delete investment transaction');
         } else {
-          await fetchInvestments();
+          await fetchTransactions();
         }
       } else {
         const success = await deleteTransaction(transaction.id, transaction.type);
@@ -118,28 +126,36 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   const handleSaveEdit = async (id: number, type: 'income' | 'expense', data: any) => {
     try {
       setError(null);
-      const original = allTransactions.find(t => t.id === id);
+      const original = allTransactions.find((t: any) => t.id === id);
       let success = false;
       if (original?.type === 'savings') {
+        // Extract original ID from prefixed ID
+        const originalId = typeof id === 'string' 
+          ? parseInt((id as string).split('-')[1]) 
+          : id as number;
         // Map modal data to savings fields
         const payload = {
           description: data.description,
           amount: data.amount,
           goalName: data.category,
         };
-        success = await updateSavings(id, payload);
+        success = await updateSavings(originalId, payload);
         if (success) {
-          await fetchSavings();
+          await fetchTransactions();
         }
       } else if (original?.type === 'investment') {
+        // Extract original ID from prefixed ID
+        const originalId = typeof id === 'string' 
+          ? parseInt((id as string).split('-')[1]) 
+          : id as number;
         const payload = {
           description: data.description,
           amount: data.amount,
           assetName: data.category,
         };
-        success = await updateInvestment(id, payload);
+        success = await updateInvestment(originalId, payload);
         if (success) {
-          await fetchInvestments();
+          await fetchTransactions();
         }
       } else {
         success = await updateTransaction(id, type, data);
@@ -235,7 +251,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     // In this case, we'll show the created_at time instead if available
     if (hours === 0 && minutes === 0 && seconds === 0) {
       // Try to get the created_at time from the transaction
-      const transaction = allTransactions.find(t => t.date === dateString);
+      const transaction = allTransactions.find((t: any) => t.date === dateString);
       if (transaction && transaction.created_at) {
         const createdDate = new Date(transaction.created_at);
         return new Intl.DateTimeFormat('id-ID', {
@@ -255,22 +271,15 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     }).format(date);
   };
 
-  // Combine transactions and savings with unique keys
-  const allTransactions = [
-    ...transactions.map((txn: any) => ({
-      ...txn,
-      uniqueKey: `txn_${txn.id}`,
-      type: txn.type as 'income' | 'expense'
-    })),
-    ...savings.map((saving: any) => ({
-      ...saving,
-      uniqueKey: `savings_${saving.id}`,
-      type: 'savings' as const,
-      category: saving.goal_name || 'Savings'
-    }))
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  // Use transactions array which already includes all data (expenses, income, savings)
+  // No need to combine with separate savings array as it causes duplication
+  const allTransactions = transactions.map((txn: any) => ({
+    ...txn,
+    uniqueKey: txn.id, // Use the already unique ID from context
+    type: txn.type as 'income' | 'expense' | 'savings' | 'investment'
+  })).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const filtered = allTransactions.filter(t => {
+  const filtered = allTransactions.filter((t: any) => {
     if (activeFilter === 'all') return true;
     if (activeFilter === 'txn') return t.type === 'income' || t.type === 'expense';
     if (activeFilter === 'savings') return t.type === 'savings';
@@ -307,10 +316,10 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   }
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+    <div className="bg-white dark:bg-neutral-900 rounded-xl sm:rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-3 sm:p-4 lg:p-6 h-full flex flex-col">
+              <div className="flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0">
         <h2 className={`${
-          widgetSize === 'square' ? 'text-base' : 'text-lg'
+          widgetSize === 'square' ? 'text-sm sm:text-base' : 'text-base sm:text-lg'
         } font-semibold text-neutral-900 dark:text-neutral-100`}>
           Recent Transactions
         </h2>
@@ -323,7 +332,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       )}
 
       {/* Filter Tabs */}
-      <div className="mb-3 flex gap-2">
+      <div className="mb-3 flex gap-1 sm:gap-2 overflow-x-auto">
         {[
           { key: 'all', label: 'All' },
           { key: 'txn', label: 'Expense/Income' },
@@ -332,7 +341,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           <button
             key={tab.key}
             onClick={() => setActiveFilter(tab.key as any)}
-            className={`px-3 py-1.5 rounded-lg text-sm border ${
+            className={`px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm border whitespace-nowrap flex-shrink-0 ${
               activeFilter === tab.key
                 ? 'bg-emerald-600 text-white border-emerald-600'
                 : 'bg-white dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 border-neutral-200 dark:border-neutral-600'
@@ -354,7 +363,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
             </p>
           </div>
         ) : (
-          limitedTransactions.map((transaction) => {
+          limitedTransactions.map((transaction: any) => {
           const categoryInfo = getCategoryInfo(transaction.category, transaction.type);
           const IconComponent = categoryInfo.icon;
           const isIncome = transaction.type === 'income';
@@ -365,13 +374,13 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
             <div
               key={transaction.uniqueKey}
               className={`flex items-center justify-between ${
-                widgetSize === 'square' ? 'p-2' : 'p-3'
-              } rounded-xl hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors group`}
+                widgetSize === 'square' ? 'p-2' : 'p-2 sm:p-3'
+              } rounded-lg sm:rounded-xl hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors group`}
             >
               <div className="flex items-center min-w-0 flex-1">
                 <div className={`${
-                  widgetSize === 'square' ? 'p-1.5' : 'p-2'
-                } rounded-lg mr-3 flex-shrink-0 ${
+                  widgetSize === 'square' ? 'p-1.5' : 'p-1.5 sm:p-2'
+                } rounded-lg mr-2 sm:mr-3 flex-shrink-0 ${
                   isIncome 
                     ? 'bg-emerald-100 dark:bg-emerald-900/30' 
                     : isSavings
@@ -379,29 +388,31 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                     : 'bg-neutral-100 dark:bg-neutral-700'
                 }`}>
                   <IconComponent className={`${
-                    widgetSize === 'square' ? 'w-4 h-4' : 'w-5 h-5'
+                    widgetSize === 'square' ? 'w-3 h-3 sm:w-4 sm:h-4' : 'w-4 h-4 sm:w-5 sm:h-5'
                   } ${categoryInfo.color}`} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className={`${
-                    widgetSize === 'square' ? 'text-sm' : 'text-base'
+                    widgetSize === 'square' ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'
                   } font-medium text-neutral-900 dark:text-neutral-100 truncate`}>
                     {transaction.description}
                   </div>
                   {widgetSize !== 'square' && (
-                    <div className="text-sm text-neutral-500 dark:text-neutral-400 flex items-center">
-                      <span className="truncate">{transaction.category}</span>
-                      <span className="mx-1">•</span>
-                      <Calendar className="w-3 h-3 mr-1 flex-shrink-0" />
-                      <span className="flex-shrink-0">{formatDate(transaction.date)}</span>
-                      <span className="mx-1">•</span>
+                    <div className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 flex items-center flex-wrap gap-1">
+                      <span className="truncate max-w-[120px] sm:max-w-none">{transaction.category}</span>
+                      <span className="hidden sm:inline">•</span>
+                      <div className="flex items-center">
+                        <Calendar className="w-3 h-3 mr-1 flex-shrink-0" />
+                        <span className="flex-shrink-0">{formatDate(transaction.date)}</span>
+                      </div>
+                      <span className="hidden sm:inline">•</span>
                       <span className="flex-shrink-0">{formatTime(transaction.date)}</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+              <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 ml-2">
                 {/* Action buttons - shown on hover or for square widgets */}
                 <div className={`flex gap-1 ${
                   widgetSize === 'square' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
@@ -428,16 +439,16 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                 </div>
                 
                 {/* Amount */}
-                <div className="text-right">
+                <div className="text-right min-w-0">
                   <div className={`${
-                    widgetSize === 'square' ? 'text-sm' : 'text-base'
+                    widgetSize === 'square' ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'
                   } font-semibold ${
                     isIncome 
                       ? 'text-emerald-600 dark:text-emerald-400' 
                       : isSavings
                       ? 'text-blue-600 dark:text-blue-400'
                       : 'text-red-600 dark:text-red-400'
-                  }`}>
+                  } break-words`}>
                     {isIncome ? '+' : isSavings ? '💎' : '-'}{formatCurrency(transaction.amount)}
                   </div>
                   {widgetSize === 'square' && (
@@ -454,16 +465,16 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
       {/* Quick Action - Add Activity chooser */}
       {widgetSize !== 'square' && (
-        <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700 flex-shrink-0">
+        <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-neutral-200 dark:border-neutral-700 flex-shrink-0">
           <div className={`${widgetSize === 'half' ? 'w-full' : ''}`}>
             <details className="group">
               <summary className={`list-none cursor-pointer ${
                 widgetSize === 'half' ? 'w-full' : 'inline-flex'
-              } bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm flex items-center justify-between`}>
+              } bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-3 sm:px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-between`}>
                 <span>Add Activity</span>
                 <span className="ml-2 transition-transform group-open:rotate-180">▾</span>
               </summary>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-2 sm:mt-3 grid grid-cols-2 gap-1 sm:gap-2">
                 {[
                   { key: 'expense', label: 'Expense', color: 'bg-red-600 hover:bg-red-700' },
                   { key: 'income', label: 'Income', color: 'bg-emerald-600 hover:bg-emerald-700' },
@@ -472,7 +483,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                 ].map(opt => (
                   <button
                     key={opt.key}
-                    className={`${opt.color} text-white font-medium py-2 px-3 rounded-lg text-sm`}
+                    className={`${opt.color} text-white font-medium py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm`}
                     onClick={() => {
                       if (opt.key === 'income' || opt.key === 'expense') {
                         setAddModalType(opt.key);

@@ -62,7 +62,7 @@ export default function UserAnalyticsPage() {
             </div>
           </header>
 
-          <main className="px-4 sm:px-6 lg:px-8 py-8">
+          <main className="px-4 sm:px-6 lg:px-8 py-8 pt-16 lg:pt-8 pb-20 lg:pb-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
               {/* Row 1: Income vs Expense 1x4 */}
               <div className="col-span-2 md:col-span-4 h-72 md:h-96">

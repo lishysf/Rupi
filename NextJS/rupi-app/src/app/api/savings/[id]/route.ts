@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
 import { initializeDatabase } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 // Database connection
 const pool = new Pool({
@@ -22,11 +23,12 @@ async function ensureDbInitialized() {
 
 // DELETE - Remove a savings record by ID
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const { id: idParam } = await params;
     const id = parseInt(idParam, 10);
@@ -41,10 +43,10 @@ export async function DELETE(
     try {
       await client.query('BEGIN');
 
-      // Fetch the savings record to know amount/goal
+      // Fetch the savings record to know amount/goal and verify ownership
       const selectRes = await client.query(
-        'SELECT id, amount, goal_name FROM savings WHERE id = $1',
-        [id]
+        'SELECT id, amount, goal_name FROM savings WHERE id = $1 AND user_id = $2',
+        [id, user.id]
       );
 
       if (selectRes.rows.length === 0) {
@@ -107,6 +109,7 @@ export async function PUT(
 ) {
   try {
     await ensureDbInitialized();
+    const user = await requireAuth(request);
 
     const { id: idParam } = await params;
     const id = parseInt(idParam, 10);
@@ -131,10 +134,10 @@ export async function PUT(
     try {
       await client.query('BEGIN');
 
-      // Load existing saving for delta adjustments
+      // Load existing saving for delta adjustments and verify ownership
       const existingRes = await client.query(
-        'SELECT id, amount, goal_name FROM savings WHERE id = $1',
-        [id]
+        'SELECT id, amount, goal_name FROM savings WHERE id = $1 AND user_id = $2',
+        [id, user.id]
       );
 
       if (existingRes.rows.length === 0) {

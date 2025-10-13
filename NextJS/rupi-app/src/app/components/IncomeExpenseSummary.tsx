@@ -247,3 +247,6 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
     </div>
   );
 }
+
+
+

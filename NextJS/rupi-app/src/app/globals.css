@@ -199,6 +199,115 @@
     animation: contentFadeIn 0.5s ease-out forwards;
   }
   
+  /* Responsive utilities */
+  .text-responsive-xs {
+    @apply text-xs sm:text-sm;
+  }
+  
+  .text-responsive-sm {
+    @apply text-sm sm:text-base;
+  }
+  
+  .text-responsive-base {
+    @apply text-base sm:text-lg;
+  }
+  
+  .text-responsive-lg {
+    @apply text-lg sm:text-xl;
+  }
+  
+  .text-responsive-xl {
+    @apply text-xl sm:text-2xl;
+  }
+  
+  .text-responsive-2xl {
+    @apply text-2xl sm:text-3xl lg:text-4xl;
+  }
+  
+  .text-responsive-3xl {
+    @apply text-3xl sm:text-4xl lg:text-5xl;
+  }
+  
+  .p-responsive {
+    @apply p-2 sm:p-4 lg:p-6;
+  }
+  
+  .px-responsive {
+    @apply px-2 sm:px-4 lg:px-6 xl:px-8;
+  }
+  
+  .py-responsive {
+    @apply py-2 sm:py-4 lg:py-6;
+  }
+  
+  .gap-responsive {
+    @apply gap-2 sm:gap-4 lg:gap-6;
+  }
+  
+  .space-y-responsive {
+    @apply space-y-2 sm:space-y-4 lg:space-y-6;
+  }
+  
+  .rounded-responsive {
+    @apply rounded-lg sm:rounded-xl lg:rounded-2xl;
+  }
+  
+  .shadow-responsive {
+    @apply shadow-md sm:shadow-lg lg:shadow-xl;
+  }
+  
+  /* Mobile-first responsive containers */
+  .container-responsive {
+    @apply w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 xl:px-8;
+  }
+  
+  /* Responsive grid utilities */
+  .grid-responsive-1 {
+    @apply grid grid-cols-1;
+  }
+  
+  .grid-responsive-2 {
+    @apply grid grid-cols-1 sm:grid-cols-2;
+  }
+  
+  .grid-responsive-3 {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3;
+  }
+  
+  .grid-responsive-4 {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
+  }
+  
+  /* Responsive flex utilities */
+  .flex-responsive-col {
+    @apply flex flex-col sm:flex-row;
+  }
+  
+  .flex-responsive-row {
+    @apply flex flex-row;
+  }
+  
+  .flex-responsive-wrap {
+    @apply flex flex-wrap;
+  }
+  
+  /* Responsive spacing utilities */
+  .mb-responsive {
+    @apply mb-2 sm:mb-4 lg:mb-6;
+  }
+  
+  .mt-responsive {
+    @apply mt-2 sm:mt-4 lg:mt-6;
+  }
+  
+  .mx-responsive {
+    @apply mx-2 sm:mx-4 lg:mx-6;
+  }
+  
+  .my-responsive {
+    @apply my-2 sm:my-4 lg:my-6;
+  }
+  
 }
 
 

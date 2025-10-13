@@ -86,6 +86,21 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
     }).format(amount);
   };
 
+  // Format Rupiah values with Indonesian suffixes
+  const formatRupiahValue = (amount: number) => {
+    if (amount >= 1000000000000) {
+      return `${(amount / 1000000000000).toFixed(1)}t`;
+    } else if (amount >= 1000000000) {
+      return `${(amount / 1000000000).toFixed(1)}m`;
+    } else if (amount >= 1000000) {
+      return `${(amount / 1000000).toFixed(1)}jt`;
+    } else if (amount >= 1000) {
+      return `${(amount / 1000).toFixed(1)}k`;
+    } else {
+      return amount.toString();
+    }
+  };
+
   // Calculate analytics data from context (same as Financial Summary)
   const calculateAnalyticsData = React.useCallback(() => {
     try {
@@ -249,13 +264,13 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
 
   return (
     <Card className="bg-white dark:bg-neutral-900 border-neutral-200 dark:border-transparent h-full flex flex-col">
-      <CardHeader className={`flex items-center gap-2 space-y-0 border-b border-neutral-200 dark:border-transparent sm:flex-row flex-shrink-0 ${
-        widgetSize === 'square' ? 'py-2 px-3' : 'py-3 px-6'
+      <CardHeader className={`flex flex-col sm:flex-row items-start sm:items-center gap-2 space-y-0 border-b border-neutral-200 dark:border-transparent flex-shrink-0 ${
+        widgetSize === 'square' ? 'py-2 px-3' : 'py-3 px-4 sm:px-6'
       }`}>
-        <div className="grid flex-1 gap-1 min-w-0">
+        <div className="grid flex-1 gap-1 min-w-0 w-full sm:w-auto">
           <CardTitle className={`text-neutral-900 dark:text-neutral-100 ${
-            widgetSize === 'square' ? 'text-sm' :
-            widgetSize === 'half' ? 'text-base' : 'text-lg'
+            widgetSize === 'square' ? 'text-xs sm:text-sm' :
+            widgetSize === 'half' ? 'text-sm sm:text-base' : 'text-base sm:text-lg'
           } truncate flex items-center gap-2`}>
             {dataType === 'total_assets' ? 'Assets' :
              dataType === 'savings' ? 'Savings' :
@@ -266,11 +281,11 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
             )}
           </CardTitle>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1 sm:gap-2 w-full sm:w-auto">
           <Select value={dataType} onValueChange={setDataType}>
             <SelectTrigger
               className={`${
-                widgetSize === 'square' ? 'w-[90px]' : 'w-[120px]'
+                widgetSize === 'square' ? 'w-[80px] sm:w-[90px]' : 'w-[100px] sm:w-[120px]'
               } rounded-lg border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-xs flex-shrink-0 min-w-0`}
               aria-label="Select data type"
             >
@@ -286,7 +301,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger
               className={`${
-                widgetSize === 'square' ? 'w-[70px]' : 'w-[100px]'
+                widgetSize === 'square' ? 'w-[60px] sm:w-[70px]' : 'w-[80px] sm:w-[100px]'
               } rounded-lg border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-xs flex-shrink-0 min-w-0`}
               aria-label="Select time range"
             >
@@ -300,7 +315,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
         </div>
       </CardHeader>
       <CardContent className={`flex-1 flex flex-col overflow-hidden ${
-        widgetSize === 'square' ? 'p-2' : 'p-3'
+        widgetSize === 'square' ? 'p-2' : 'p-2 sm:p-3'
       }`}>
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
@@ -321,12 +336,12 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
           <ChartContainer
             config={chartConfig}
             className={`flex-1 min-h-0 ${
-              widgetSize === 'square' ? 'mb-2' : 'mb-3'
+              widgetSize === 'square' ? 'mb-1 sm:mb-2' : 'mb-2 sm:mb-3'
             }`}
           >
             <AreaChart 
               data={analyticsData}
-              margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
+              margin={{ top: 10, right: 10, left: 10, bottom: 10 }}
               className={`transition-all duration-500 ease-in-out ${isUpdating ? 'opacity-80' : 'opacity-100'}`}
             >
             <defs>
@@ -396,10 +411,10 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
               dataKey="date"
               tickLine={false}
               axisLine={false}
-              tickMargin={8}
-              minTickGap={32}
+              tickMargin={4}
+              minTickGap={16}
               stroke="#64748b"
-              fontSize={10}
+              fontSize={9}
               tickFormatter={(value) => {
                 // Since we're already formatting the date in the data transformation,
                 // we can just return the value as is
@@ -409,12 +424,12 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
             <YAxis
               tickLine={false}
               axisLine={false}
-              tickMargin={8}
+              tickMargin={4}
               stroke="#64748b"
-              fontSize={10}
+              fontSize={8}
               domain={[yAxisMin, yAxisMax]}
               tickFormatter={(value) => {
-                return `${value}k`
+                return formatRupiahValue(value * 1000)
               }}
             />
             <ChartTooltip
@@ -451,19 +466,14 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                                isIncome ? 'bg-blue-600' : 'bg-emerald-600';
                 
                 return (
-                  <div className={`${bgColor} text-white rounded-lg shadow-lg p-3 min-w-[200px]`}>
+                  <div className={`${bgColor} text-white rounded-lg shadow-lg p-2 sm:p-3 min-w-[150px] sm:min-w-[200px]`}>
                     <div className="text-xs opacity-90 mb-1">
                       {data?.fullDate ? formatDate(data.fullDate) : label}
                     </div>
-                    <div className="text-sm font-medium mb-2">
-                      {new Intl.NumberFormat('id-ID', {
-                        style: 'currency',
-                        currency: 'IDR',
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(Number(entry.value) * 1000)}
+                    <div className="text-xs sm:text-sm font-medium mb-1 sm:mb-2">
+                      Rp {formatRupiahValue(Number(entry.value) * 1000)}
                     </div>
-                    <div className="text-xs opacity-80 mb-2">
+                    <div className="text-xs opacity-80 mb-1 sm:mb-2">
                       {dataType === 'total_assets' ? 'Assets' :
                        dataType === 'savings' ? 'Savings' :
                        dataType === 'expense' ? 'Expenses' :
@@ -472,20 +482,15 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                     
                     {/* Show top 3 expense categories for expense charts */}
                     {isExpense && data?.top_expenses && data.top_expenses.length > 0 && (
-                      <div className="border-t border-white/20 pt-2 mt-2">
+                      <div className="border-t border-white/20 pt-1 sm:pt-2 mt-1 sm:mt-2">
                         <div className="text-xs opacity-90 mb-1">Top Categories:</div>
                         {data.top_expenses.slice(0, 3).map((category: any, index: number) => (
                           <div key={index} className="text-xs opacity-80 flex justify-between">
-                            <span className="truncate max-w-[120px]" title={category.category}>
+                            <span className="truncate max-w-[80px] sm:max-w-[120px]" title={category.category}>
                               {category.category}
                             </span>
-                            <span className="ml-2">
-                              {new Intl.NumberFormat('id-ID', {
-                                style: 'currency',
-                                currency: 'IDR',
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 0,
-                              }).format(category.amount)}
+                            <span className="ml-1 sm:ml-2">
+                              Rp {formatRupiahValue(category.amount)}
                             </span>
                           </div>
                         ))}

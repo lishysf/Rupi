@@ -222,17 +222,17 @@ export default function FloatingChat() {
       {/* Blurred Background Overlay */}
       {isExpanded && (
         <div 
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-20 animate-in fade-in duration-200"
           onClick={handleClose}
         />
       )}
 
-      <div className="fixed bottom-4 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-sm sm:max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl px-3 sm:px-4 md:px-0">
+      <div className="fixed bottom-4 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-30 w-full max-w-sm sm:max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl px-3 sm:px-4 md:px-0">
         {/* Chat History Bubble */}
         {isExpanded && (
-        <div className="mb-4 w-full bg-white dark:bg-neutral-800 rounded-3xl shadow-2xl border border-neutral-200/50 dark:border-neutral-700/50 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200 backdrop-blur-xl">
+        <div className="mb-4 w-full bg-white dark:bg-neutral-800 rounded-3xl shadow-2xl border border-neutral-200/50 dark:border-neutral-700/50 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
           {/* Chat Header */}
-          <div className="flex items-center justify-between p-4 border-b border-neutral-100 dark:border-neutral-700/50 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-sm">
+          <div className="flex items-center justify-between p-4 border-b border-neutral-100 dark:border-neutral-700/50 bg-white/80 dark:bg-neutral-800/80">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center shadow-sm">
                 <MessageCircle className="w-4 h-4 text-white" />
@@ -253,7 +253,7 @@ export default function FloatingChat() {
           {/* Chat Messages */}
           <div 
             ref={chatHistoryRef}
-            className="h-48 sm:h-64 md:h-72 overflow-y-auto p-4 space-y-4 bg-neutral-50/50 dark:bg-neutral-900/30"
+            className="h-90 sm:h-90 md:h-90 overflow-y-auto p-4 space-y-4 bg-neutral-50/50 dark:bg-neutral-900/30"
           >
             {messages.map((message, index) => {
               const prevMessage = index > 0 ? messages[index - 1] : null;
@@ -325,7 +325,7 @@ export default function FloatingChat() {
 
         {/* Chat Input */}
         <div className="relative">
-          <div className="flex items-center bg-white dark:bg-neutral-800 rounded-3xl shadow-lg border border-neutral-200/50 dark:border-neutral-700/50 p-3 w-full backdrop-blur-sm">
+          <div className="flex items-center bg-white dark:bg-neutral-800 rounded-3xl shadow-lg border border-neutral-200/50 dark:border-neutral-700/50 p-3 w-full">
             <input
               ref={inputRef}
               type="text"
