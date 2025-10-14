@@ -1,14 +1,47 @@
 import { Pool } from 'pg';
 
-// Database configuration
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'rupi_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+// Database configuration - prioritize DATABASE_URL for Vercel/Supabase
+let pool: Pool;
+
+if (process.env.DATABASE_URL) {
+  // Use connection string (recommended for Vercel and Supabase connection pooling)
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    },
+    // Optimize for serverless
+    max: 1, // Reduce connection pool size for serverless
+    idleTimeoutMillis: 10000, // Close idle connections quickly
+    connectionTimeoutMillis: 10000, // Fail fast
+  });
+} else if (process.env.SUPABASE_DB_PASSWORD) {
+  // Legacy: Use individual Supabase env vars (fallback)
+  const supabaseUrl = process.env.SUPABASE_DB_HOST || 'db.thkdrlozedfysuukvwmd.supabase.co';
+  const supabasePassword = process.env.SUPABASE_DB_PASSWORD;
+  
+  pool = new Pool({
+    host: supabaseUrl,
+    port: 5432,
+    database: 'postgres',
+    user: 'postgres',
+    password: supabasePassword,
+    ssl: { rejectUnauthorized: false },
+    max: 1,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 10000,
+  });
+} else {
+  // Use direct PostgreSQL connection (local development)
+  pool = new Pool({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    database: process.env.DB_NAME || 'rupi_db',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'password',
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  });
+}
 
 // Create database indexes for performance optimization
 export async function createDatabaseIndexes() {
@@ -61,7 +94,8 @@ export async function createDatabaseIndexes() {
     
   } catch (error) {
     console.error('❌ Error creating database indexes:', error);
-    throw error;
+    // Don't throw error - indexes are optional for functionality
+    console.warn('⚠️ Database indexes could not be created. This may affect performance but app will continue to work.');
   }
 }
 
@@ -144,7 +178,23 @@ export async function getQueryPerformanceStats() {
 export function optimizeConnectionPool() {
   console.log('🔧 Optimizing database connection pool...');
   
-  // These settings should be in your database configuration
+  // For serverless environments (Vercel), use minimal connection pool
+  if (process.env.DATABASE_URL || process.env.SUPABASE_DB_PASSWORD) {
+    const serverlessConfig = {
+      max: 1, // Minimal for serverless
+      idleTimeoutMillis: 10000, // Close idle connections quickly
+      connectionTimeoutMillis: 10000, // Fail fast
+    };
+    
+    console.log('✅ Serverless connection pool optimization settings:');
+    console.log(`  Max connections: ${serverlessConfig.max}`);
+    console.log(`  Idle timeout: ${serverlessConfig.idleTimeoutMillis}ms`);
+    console.log(`  Connection timeout: ${serverlessConfig.connectionTimeoutMillis}ms`);
+    
+    return serverlessConfig;
+  }
+  
+  // For local development or dedicated servers
   const optimizedConfig = {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),

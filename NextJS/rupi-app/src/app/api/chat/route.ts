@@ -6,6 +6,28 @@ import { requireAuth } from '@/lib/auth-utils';
 import { PerformanceMonitor } from '@/lib/performance-monitor';
 import { createDatabaseIndexes } from '@/lib/database-indexes';
 
+// Helper function to find wallet by name efficiently (with caching)
+function findWalletByName(wallets: Array<{id: number, name: string}>, walletName: string | undefined, walletType: string | undefined): number | undefined {
+  if (!walletName || !walletType) return undefined;
+  
+  const walletNameLower = walletName.toLowerCase();
+  
+  // Try exact match first
+  let matchingWallet = wallets.find(w => w.name.toLowerCase() === walletNameLower);
+  
+  // If no exact match, try partial match (wallet name contains the mentioned name)
+  if (!matchingWallet) {
+    matchingWallet = wallets.find(w => w.name.toLowerCase().includes(walletNameLower));
+  }
+  
+  // If still no match, try reverse (mentioned name contains wallet name)
+  if (!matchingWallet) {
+    matchingWallet = wallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
+  }
+  
+  return matchingWallet?.id;
+}
+
 // Helper function to handle expense creation
 async function handleExpenseCreation(userId: number, description: string, amount: number, category: string, walletId?: number) {
   // Always require a wallet for expenses
@@ -331,18 +353,19 @@ async function handleSavingsTransfer(userId: number, description: string, amount
 }
 
 // Initialize database on first request
-let dbInitialized = false;
+// Use a more robust initialization check that survives serverless cold starts
+let dbInitPromise: Promise<void> | null = null;
 async function ensureDbInitialized() {
-  if (!dbInitialized) {
-    await initializeDatabase();
-    // Create database indexes for performance
-    try {
-      await createDatabaseIndexes();
-    } catch (error) {
-      console.warn('Database indexes creation failed (non-critical):', error);
-    }
-    dbInitialized = true;
+  if (!dbInitPromise) {
+    dbInitPromise = (async () => {
+      await initializeDatabase();
+      // Create database indexes in background (don't wait for it)
+      createDatabaseIndexes().catch(error => {
+        console.warn('Database indexes creation failed (non-critical):', error);
+      });
+    })();
   }
+  await dbInitPromise;
 }
 
 export async function POST(request: NextRequest) {
@@ -354,6 +377,12 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { message, conversationHistory } = body;
+    
+    // Cache user wallets to avoid multiple database queries
+    PerformanceMonitor.startTimer('fetch-wallets');
+    const userWallets = await UserWalletDatabase.getAllWallets(user.id);
+    PerformanceMonitor.endTimer('fetch-wallets');
+    console.log(`Fetched ${userWallets.length} wallets for user ${user.id}`);
 
     if (!message) {
       return NextResponse.json(
@@ -371,11 +400,11 @@ export async function POST(request: NextRequest) {
     const aiDebug: Record<string, unknown> = {};
 
     // Unified decision (intent + optional parsed transactions)
-    PerformanceMonitor.startTimer('intent-analysis');
+    PerformanceMonitor.startTimer('ai-decide-and-parse');
     const decision = await GroqAIService.decideAndParse(message, user.id);
-    PerformanceMonitor.endTimer('intent-analysis');
+    PerformanceMonitor.endTimer('ai-decide-and-parse');
     const intent = decision.intent;
-    console.log('Message intent detected:', intent, 'for message:', message.substring(0, 50) + '...');
+    console.log('🤖 AI Analysis: Intent=' + intent + ', Transactions=' + (decision.transactions?.length || 0) + ', Message:', message.substring(0, 50) + '...');
     aiDebug.intent = intent;
     aiDebug.transactions = decision.transactions || [];
 
@@ -463,26 +492,10 @@ export async function POST(request: NextRequest) {
               try {
                 let createdTransaction = null;
                 
-                // Find wallet if mentioned - require exact match or close match
+                // Find wallet if mentioned - use cached wallets
                 let walletId: number | undefined;
                 if (transaction.walletName && transaction.walletType) {
-                  const wallets = await UserWalletDatabase.getAllWallets(user.id);
-                  const walletNameLower = transaction.walletName.toLowerCase();
-                  
-                  // Try exact match first
-                  let matchingWallet = wallets.find(w => w.name.toLowerCase() === walletNameLower);
-                  
-                  // If no exact match, try partial match (wallet name contains the mentioned name)
-                  if (!matchingWallet) {
-                    matchingWallet = wallets.find(w => w.name.toLowerCase().includes(walletNameLower));
-                  }
-                  
-                  // If still no match, try reverse (mentioned name contains wallet name)
-                  if (!matchingWallet) {
-                    matchingWallet = wallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
-                  }
-                  
-                  walletId = matchingWallet?.id;
+                  walletId = findWalletByName(userWallets, transaction.walletName, transaction.walletType);
                   
                   // If wallet was mentioned but not found, skip this transaction
                   if (!walletId) {
@@ -688,37 +701,23 @@ export async function POST(request: NextRequest) {
             // Find wallet if mentioned - require exact match or close match
             let walletId: number | undefined;
             if (parsedTransaction.walletName && parsedTransaction.walletType) {
-              const wallets = await UserWalletDatabase.getAllWallets(user.id);
               const walletNameLower = parsedTransaction.walletName.toLowerCase();
               
               console.log('Wallet matching debug:', {
                 mentionedWallet: parsedTransaction.walletName,
                 mentionedWalletLower: walletNameLower,
-                availableWallets: wallets.map(w => ({ id: w.id, name: w.name, nameLower: w.name.toLowerCase() }))
+                availableWallets: userWallets.map(w => ({ id: w.id, name: w.name, nameLower: w.name.toLowerCase() }))
               });
               
-              // Try exact match first
-              let matchingWallet = wallets.find(w => w.name.toLowerCase() === walletNameLower);
+              walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
               
-              // If no exact match, try partial match (wallet name contains the mentioned name)
-              if (!matchingWallet) {
-                matchingWallet = wallets.find(w => w.name.toLowerCase().includes(walletNameLower));
-              }
-              
-              // If still no match, try reverse (mentioned name contains wallet name)
-              if (!matchingWallet) {
-                matchingWallet = wallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
-              }
-              
-              walletId = matchingWallet?.id;
-              
+              const matchedWallet = userWallets.find(w => w.id === walletId);
               console.log('Wallet matching result:', {
-                foundWallet: matchingWallet ? { id: matchingWallet.id, name: matchingWallet.name } : null,
+                foundWallet: matchedWallet ? { id: matchedWallet.id, name: matchedWallet.name } : null,
                 walletId: walletId
               });
             } else {
-              // Fallback: infer wallet from message text even if AI didn't return walletName
-              const wallets = await UserWalletDatabase.getAllWallets(user.id);
+              // Fallback: infer wallet from message text even if AI didn't return walletName (use cached wallets)
               const messageLower = message.toLowerCase();
               const aliasMap: Record<string, string[]> = {
                 bca: ['bca', 'bank bca'],
@@ -733,7 +732,7 @@ export async function POST(request: NextRequest) {
                 shopeepay: ['shopeepay', 'shopee pay'],
                 cash: ['cash', 'tunai', 'uang tunai']
               };
-              const inferred = wallets.find(w => {
+              const inferred = userWallets.find(w => {
                 const nameLower = w.name.toLowerCase();
                 const aliases = aliasMap[nameLower as keyof typeof aliasMap] || [];
                 return messageLower.includes(nameLower) || aliases.some(a => messageLower.includes(a));
@@ -950,8 +949,10 @@ export async function POST(request: NextRequest) {
         
         // Get comprehensive financial data for analysis
         // Note: We fetch recent transactions and filter client-side for now
-        const limit = 200; // Slightly higher to cover monthly scope comfortably
+        PerformanceMonitor.startTimer('fetch-transactions-for-analysis');
+        const limit = 100; // Optimized limit for better performance
         const allTransactions = await TransactionDatabase.getUserTransactions(user.id, limit, 0);
+        PerformanceMonitor.endTimer('fetch-transactions-for-analysis');
         
         // Filter transactions by type and date in one pass for better performance
         const filterTransactions = (transactions: Array<{type: string, date: Date, amount: number | string, category?: string}>, type: string) => {
@@ -1072,6 +1073,12 @@ export async function POST(request: NextRequest) {
 
     PerformanceMonitor.endTimer('chat-request-total');
     
+    // Log performance metrics
+    console.log('⏱️ Performance Metrics:');
+    console.log('  - Total request time:', PerformanceMonitor.getTimer('chat-request-total')?.toFixed(2) + 'ms');
+    console.log('  - AI decide & parse:', PerformanceMonitor.getTimer('ai-decide-and-parse')?.toFixed(2) + 'ms');
+    console.log('  - Fetch wallets:', PerformanceMonitor.getTimer('fetch-wallets')?.toFixed(2) + 'ms');
+    
     return NextResponse.json({
       success: true,
       data: {
@@ -1079,7 +1086,11 @@ export async function POST(request: NextRequest) {
         transactionCreated,
         multipleTransactionsCreated,
         ai: aiDebug,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        performance: {
+          totalTime: PerformanceMonitor.getTimer('chat-request-total'),
+          aiTime: PerformanceMonitor.getTimer('ai-decide-and-parse')
+        }
       }
     });
 
