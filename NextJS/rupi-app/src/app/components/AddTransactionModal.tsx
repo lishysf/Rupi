@@ -41,10 +41,10 @@ interface UserWallet {
   id: number;
   name: string;
   type: string;
-  balance: number;
-  color: string;
-  icon: string;
-  is_active: boolean;
+  balance?: number;
+  color?: string;
+  icon?: string;
+  is_active?: boolean;
 }
 
 interface AddTransactionModalProps {
@@ -323,7 +323,7 @@ export default function AddTransactionModal({
                       
                       return (
                         <option key={wallet.id} value={wallet.id}>
-                          {wallet.name} - {formatCurrency(wallet.balance)}
+                          {wallet.name} - {formatCurrency(wallet.balance || 0)}
                         </option>
                       );
                     })}

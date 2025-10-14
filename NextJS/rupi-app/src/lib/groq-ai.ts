@@ -372,7 +372,7 @@ Output: {
 
 export class GroqAIService {
   // Try to parse JSON, tolerate leading/trailing prose by extracting first {...}
-  private static tryParseJson<T = any>(text: string): T | null {
+  private static tryParseJson<T = unknown>(text: string): T | null {
     try {
       return JSON.parse(text);
     } catch {}
@@ -388,7 +388,7 @@ export class GroqAIService {
     return null;
   }
   // Try to coerce slightly-invalid AI output into our stricter ParsedTransaction
-  private static coerceParsedTransaction(maybe: any): ParsedTransaction | null {
+  private static coerceParsedTransaction(maybe: unknown): ParsedTransaction | null {
     if (!maybe || typeof maybe !== 'object') return null;
     const type = maybe.type;
     const description = typeof maybe.description === 'string' ? maybe.description : '';
@@ -608,7 +608,7 @@ Return ONLY JSON in this structure:
       let transactions: ParsedTransaction[] | undefined = undefined;
       if (Array.isArray(parsed.transactions)) {
         const valid = parsed.transactions
-          .map((t: any) => (this.isValidParsedTransaction(t) ? t : this.coerceParsedTransaction(t)))
+          .map((t: unknown) => (this.isValidParsedTransaction(t) ? t : this.coerceParsedTransaction(t)))
           .filter(Boolean);
         transactions = valid as ParsedTransaction[];
       }
@@ -663,7 +663,7 @@ Return ONLY JSON in this structure:
 
       // Parse the JSON response
       console.log('Multiple transaction parsing response:', response);
-      const parsedData = this.tryParseJson<{ transactions: any[] }>(response.trim());
+      const parsedData = this.tryParseJson<{ transactions: unknown[] }>(response.trim());
       if (!parsedData || !Array.isArray(parsedData.transactions)) {
         throw new Error('AI did not return valid JSON for multiple transactions');
       }
@@ -787,7 +787,7 @@ Return ONLY JSON in this structure:
   }
 
   // Validate parsed transaction data
-  private static isValidParsedTransaction(transaction: any): transaction is ParsedTransaction {
+  private static isValidParsedTransaction(transaction: unknown): transaction is ParsedTransaction {
     const hasValidType = transaction.type === 'income' || transaction.type === 'expense' || transaction.type === 'savings' || transaction.type === 'investment' || transaction.type === 'transfer';
     const hasValidBasics = (
       typeof transaction === 'object' &&
@@ -838,7 +838,7 @@ Return ONLY JSON in this structure:
   }
 
   // Validate parsed expense data (legacy)
-  private static isValidParsedExpense(expense: any): expense is ParsedExpense {
+  private static isValidParsedExpense(expense: unknown): expense is ParsedExpense {
     return (
       typeof expense === 'object' &&
       typeof expense.description === 'string' &&
@@ -1646,7 +1646,7 @@ Output: {"fromWalletId": 2, "toWalletId": 1, "fromWalletName": "Gojek", "toWalle
   }
 
   // Generate data analysis response
-  static async generateDataAnalysisResponse(userMessage: string, financialData: any, conversationHistory?: string, timePeriod?: 'today' | 'weekly' | 'monthly' | 'all'): Promise<string> {
+  static async generateDataAnalysisResponse(userMessage: string, financialData: Record<string, unknown>, conversationHistory?: string, timePeriod?: 'today' | 'weekly' | 'monthly' | 'all'): Promise<string> {
     try {
       console.log('Generating data analysis with data:', financialData);
       
@@ -1760,56 +1760,56 @@ ${conversationHistory ? `Conversation History Context: ${conversationHistory}` :
 
       // Calculate totals to help AI with accurate analysis
       // Ensure all amounts are properly converted to numbers
-      const totalExpenses = expenses.reduce((sum: number, e: any) => {
-        const amount = typeof e.amount === 'string' ? parseFloat(e.amount) : (e.amount || 0);
+      const totalExpenses = expenses.reduce((sum: number, e: Record<string, unknown>) => {
+        const amount = typeof e.amount === 'string' ? parseFloat(e.amount) : (e.amount as number || 0);
         return sum + amount;
       }, 0);
-      const totalIncome = income.reduce((sum: number, i: any) => {
-        const amount = typeof i.amount === 'string' ? parseFloat(i.amount) : (i.amount || 0);
+      const totalIncome = income.reduce((sum: number, i: Record<string, unknown>) => {
+        const amount = typeof i.amount === 'string' ? parseFloat(i.amount) : (i.amount as number || 0);
         return sum + amount;
       }, 0);
-      const totalSavings = savings.reduce((sum: number, s: any) => {
-        const amount = typeof s.amount === 'string' ? parseFloat(s.amount) : (s.amount || 0);
+      const totalSavings = savings.reduce((sum: number, s: Record<string, unknown>) => {
+        const amount = typeof s.amount === 'string' ? parseFloat(s.amount) : (s.amount as number || 0);
         return sum + amount;
       }, 0);
-      const totalInvestments = investments.reduce((sum: number, inv: any) => {
-        const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount || 0);
+      const totalInvestments = investments.reduce((sum: number, inv: Record<string, unknown>) => {
+        const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount as number || 0);
         return sum + amount;
       }, 0);
 
       // Group expenses by category with totals
-      const expensesByCategory: Record<string, { total: number, transactions: any[] }> = {};
-      expenses.forEach((expense: any) => {
-        const category = expense.category || 'Others';
+      const expensesByCategory: Record<string, { total: number, transactions: Record<string, unknown>[] }> = {};
+      expenses.forEach((expense: Record<string, unknown>) => {
+        const category = expense.category as string || 'Others';
         if (!expensesByCategory[category]) {
           expensesByCategory[category] = { total: 0, transactions: [] };
         }
-        const amount = typeof expense.amount === 'string' ? parseFloat(expense.amount) : (expense.amount || 0);
+        const amount = typeof expense.amount === 'string' ? parseFloat(expense.amount) : (expense.amount as number || 0);
         expensesByCategory[category].total += amount;
         expensesByCategory[category].transactions.push(expense);
       });
 
       const dataSummary = {
-        expenses: expenses.map((e: any) => ({
-          amount: typeof e.amount === 'string' ? parseFloat(e.amount) : (e.amount || 0),
+        expenses: expenses.map((e: Record<string, unknown>) => ({
+          amount: typeof e.amount === 'string' ? parseFloat(e.amount) : (e.amount as number || 0),
           category: e.category,
           description: e.description,
           date: e.date
         })),
-        income: income.map((i: any) => ({
-          amount: typeof i.amount === 'string' ? parseFloat(i.amount) : (i.amount || 0),
+        income: income.map((i: Record<string, unknown>) => ({
+          amount: typeof i.amount === 'string' ? parseFloat(i.amount) : (i.amount as number || 0),
           source: i.source,
           description: i.description,
           date: i.date
         })),
-        savings: savings.map((s: any) => ({
-          amount: typeof s.amount === 'string' ? parseFloat(s.amount) : (s.amount || 0),
+        savings: savings.map((s: Record<string, unknown>) => ({
+          amount: typeof s.amount === 'string' ? parseFloat(s.amount) : (s.amount as number || 0),
           goal_name: s.goal_name,
           description: s.description,
           date: s.date
         })),
-        investments: investments.map((inv: any) => ({
-          amount: typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount || 0),
+        investments: investments.map((inv: Record<string, unknown>) => ({
+          amount: typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount as number || 0),
           asset_name: inv.asset_name,
           description: inv.description,
           date: inv.date

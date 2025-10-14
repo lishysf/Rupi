@@ -262,10 +262,10 @@ interface FinancialDataContextType {
   fetchTransactions: (showLoading?: boolean) => Promise<void>;
   fetchBudgets: () => Promise<void>;
   fetchWallets: () => Promise<void>;
-  fetchTrends: (timeRange: string) => Promise<any>;
+  fetchTrends: (timeRange: string) => Promise<Record<string, unknown>>;
   // Transaction actions
   deleteTransaction: (id: number) => Promise<boolean>;
-  updateTransaction: (id: number, data: any) => Promise<boolean>;
+  updateTransaction: (id: number, data: Partial<Transaction>) => Promise<boolean>;
   // Budget actions
   saveBudget: (category: string, amount: number) => Promise<boolean>;
   deleteBudget: (category: string) => Promise<boolean>;
@@ -543,7 +543,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }
   }, [fetchTransactions, fetchWallets]);
 
-  const updateTransaction = useCallback(async (id: number, data: any) => {
+  const updateTransaction = useCallback(async (id: number, data: Partial<Transaction>) => {
     try {
       const response = await fetch(`/api/transactions/${id}`, {
         method: 'PUT',

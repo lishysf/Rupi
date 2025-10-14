@@ -21,7 +21,7 @@ const WALLET_TYPES = [
 function WalletsContent() {
   const { state, fetchWallets, fetchSavings } = useFinancialData();
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
-  const [editingWallet, setEditingWallet] = useState<any>(null);
+  const [editingWallet, setEditingWallet] = useState<{ id: number; name: string; type: string; color?: string; icon?: string } | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferFromWallet, setTransferFromWallet] = useState<number | null>(null);
 

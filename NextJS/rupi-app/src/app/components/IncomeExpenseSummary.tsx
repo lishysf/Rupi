@@ -46,14 +46,14 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
         const expenseDate = new Date(expense.date);
         return expenseDate >= weekStart && expenseDate <= weekEnd;
       })
-      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+      .reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
 
     const monthlyExpenses = expenses
       .filter(expense => {
         const expenseDate = new Date(expense.date);
         return expenseDate >= monthStart && expenseDate <= monthEnd;
       })
-      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+      .reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
 
     // Filter income for current week and month
     const weeklyIncome = income
@@ -61,14 +61,14 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
         const incomeDate = new Date(incomeItem.date);
         return incomeDate >= weekStart && incomeDate <= weekEnd;
       })
-      .reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
+      .reduce((sum, incomeItem) => sum + (typeof incomeItem.amount === 'string' ? parseFloat(incomeItem.amount) : incomeItem.amount), 0);
 
     const monthlyIncome = income
       .filter(incomeItem => {
         const incomeDate = new Date(incomeItem.date);
         return incomeDate >= monthStart && incomeDate <= monthEnd;
       })
-      .reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
+      .reduce((sum, incomeItem) => sum + (typeof incomeItem.amount === 'string' ? parseFloat(incomeItem.amount) : incomeItem.amount), 0);
 
     return {
       weeklyExpenses,

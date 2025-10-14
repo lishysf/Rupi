@@ -44,7 +44,7 @@ export class PerformanceMonitor {
 // Performance optimization helpers
 export const optimizeResponse = {
   // Debounce function calls
-  debounce: <T extends (...args: any[]) => any>(
+  debounce: <T extends (...args: never[]) => unknown>(
     func: T,
     wait: number
   ): ((...args: Parameters<T>) => void) => {
@@ -56,7 +56,7 @@ export const optimizeResponse = {
   },
 
   // Throttle function calls
-  throttle: <T extends (...args: any[]) => any>(
+  throttle: <T extends (...args: never[]) => unknown>(
     func: T,
     limit: number
   ): ((...args: Parameters<T>) => void) => {

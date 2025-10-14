@@ -33,7 +33,7 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
   const { expenses, income, savings, wallets } = state.data;
-  const investments: Array<{amount: number | string}> = (state.data as any).investments || [];
+  const investments: Array<{amount: number | string}> = (state.data as unknown as Record<string, unknown>).investments as Array<{amount: number | string}> || [];
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
   
   // Wallet loading state from context - only show loading during initial load
@@ -54,7 +54,7 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
         const expenseDate = new Date(expense.date);
         return expenseDate >= currentMonthStart && expenseDate <= currentMonthEnd;
       })
-      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+      .reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
 
     // Filter expenses for previous month
     const previousMonthExpenses = expenses
@@ -62,7 +62,7 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
         const expenseDate = new Date(expense.date);
         return expenseDate >= previousMonthStart && expenseDate <= previousMonthEnd;
       })
-      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+      .reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
 
     // Filter income for current month
     const currentMonthIncome = income
@@ -70,7 +70,7 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
         const incomeDate = new Date(incomeItem.date);
         return incomeDate >= currentMonthStart && incomeDate <= currentMonthEnd;
       })
-      .reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
+      .reduce((sum, incomeItem) => sum + (typeof incomeItem.amount === 'string' ? parseFloat(incomeItem.amount) : incomeItem.amount), 0);
 
     // Filter savings for current month
     const currentMonthSavings = savings
@@ -78,12 +78,12 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
         const savingDate = new Date(saving.date);
         return savingDate >= currentMonthStart && savingDate <= currentMonthEnd;
       })
-      .reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
+      .reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
 
     // Calculate totals
-    const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
-    const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
-    const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
+    const totalIncome = income.reduce((sum, incomeItem) => sum + (typeof incomeItem.amount === 'string' ? parseFloat(incomeItem.amount) : incomeItem.amount), 0);
+    const totalSavings = savings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
     const totalInvestments = investments.reduce((sum: number, inv: {amount: number | string}) => sum + parseFloat(inv.amount.toString()), 0);
 
     return {
@@ -99,7 +99,7 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
   }, [expenses, income, savings, investments]);
 
   // Calculate wallet total balance
-  const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+  const walletBalance = wallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0);
 
   // Calculate balances using wallet-first approach
   // Main/Spending Card = wallet balance (user's actual available money)

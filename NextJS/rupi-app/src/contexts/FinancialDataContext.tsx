@@ -25,14 +25,75 @@ interface Budget {
   year: number;
 }
 
+interface Expense {
+  id: number;
+  user_id: number;
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+  created_at?: string;
+  updated_at?: string;
+  wallet_id?: number;
+}
+
+interface Income {
+  id: number;
+  user_id: number;
+  description: string;
+  amount: number;
+  source: string;
+  date: string;
+  created_at?: string;
+  updated_at?: string;
+  wallet_id?: number;
+}
+
+interface Savings {
+  id: number;
+  user_id: number;
+  description: string;
+  amount: number;
+  goal_name: string;
+  date: string;
+  created_at?: string;
+  updated_at?: string;
+  wallet_id?: number;
+}
+
+interface Investment {
+  id: number;
+  user_id: number;
+  description: string;
+  amount: number;
+  asset_name: string;
+  date: string;
+  created_at?: string;
+  updated_at?: string;
+  wallet_id?: number;
+}
+
+interface Wallet {
+  id: number;
+  user_id: number;
+  name: string;
+  type: string;
+  color?: string;
+  icon?: string;
+  is_active?: boolean;
+  balance?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface FinancialData {
   transactions: Transaction[];
   budgets: Budget[];
-  expenses: any[];
-  income: any[];
-  savings: any[];
-  investments: any[];
-  wallets: any[];
+  expenses: Expense[];
+  income: Income[];
+  savings: Savings[];
+  investments: Investment[];
+  wallets: Wallet[];
   lastUpdated: {
     transactions: number;
     budgets: number;
@@ -65,11 +126,11 @@ type FinancialDataAction =
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_TRANSACTIONS'; payload: Transaction[] }
   | { type: 'SET_BUDGETS'; payload: Budget[] }
-  | { type: 'SET_EXPENSES'; payload: any[] }
-  | { type: 'SET_INCOME'; payload: any[] }
-  | { type: 'SET_SAVINGS'; payload: any[] }
-  | { type: 'SET_INVESTMENTS'; payload: any[] }
-  | { type: 'SET_WALLETS'; payload: any[] }
+  | { type: 'SET_EXPENSES'; payload: Expense[] }
+  | { type: 'SET_INCOME'; payload: Income[] }
+  | { type: 'SET_SAVINGS'; payload: Savings[] }
+  | { type: 'SET_INVESTMENTS'; payload: Investment[] }
+  | { type: 'SET_WALLETS'; payload: Wallet[] }
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
   | { type: 'DELETE_TRANSACTION'; payload: string | number }
@@ -342,10 +403,10 @@ interface FinancialDataContextType {
   fetchSavings: () => Promise<void>;
   fetchInvestments: () => Promise<void>;
   fetchWallets: () => Promise<void>;
-  fetchTrends: (timeRange: string) => Promise<any>;
+  fetchTrends: (timeRange: string) => Promise<Record<string, unknown>>;
   // Transaction actions
   deleteTransaction: (id: string | number, type: 'income' | 'expense') => Promise<boolean>;
-  updateTransaction: (id: string | number, type: 'income' | 'expense', data: any) => Promise<boolean>;
+  updateTransaction: (id: string | number, type: 'income' | 'expense', data: Partial<Expense | Income>) => Promise<boolean>;
   // Savings actions
   deleteSavings: (id: number) => Promise<boolean>;
   updateSavings: (id: number, data: { description?: string; amount?: number; goalName?: string }) => Promise<boolean>;
@@ -422,12 +483,12 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
 
       if (data.success) {
         // All transactions are already in the correct format from the unified endpoint
-        const allTransactions: Transaction[] = data.data.map((transaction: any) => ({
+        const allTransactions: Transaction[] = data.data.map((transaction: Record<string, unknown>) => ({
           ...transaction,
           // Ensure consistent field mapping
           category: transaction.type === 'income' ? transaction.source : transaction.category,
           wallet_id: transaction.wallet_id
-        }));
+        })) as Transaction[];
 
         // Sort by date (newest first)
         allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -778,7 +839,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }
   }, [fetchTransactions]);
 
-  const updateTransaction = useCallback(async (id: string | number, type: 'income' | 'expense', data: any) => {
+  const updateTransaction = useCallback(async (id: string | number, type: 'income' | 'expense', data: Partial<Expense | Income>) => {
     try {
       // Extract original ID from prefixed ID
       const originalId = typeof id === 'string' ? id.split('-')[1] : id;

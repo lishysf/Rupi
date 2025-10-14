@@ -13,8 +13,8 @@ interface FinancialData {
   previousMonthExpenses: number;
   savingsRate: number;
   currentBalance: number;
-  savings: Array<{ amount: string; date: string }>;
-  investments: Array<{ amount: string; date: string }>;
+  savings: Array<{ amount: number | string; date: string }>;
+  investments: Array<{ amount: number | string; date: string }>;
 }
 
 interface UserWallet {
@@ -60,8 +60,8 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
     const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
     // Calculate totals
-    const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
-    const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
+    const totalIncome = income.reduce((sum, incomeItem) => sum + (typeof incomeItem.amount === 'string' ? parseFloat(incomeItem.amount) : incomeItem.amount), 0);
 
     // Filter for current month
     const currentMonthExpenses = expenses
@@ -69,14 +69,14 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
         const expenseDate = new Date(expense.date);
         return expenseDate >= currentMonthStart && expenseDate <= currentMonthEnd;
       })
-      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+      .reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
 
     const currentMonthIncome = income
       .filter(incomeItem => {
         const incomeDate = new Date(incomeItem.date);
         return incomeDate >= currentMonthStart && incomeDate <= currentMonthEnd;
       })
-      .reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
+      .reduce((sum, incomeItem) => sum + (typeof incomeItem.amount === 'string' ? parseFloat(incomeItem.amount) : incomeItem.amount), 0);
 
     // Filter for previous month
     const previousMonthExpenses = expenses
@@ -84,7 +84,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
         const expenseDate = new Date(expense.date);
         return expenseDate >= previousMonthStart && expenseDate <= previousMonthEnd;
       })
-      .reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+      .reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
 
     const savingsRate = currentMonthIncome > 0 ? ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100 : 0;
 
@@ -125,9 +125,9 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
     
     // Factor 2: Total Assets (50% of total score)
     // Total aset (wallet balance + savings + investments)
-    const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
-    const totalSavings = financialData.savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
-    const totalInvestments = financialData.investments.reduce((sum, investment) => sum + parseFloat(investment.amount), 0);
+    const walletBalance = wallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0);
+    const totalSavings = financialData.savings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
+    const totalInvestments = financialData.investments.reduce((sum, investment) => sum + (typeof investment.amount === 'string' ? parseFloat(investment.amount) : investment.amount), 0);
     const totalAssets = walletBalance + totalSavings + totalInvestments;
     
     // Score based on total assets (max 50 points)
@@ -173,11 +173,11 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
 
   const calculateTotalAssets = () => {
       // Calculate wallet total balance (user's actual available money)
-      const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+      const walletBalance = wallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0);
   
       // Calculate total savings and investments
-      const totalSavings = financialData.savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
-      const totalInvestments = financialData.investments.reduce((sum, investment) => sum + parseFloat(investment.amount), 0);
+      const totalSavings = financialData.savings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
+      const totalInvestments = financialData.investments.reduce((sum, investment) => sum + (typeof investment.amount === 'string' ? parseFloat(investment.amount) : investment.amount), 0);
   
       // Total assets = wallet balance + savings + investments
       const totalAssets = walletBalance + totalSavings + totalInvestments;

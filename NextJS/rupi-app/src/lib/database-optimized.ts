@@ -608,7 +608,7 @@ export class BudgetDatabase {
 
   static async getUserBudgets(userId: number, month?: number, year?: number): Promise<Budget[]> {
     let query = `SELECT * FROM budgets WHERE user_id = $1`;
-    const values: any[] = [userId];
+    const values: (number | string)[] = [userId];
     
     if (month && year) {
       query += ` AND month = $2 AND year = $3`;

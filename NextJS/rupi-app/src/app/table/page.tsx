@@ -37,7 +37,7 @@ function FinancialTable() {
   console.log('FinancialTable state:', state);
   console.log('Transactions:', state.data.transactions);
   console.log('Loading states:', state.loading);
-  const [selectedTx, setSelectedTx] = useState<any | null>(null);
+  const [selectedTx, setSelectedTx] = useState<Record<string, unknown> | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [editingType, setEditingType] = useState<'income' | 'expense' | 'savings' | 'investment' | null>(null);
   const [editDraft, setEditDraft] = useState<{ description: string; amount: number; category: string; date: string } | null>(null);
@@ -289,7 +289,7 @@ function FinancialTable() {
           <label className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Type</label>
           <select
             value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value as any)}
+            onChange={(e) => setSelectedType(e.target.value as 'all' | 'income' | 'expense' | 'savings' | 'investment')}
             className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           >
             <option value="all">All</option>
@@ -334,7 +334,7 @@ function FinancialTable() {
                   const sep = ';';
                   const bom = '\ufeff';
                   const csvLines = [headers.join(sep), ...rows.map(r => headers.map(h => {
-                    const val = (r as any)[h] ?? '';
+                    const val = (r as Record<string, unknown>)[h] ?? '';
                     const s = String(val).replace(/"/g, '""');
                     return `"${s}"`;
                   }).join(sep))];

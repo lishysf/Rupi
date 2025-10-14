@@ -48,7 +48,7 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
     
     expenses.forEach(expense => {
       const category = expense.category;
-      const amount = parseFloat(expense.amount);
+      const amount = typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount;
       
       if (categoryMap.has(category)) {
         const existing = categoryMap.get(category)!;

@@ -52,7 +52,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   let t = (key: string) => key;
   let translateCategory = (c: string) => c;
   try { const lang = useLanguage(); t = lang.t; translateCategory = lang.translateCategory; } catch {}
-  const { transactions, savings } = state.data as {transactions: Array<{id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}>, savings: Array<{id: number, type: string, description: string, amount: number | string, date: string, goal_name?: string}>};
+  const { transactions, savings } = state.data as unknown as {transactions: Array<{id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}>, savings: Array<{id: number, type: string, description: string, amount: number | string, date: string, goal_name?: string}>};
   const loading = state.loading.initial && transactions.length === 0;
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'txn' | 'savings'>('all');
@@ -434,7 +434,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         ].map(tab => (
           <button
             key={tab.key}
-            onClick={() => setActiveFilter(tab.key as any)}
+            onClick={() => setActiveFilter(tab.key as 'all' | 'txn' | 'savings')}
             className={`px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm border whitespace-nowrap flex-shrink-0 ${
               activeFilter === tab.key
                 ? 'bg-emerald-600 text-white border-emerald-600'
@@ -457,7 +457,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
             </p>
           </div>
         ) : (
-          limitedTransactions.map((transaction: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string, isTransfer?: boolean, uniqueKey?: number, transferAmount?: number}) => {
+          limitedTransactions.map((transaction: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string, isTransfer?: boolean, uniqueKey?: number | string, transferAmount?: number}) => {
           const categoryInfo = getCategoryInfo(transaction.category, transaction.type);
           const IconComponent = categoryInfo.icon;
           const isIncome = transaction.type === 'income';

@@ -153,7 +153,7 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
 
   // Get icon component based on icon name
   const getIconComponent = (iconName: string | null) => {
-    const icons: Record<string, any> = {
+    const icons: Record<string, React.ComponentType<{className?: string}>> = {
       'laptop': Laptop,
       'car': Car,
       'home': Home,

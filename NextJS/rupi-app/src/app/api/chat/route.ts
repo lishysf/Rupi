@@ -986,7 +986,10 @@ export async function POST(request: NextRequest) {
 
         // Wallets with balances and total assets
         const walletsWithBalances = await UserWalletDatabase.getAllWalletsWithBalances(user.id);
-        const totalWalletBalance = walletsWithBalances.reduce((s: number, w: any) => s + (typeof w.balance === 'string' ? parseFloat(w.balance) : (w.balance || 0)), 0);
+        const totalWalletBalance = (walletsWithBalances as unknown as Array<Record<string, unknown>>).reduce((s, w) => {
+          const balance = w.balance as number | string | undefined;
+          return s + (typeof balance === 'string' ? parseFloat(balance) : (balance || 0));
+        }, 0);
         const totalAssets = totalWalletBalance + (totalInvestments || 0);
 
         // Budgets for current month with spent

@@ -718,7 +718,7 @@ export class BudgetDatabase {
         AND EXTRACT(YEAR FROM t.date) = b.year
       WHERE b.user_id = $1
     `;
-    const values: any[] = [userId];
+    const values: (number | string)[] = [userId];
     
     if (month && year) {
       query += ` AND b.month = $2 AND b.year = $3`;
