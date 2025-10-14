@@ -586,7 +586,7 @@ Return ONLY JSON in this structure:
           { role: 'system', content: DECIDE_PROMPT },
           { role: 'user', content: userInput }
         ],
-        model: 'llama-3.1-8b-instant',
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
         temperature: 0.1,
         max_completion_tokens: 400,
         top_p: 0.9,
@@ -645,7 +645,7 @@ Return ONLY JSON in this structure:
             content: userInput
           }
         ],
-        model: "llama-3.1-8b-instant",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
         temperature: 0.1, // Low temperature for consistent parsing
         max_completion_tokens: 500, // Reduced for faster response
         top_p: 0.9,
@@ -733,7 +733,7 @@ Return ONLY JSON in this structure:
             content: userInput
           }
         ],
-        model: "llama-3.1-8b-instant",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
         temperature: 0.1, // Low temperature for consistent parsing
         max_completion_tokens: 200, // Slightly higher to reduce truncation
         top_p: 0.9,
@@ -1159,7 +1159,7 @@ Return ONLY one of these exact words: transaction, multiple_transaction, data_an
             content: message
           }
         ],
-        model: "llama-3.1-8b-instant",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
         temperature: 0.1, // Low temperature for consistent classification
         max_completion_tokens: 5, // Reduced for faster response
         top_p: 0.9,
@@ -1474,7 +1474,7 @@ Examples of good responses:
 
       const chatCompletion = await groq.chat.completions.create({
         messages,
-        model: "llama-3.1-8b-instant",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
         temperature: 0.7,
         max_completion_tokens: 200, // Reduced for faster response
         top_p: 0.9,
@@ -1565,7 +1565,7 @@ Output: {"fromWalletId": 2, "toWalletId": 1, "fromWalletName": "Gojek", "toWalle
             content: message
           }
         ],
-        model: "llama-3.1-8b-instant",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
         temperature: 0.1,
         max_completion_tokens: 200,
         top_p: 0.9,
@@ -1872,7 +1872,7 @@ Once you have some transactions recorded, I can provide detailed analysis of you
 
       const chatCompletion = await groq.chat.completions.create({
         messages,
-        model: "llama-3.1-8b-instant",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
         temperature: 0.1, // Very low temperature for consistent analysis
         max_completion_tokens: 300, // Reduced for faster response
         top_p: 0.9,
