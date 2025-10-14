@@ -1,14 +1,24 @@
 import { Pool } from 'pg';
 
 // Database configuration - supports both direct PostgreSQL and Supabase PostgreSQL
-const isSupabase = process.env.SUPABASE_DB_PASSWORD;
-
+// Prioritize DATABASE_URL (recommended for Vercel/serverless) over individual env vars
 let pool: Pool;
 
-if (isSupabase) {
-  // Use Supabase PostgreSQL connection
+if (process.env.DATABASE_URL) {
+  // Use connection string (recommended for Vercel and Supabase connection pooling)
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    // Optimize for serverless
+    max: 1, // Reduce connection pool size for serverless
+    idleTimeoutMillis: 10000, // Close idle connections quickly
+    connectionTimeoutMillis: 10000, // Fail fast
+  });
+} else if (process.env.SUPABASE_DB_PASSWORD) {
+  // Legacy: Use individual Supabase env vars (fallback)
+  // Note: For Vercel, you should use DATABASE_URL with connection pooling instead
   const supabaseUrl = process.env.SUPABASE_DB_HOST || 'db.thkdrlozedfysuukvwmd.supabase.co';
-  const supabasePassword = process.env.SUPABASE_DB_PASSWORD!;
+  const supabasePassword = process.env.SUPABASE_DB_PASSWORD;
   
   pool = new Pool({
     host: supabaseUrl,
@@ -16,10 +26,14 @@ if (isSupabase) {
     database: 'postgres',
     user: 'postgres',
     password: supabasePassword,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
+    // Optimize for serverless
+    max: 1,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 10000,
   });
 } else {
-  // Use direct PostgreSQL connection
+  // Use direct PostgreSQL connection (local development)
   pool = new Pool({
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),

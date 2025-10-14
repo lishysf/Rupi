@@ -1,13 +1,41 @@
 import { Pool } from 'pg';
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'rupi_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-  ssl: false,
-});
+// Database configuration - optimized for serverless
+let pool: Pool;
+
+if (process.env.DATABASE_URL) {
+  // Use connection string (recommended for Vercel and Supabase connection pooling)
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 1,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 10000,
+  });
+} else if (process.env.SUPABASE_DB_PASSWORD) {
+  // Use individual Supabase env vars
+  pool = new Pool({
+    host: process.env.SUPABASE_DB_HOST || 'db.thkdrlozedfysuukvwmd.supabase.co',
+    port: 5432,
+    database: 'postgres',
+    user: 'postgres',
+    password: process.env.SUPABASE_DB_PASSWORD,
+    ssl: { rejectUnauthorized: false },
+    max: 1,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 10000,
+  });
+} else {
+  // Local development
+  pool = new Pool({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    database: process.env.DB_NAME || 'rupi_db',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'password',
+    ssl: false,
+  });
+}
 
 // Clean database initialization (unified system only)
 export async function initializeDatabase() {
