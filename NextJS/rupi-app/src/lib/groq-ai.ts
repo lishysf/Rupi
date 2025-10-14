@@ -547,18 +547,19 @@ export class GroqAIService {
   // Try to coerce slightly-invalid AI output into our stricter ParsedTransaction
   private static coerceParsedTransaction(maybe: unknown): ParsedTransaction | null {
     if (!maybe || typeof maybe !== 'object') return null;
-    const type = maybe.type;
-    const description = typeof maybe.description === 'string' ? maybe.description : '';
-    const amount = typeof maybe.amount === 'number' ? maybe.amount : NaN;
-    const confidence = typeof maybe.confidence === 'number' ? maybe.confidence : 0.5;
+    const obj = maybe as Record<string, unknown>;
+    const type = obj.type;
+    const description = typeof obj.description === 'string' ? obj.description : '';
+    const amount = typeof obj.amount === 'number' ? obj.amount : NaN;
+    const confidence = typeof obj.confidence === 'number' ? obj.confidence : 0.5;
     if (!type || !description || !Number.isFinite(amount) || amount <= 0) return null;
 
-    const walletName = typeof maybe.walletName === 'string' ? maybe.walletName : undefined;
-    const walletType = typeof maybe.walletType === 'string' ? maybe.walletType : undefined;
-    const adminFee = typeof maybe.adminFee === 'number' ? maybe.adminFee : undefined;
+    const walletName = typeof obj.walletName === 'string' ? obj.walletName : undefined;
+    const walletType = typeof obj.walletType === 'string' ? obj.walletType : undefined;
+    const adminFee = typeof obj.adminFee === 'number' ? obj.adminFee : undefined;
 
     if (type === 'expense') {
-      let category = typeof maybe.category === 'string' ? maybe.category : undefined;
+      let category = typeof obj.category === 'string' ? obj.category : undefined;
       const lower = (category || '').toLowerCase();
       const descLower = description.toLowerCase();
       // Expanded keyword-based normalization for Indonesian users
@@ -707,14 +708,14 @@ export class GroqAIService {
       return { type: 'expense', description, amount, category: 'Others', walletName, walletType, adminFee, confidence } as ParsedTransaction;
     }
     if (type === 'income') {
-      const source = typeof maybe.source === 'string' ? maybe.source : 'Others';
+      const source = typeof obj.source === 'string' ? obj.source : 'Others';
       return { type: 'income', description, amount, source, walletName, walletType, confidence } as ParsedTransaction;
     }
     if (type === 'savings') {
-      return { type: 'savings', description, amount, goalName: maybe.goalName ?? null, walletName, walletType, confidence } as ParsedTransaction;
+      return { type: 'savings', description, amount, goalName: obj.goalName ?? null, walletName, walletType, confidence } as ParsedTransaction;
     }
     if (type === 'investment') {
-      return { type: 'investment', description, amount, assetName: maybe.assetName ?? null, confidence } as ParsedTransaction;
+      return { type: 'investment', description, amount, assetName: obj.assetName ?? null, confidence } as ParsedTransaction;
     }
     if (type === 'transfer') {
       return { type: 'transfer', description, amount, walletName, walletType, adminFee, confidence } as ParsedTransaction;
@@ -981,49 +982,50 @@ Return ONLY JSON in this structure:
 
   // Validate parsed transaction data
   private static isValidParsedTransaction(transaction: unknown): transaction is ParsedTransaction {
-    const hasValidType = transaction.type === 'income' || transaction.type === 'expense' || transaction.type === 'savings' || transaction.type === 'investment' || transaction.type === 'transfer';
+    if (!transaction || typeof transaction !== 'object') return false;
+    const obj = transaction as Record<string, unknown>;
+    const hasValidType = obj.type === 'income' || obj.type === 'expense' || obj.type === 'savings' || obj.type === 'investment' || obj.type === 'transfer';
     const hasValidBasics = (
-      typeof transaction === 'object' &&
-      typeof transaction.description === 'string' &&
-      typeof transaction.amount === 'number' &&
-      typeof transaction.confidence === 'number' &&
-      transaction.amount > 0 &&
-      transaction.confidence >= 0 && transaction.confidence <= 1
+      typeof obj.description === 'string' &&
+      typeof obj.amount === 'number' &&
+      typeof obj.confidence === 'number' &&
+      obj.amount > 0 &&
+      obj.confidence >= 0 && obj.confidence <= 1
     );
 
     if (!hasValidType || !hasValidBasics) return false;
 
-    if (transaction.type === 'expense') {
+    if (obj.type === 'expense') {
       return (
-        typeof transaction.category === 'string' &&
-        EXPENSE_CATEGORIES.includes(transaction.category as ExpenseCategory)
+        typeof obj.category === 'string' &&
+        EXPENSE_CATEGORIES.includes(obj.category as ExpenseCategory)
       );
     }
 
-    if (transaction.type === 'income') {
+    if (obj.type === 'income') {
       return (
-        typeof transaction.source === 'string' &&
-        INCOME_SOURCES.includes(transaction.source as IncomeSource)
+        typeof obj.source === 'string' &&
+        INCOME_SOURCES.includes(obj.source as IncomeSource)
       );
     }
 
-    if (transaction.type === 'savings') {
+    if (obj.type === 'savings') {
       return (
-        transaction.goalName === null || typeof transaction.goalName === 'string'
+        obj.goalName === null || typeof obj.goalName === 'string'
       );
     }
 
-    if (transaction.type === 'investment') {
+    if (obj.type === 'investment') {
       return (
-        transaction.assetName === null || typeof transaction.assetName === 'string'
+        obj.assetName === null || typeof obj.assetName === 'string'
       );
     }
 
-    if (transaction.type === 'transfer') {
+    if (obj.type === 'transfer') {
       return (
-        (transaction.walletName === null || typeof transaction.walletName === 'string') &&
-        (transaction.walletType === null || typeof transaction.walletType === 'string') &&
-        (transaction.adminFee === undefined || (typeof transaction.adminFee === 'number' && transaction.adminFee >= 0))
+        (obj.walletName === null || typeof obj.walletName === 'string') &&
+        (obj.walletType === null || typeof obj.walletType === 'string') &&
+        (obj.adminFee === undefined || (typeof obj.adminFee === 'number' && obj.adminFee >= 0))
       );
     }
 
@@ -1032,15 +1034,16 @@ Return ONLY JSON in this structure:
 
   // Validate parsed expense data (legacy)
   private static isValidParsedExpense(expense: unknown): expense is ParsedExpense {
+    if (!expense || typeof expense !== 'object') return false;
+    const obj = expense as Record<string, unknown>;
     return (
-      typeof expense === 'object' &&
-      typeof expense.description === 'string' &&
-      typeof expense.amount === 'number' &&
-      typeof expense.category === 'string' &&
-      typeof expense.confidence === 'number' &&
-      expense.amount > 0 &&
-      expense.confidence >= 0 && expense.confidence <= 1 &&
-      EXPENSE_CATEGORIES.includes(expense.category as ExpenseCategory)
+      typeof obj.description === 'string' &&
+      typeof obj.amount === 'number' &&
+      typeof obj.category === 'string' &&
+      typeof obj.confidence === 'number' &&
+      obj.amount > 0 &&
+      obj.confidence >= 0 && obj.confidence <= 1 &&
+      EXPENSE_CATEGORIES.includes(obj.category as ExpenseCategory)
     );
   }
 
@@ -1943,10 +1946,10 @@ ${conversationHistory ? `Conversation History Context: ${conversationHistory}` :
       `;
 
       // Prepare data summary for the AI with pre-calculated totals
-      const expenses = financialData.expenses || [];
-      const income = financialData.income || [];
-      const savings = financialData.savings || [];
-      const investments = financialData.investments || [];
+      const expenses = (financialData.expenses || []) as Array<Record<string, unknown>>;
+      const income = (financialData.income || []) as Array<Record<string, unknown>>;
+      const savings = (financialData.savings || []) as Array<Record<string, unknown>>;
+      const investments = (financialData.investments || []) as Array<Record<string, unknown>>;
 
       console.log('Sample expense data:', expenses.slice(0, 2));
       console.log('Sample income data:', income.slice(0, 2));

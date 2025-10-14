@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GroqAIService } from '@/lib/groq-ai';
-import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDatabase, initializeDatabase } from '@/lib/database';
-// import pool from '@/lib/database'; // Removed unused import
+import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { PerformanceMonitor } from '@/lib/performance-monitor';
-import { createDatabaseIndexes } from '@/lib/database-indexes';
 
 // Helper function to find wallet by name efficiently (with caching)
 function findWalletByName(wallets: Array<{id: number, name: string}>, walletName: string | undefined, walletType: string | undefined): number | undefined {
@@ -352,20 +350,12 @@ async function handleSavingsTransfer(userId: number, description: string, amount
   }
 }
 
-// Initialize database on first request
-// Use a more robust initialization check that survives serverless cold starts
-let dbInitPromise: Promise<void> | null = null;
+// Skip database initialization - tables should already exist in production
+// Database initialization should be done via migrations or during deployment, not on every request
 async function ensureDbInitialized() {
-  if (!dbInitPromise) {
-    dbInitPromise = (async () => {
-      await initializeDatabase();
-      // Create database indexes in background (don't wait for it)
-      createDatabaseIndexes().catch(error => {
-        console.warn('Database indexes creation failed (non-critical):', error);
-      });
-    })();
-  }
-  await dbInitPromise;
+  // No-op - database is already initialized
+  // This prevents expensive re-initialization on every cold start
+  return Promise.resolve();
 }
 
 export async function POST(request: NextRequest) {
