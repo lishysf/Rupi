@@ -14,18 +14,14 @@ const WALLET_TYPES = [
   { value: 'bank_account', label: 'Bank Account', icon: Building2, color: '#8B5CF6' },
 ];
 
-const E_WALLET_PROVIDERS = [
-  'Gojek', 'Dana', 'OVO', 'LinkAja', 'ShopeePay', 'DANA', 'Flip', 'Jenius', 'BCA Mobile', 'Mandiri'
-];
-
 interface Wallet {
   id: number;
   name: string;
   type: string;
-  balance: number;
-  color: string;
-  icon: string;
-  is_active: boolean;
+  balance?: number;
+  color?: string;
+  icon?: string;
+  is_active?: boolean;
 }
 
 interface FormData {
@@ -146,9 +142,9 @@ export default function WalletModal({ isOpen, onClose, onWalletUpdate }: WalletM
     setFormData({
       name: wallet.name,
       type: wallet.type,
-      balance: wallet.balance.toString(),
-      color: wallet.color,
-      icon: wallet.icon
+      balance: (wallet.balance || 0).toString(),
+      color: wallet.color || '#10B981',
+      icon: wallet.icon || 'wallet'
     });
     setShowAddForm(true);
   };
@@ -180,7 +176,7 @@ export default function WalletModal({ isOpen, onClose, onWalletUpdate }: WalletM
   }, [state.data.wallets]);
 
   // Calculate total balance
-  const totalBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+  const totalBalance = wallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -297,25 +293,6 @@ export default function WalletModal({ isOpen, onClose, onWalletUpdate }: WalletM
                       </div>
                     </div>
 
-                    {/* E-Wallet Provider (if e_wallet selected) */}
-                    {formData.type === 'e_wallet' && (
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                          E-Wallet Provider
-                        </label>
-                        <select
-                          value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                        >
-                          <option value="">Select provider...</option>
-                          {E_WALLET_PROVIDERS.map((provider) => (
-                            <option key={provider} value={provider}>{provider}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
                     {/* Initial Balance */}
                     <div>
                       <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -323,7 +300,7 @@ export default function WalletModal({ isOpen, onClose, onWalletUpdate }: WalletM
                       </label>
                       {editingWallet ? (
                         <div className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400">
-                          Rp{editingWallet.balance.toLocaleString()} (calculated from transactions)
+                          Rp{(editingWallet.balance || 0).toLocaleString()} (calculated from transactions)
                         </div>
                       ) : (
                         <input
@@ -408,7 +385,7 @@ export default function WalletModal({ isOpen, onClose, onWalletUpdate }: WalletM
                               <div className="flex items-center gap-3">
                                 <div 
                                   className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
-                                  style={{ backgroundColor: wallet.color }}
+                                  style={{ backgroundColor: wallet.color || '#10B981' }}
                                 >
                                   <IconComponent className="w-5 h-5" />
                                 </div>
@@ -433,7 +410,7 @@ export default function WalletModal({ isOpen, onClose, onWalletUpdate }: WalletM
                               </div>
                             </div>
                             <div className="text-2xl font-bold text-neutral-900 dark:text-white">
-                              {formatCurrency(wallet.balance)}
+                              {formatCurrency(wallet.balance || 0)}
                             </div>
                           </CardContent>
                         </Card>
