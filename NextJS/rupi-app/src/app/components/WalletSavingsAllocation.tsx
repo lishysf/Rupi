@@ -176,7 +176,7 @@ export default function WalletSavingsAllocation({ isOpen, onClose, onSave }: Wal
   };
 
   const getIconComponent = (iconName: string | null) => {
-    const icons: Record<string, any> = {
+    const icons: Record<string, React.ComponentType<{className?: string}>> = {
       'laptop': Target,
       'car': Target,
       'home': Target,

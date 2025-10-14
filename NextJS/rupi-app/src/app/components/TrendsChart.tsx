@@ -131,7 +131,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
       // Calculate total assets (same logic as Financial Summary)
       const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0)
       const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0)
-      const totalInvestments = (investments || []).reduce((sum: number, inv: any) => sum + parseFloat(inv.amount), 0)
+      const totalInvestments = (investments || []).reduce((sum: number, inv: {amount: number | string}) => sum + parseFloat(inv.amount.toString()), 0)
       const totalAssets = walletBalance + totalSavings + totalInvestments
       
       // Calculate other totals
@@ -503,7 +503,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                     {isExpense && data?.top_expenses && data.top_expenses.length > 0 && (
                       <div className="border-t border-white/20 pt-1 sm:pt-2 mt-1 sm:mt-2">
                         <div className="text-xs opacity-90 mb-1">Top Categories:</div>
-                        {data.top_expenses.slice(0, 3).map((category: any, index: number) => (
+                        {data.top_expenses.slice(0, 3).map((category: {category: string, amount: number}, index: number) => (
                           <div key={index} className="text-xs opacity-80 flex justify-between">
                             <span className="truncate max-w-[80px] sm:max-w-[120px]" title={category.category}>
                               {category.category}

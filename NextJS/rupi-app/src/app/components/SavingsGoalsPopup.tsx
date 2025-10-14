@@ -50,14 +50,14 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
   const [allocationLoading, setAllocationLoading] = useState(false);
 
   // Calculate total saved money from savings transactions
-  const totalSaved = savings.reduce((sum: number, saving: any) => {
-    const amount = parseFloat(saving.amount) || 0;
+  const totalSaved = savings.reduce((sum: number, saving: {amount: number | string}) => {
+    const amount = parseFloat(saving.amount.toString()) || 0;
     return sum + amount;
   }, 0);
 
   // Calculate total allocated amount across all goals
-  const totalAllocated = goals.reduce((sum: number, goal: any) => {
-    const allocatedAmount = parseFloat(goal.allocated_amount) || 0;
+  const totalAllocated = goals.reduce((sum: number, goal: {allocated_amount: number | string}) => {
+    const allocatedAmount = parseFloat(goal.allocated_amount.toString()) || 0;
     return sum + allocatedAmount;
   }, 0);
 
@@ -93,7 +93,7 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
   };
 
   // Handle creating new savings goal
-  const handleCreateGoal = async (goalData: any) => {
+  const handleCreateGoal = async (goalData: {name: string, target_amount: number, target_date: string, description?: string, icon?: string}) => {
     try {
       setError(null);
       const response = await fetch('/api/savings-goals', {
@@ -301,8 +301,8 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
   };
 
   // Check if goal allocations are affected by withdrawals
-  const checkAllocationHealth = (goal: any) => {
-    const currentAmount = parseFloat(String(goal.current_amount)) || 0;
+  const checkAllocationHealth = (goal: {allocated_amount: number | string, target_amount: number | string, current_amount?: number | string}) => {
+    const currentAmount = parseFloat(String(goal.current_amount || 0)) || 0;
     const allocatedAmount = parseFloat(String(goal.allocated_amount)) || 0;
     const targetAmount = parseFloat(String(goal.target_amount)) || 0;
     

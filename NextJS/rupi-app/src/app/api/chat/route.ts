@@ -998,7 +998,7 @@ export async function POST(request: NextRequest) {
         const savingsGoals = await SavingsGoalDatabase.getAllSavingsGoals(user.id);
 
         // Category breakdown for the period
-        const expensesByCategory: Record<string, { total: number, transactions: any[] }> = {};
+        const expensesByCategory: Record<string, { total: number, transactions: Array<{amount: number | string, category?: string}> }> = {};
         for (const e of filteredExpenses) {
           const cat = e.category || 'Others';
           if (!expensesByCategory[cat]) expensesByCategory[cat] = { total: 0, transactions: [] };

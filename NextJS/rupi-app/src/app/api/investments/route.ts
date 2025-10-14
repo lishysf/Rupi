@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Pool } from 'pg';
+// import { Pool } from 'pg'; // Removed unused import
 import { TransactionDatabase, initializeDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 

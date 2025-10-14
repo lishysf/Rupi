@@ -881,7 +881,7 @@ Return ONLY JSON in this structure:
     
     let amount = 0;
     if (amountMatch) {
-      let amountStr = amountMatch[1].replace(/[.,]/g, '');
+      const amountStr = amountMatch[1].replace(/[.,]/g, '');
       amount = parseInt(amountStr);
       
       // Handle multipliers
@@ -937,7 +937,7 @@ Return ONLY JSON in this structure:
     
     let amount = 0;
     if (amountMatch) {
-      let amountStr = amountMatch[1].replace(/[.,]/g, '');
+      const amountStr = amountMatch[1].replace(/[.,]/g, '');
       amount = parseInt(amountStr);
       
       // Handle "rb", "ribu", "k" multipliers
@@ -1919,7 +1919,7 @@ Once you have some transactions recorded, I can provide detailed analysis of you
 
     console.log('🧪 Testing Intent Detection Accuracy...');
     let correct = 0;
-    let total = testCases.length;
+    const total = testCases.length;
 
     for (const testCase of testCases) {
       try {

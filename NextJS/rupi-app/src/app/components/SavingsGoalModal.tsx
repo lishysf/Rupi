@@ -288,7 +288,7 @@ export default function SavingsGoalModal({ isOpen, onClose, onSave }: SavingsGoa
                       </div>
                     )}
                     <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-                      💡 You'll manually distribute your savings to this goal using the allocation feature.
+                      💡 You&apos;ll manually distribute your savings to this goal using the allocation feature.
                     </div>
                   </div>
                 </div>

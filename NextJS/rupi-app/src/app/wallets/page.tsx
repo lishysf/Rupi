@@ -62,27 +62,27 @@ function WalletsContent() {
   };
 
   // Calculate total balance
-  const totalBalance = state.data.wallets.reduce((sum: number, wallet: any) => sum + wallet.balance, 0);
+  const totalBalance = state.data.wallets.reduce((sum: number, wallet: {balance: number}) => sum + wallet.balance, 0);
 
   // Calculate wallet statistics
   const getWalletStats = (walletId: number) => {
-    const transactions = state.data.transactions.filter((tx: any) => tx.wallet_id === walletId);
+    const transactions = state.data.transactions.filter((tx: {wallet_id?: number}) => tx.wallet_id === walletId);
     const income = transactions
-      .filter((tx: any) => tx.type === 'income')
-      .reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
+      .filter((tx: {type: string}) => tx.type === 'income')
+      .reduce((sum: number, tx: {amount: number | string}) => sum + Number(tx.amount), 0);
     const expenses = transactions
-      .filter((tx: any) => tx.type === 'expense')
-      .reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
+      .filter((tx: {type: string}) => tx.type === 'expense')
+      .reduce((sum: number, tx: {amount: number | string}) => sum + Number(tx.amount), 0);
     
     return { income, expenses, transactionCount: transactions.length };
   };
 
   // Calculate savings for each wallet
   const getWalletSavings = (walletId: number) => {
-    const savings = state.data.savings.filter((saving: any) => saving.wallet_id === walletId);
+    const savings = state.data.savings.filter((saving: {wallet_id?: number}) => saving.wallet_id === walletId);
     const totalSavings = savings
-      .filter((saving: any) => saving.amount > 0)
-      .reduce((sum: number, saving: any) => sum + Number(saving.amount), 0);
+      .filter((saving: {amount: number | string}) => Number(saving.amount) > 0)
+      .reduce((sum: number, saving: {amount: number | string}) => sum + Number(saving.amount), 0);
     
     return { totalSavings, savingsCount: savings.length };
   };
@@ -211,7 +211,7 @@ function WalletsContent() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {state.data.wallets.map((wallet: any) => {
+          {state.data.wallets.map((wallet: {id: number, name: string, type: string, balance: number, color: string, icon: string, is_active: boolean}) => {
             const walletType = WALLET_TYPES.find(t => t.value === wallet.type);
             const IconComponent = walletType?.icon || Wallet;
             const stats = getWalletStats(wallet.id);

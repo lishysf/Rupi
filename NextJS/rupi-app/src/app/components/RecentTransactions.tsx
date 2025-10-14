@@ -52,7 +52,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   let t = (key: string) => key;
   let translateCategory = (c: string) => c;
   try { const lang = useLanguage(); t = lang.t; translateCategory = lang.translateCategory; } catch {}
-  const { transactions, savings } = state.data as any;
+  const { transactions, savings } = state.data as {transactions: Array<{id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}>, savings: Array<{id: number, type: string, description: string, amount: number | string, date: string, goal_name?: string}>};
   const loading = state.loading.initial && transactions.length === 0;
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'txn' | 'savings'>('all');
@@ -81,7 +81,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       if (transaction.isTransfer) {
         // For grouped transfer transactions, we need to delete both the outgoing and incoming transactions
         // Find the corresponding transaction pair
-        const correspondingTransaction = allTransactions.find((t: any) => 
+        const correspondingTransaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => 
           t.id !== transaction.id && 
           t.type === 'transfer' &&
           Math.abs(t.amount) === Math.abs(transaction.amount) &&
@@ -160,10 +160,10 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   };
 
   // Handle save edit from modal
-  const handleSaveEdit = async (id: number, type: 'income' | 'expense', data: any) => {
+  const handleSaveEdit = async (id: number, type: 'income' | 'expense', data: {description: string, amount: number, category?: string, source?: string, wallet_id?: number}) => {
     try {
       setError(null);
-      const original = allTransactions.find((t: any) => t.id === id);
+      const original = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => t.id === id);
       let success = false;
       if (original?.type === 'savings') {
         // Extract original ID from prefixed ID
@@ -212,7 +212,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   // Get icon and color for category
   const getCategoryInfo = (category: string, type: 'income' | 'expense' | 'savings' | 'investment') => {
     if (type === 'income') {
-      const incomeCategories: Record<string, { icon: any; color: string }> = {
+      const incomeCategories: Record<string, { icon: React.ComponentType<{className?: string}>; color: string }> = {
         'Salary': { icon: Briefcase, color: 'text-blue-600 dark:text-blue-400' },
         'Freelance': { icon: TrendingUp, color: 'text-purple-600 dark:text-purple-400' },
         'Business': { icon: DollarSign, color: 'text-green-600 dark:text-green-400' },
@@ -227,7 +227,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     } else if (type === 'investment') {
       return { icon: TrendingUp, color: 'text-purple-600 dark:text-purple-400' };
     } else {
-      const expenseCategories: Record<string, { icon: any; color: string }> = {
+      const expenseCategories: Record<string, { icon: React.ComponentType<{className?: string}>; color: string }> = {
         'Housing & Utilities': { icon: Home, color: 'text-orange-600 dark:text-orange-400' },
         'Food & Groceries': { icon: Utensils, color: 'text-green-600 dark:text-green-400' },
         'Transportation': { icon: Car, color: 'text-blue-600 dark:text-blue-400' },
@@ -288,7 +288,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     // In this case, we'll show the created_at time instead if available
     if (hours === 0 && minutes === 0 && seconds === 0) {
       // Try to get the created_at time from the transaction
-      const transaction = allTransactions.find((t: any) => t.date === dateString);
+      const transaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => t.date === dateString);
       if (transaction && transaction.created_at) {
         const createdDate = new Date(transaction.created_at);
         return new Intl.DateTimeFormat('id-ID', {
@@ -310,11 +310,11 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
   // Use transactions array which already includes all data (expenses, income, savings)
   // No need to combine with separate savings array as it causes duplication
-  const allTransactions = transactions.map((txn: any) => ({
+  const allTransactions = transactions.map((txn: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => ({
     ...txn,
     uniqueKey: txn.id, // Use the already unique ID from context
     type: txn.type as 'income' | 'expense' | 'savings' | 'investment'
-  })).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Group transfer transactions to avoid showing duplicates
   const groupedTransactions = [];
@@ -325,7 +325,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     
     if (transaction.type === 'transfer') {
       // Find the corresponding transfer transaction (outgoing/incoming pair)
-      const correspondingTransaction = allTransactions.find((t: any) => 
+      const correspondingTransaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => 
         t.id !== transaction.id && 
         t.type === 'transfer' &&
         Math.abs(t.amount) === Math.abs(transaction.amount) &&
@@ -373,7 +373,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     }
   }
 
-  const filtered = groupedTransactions.filter((t: any) => {
+  const filtered = groupedTransactions.filter((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => {
     if (activeFilter === 'all') return true;
     if (activeFilter === 'txn') return t.type === 'income' || t.type === 'expense';
     if (activeFilter === 'savings') return t.type === 'savings';
@@ -457,7 +457,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
             </p>
           </div>
         ) : (
-          limitedTransactions.map((transaction: any) => {
+          limitedTransactions.map((transaction: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => {
           const categoryInfo = getCategoryInfo(transaction.category, transaction.type);
           const IconComponent = categoryInfo.icon;
           const isIncome = transaction.type === 'income';

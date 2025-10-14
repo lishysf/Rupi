@@ -22,7 +22,7 @@ interface TransactionEditModalProps {
   transaction: Transaction | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (id: number, type: 'income' | 'expense', data: any) => Promise<boolean>;
+  onSave: (id: number, type: 'income' | 'expense', data: {description: string, amount: number, category?: string, source?: string, wallet_id?: number}) => Promise<boolean>;
 }
 
 // Expense categories

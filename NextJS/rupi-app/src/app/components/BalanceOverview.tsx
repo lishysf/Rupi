@@ -35,7 +35,7 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
   const { expenses, income, savings, wallets } = state.data;
-  const investments: unknown[] = (state.data as Record<string, unknown>).investments || [];
+  const investments: Array<{amount: number | string}> = (state.data as any).investments || [];
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
   
   // Wallet state
@@ -85,7 +85,7 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
     const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
     const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0);
     const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0);
-    const totalInvestments = (investments || []).reduce((sum: number, inv: any) => sum + parseFloat(inv.amount), 0);
+    const totalInvestments = investments.reduce((sum: number, inv: {amount: number | string}) => sum + parseFloat(inv.amount.toString()), 0);
 
     return {
       currentMonthExpenses,

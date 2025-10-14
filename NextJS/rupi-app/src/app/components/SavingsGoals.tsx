@@ -31,14 +31,14 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
   const [showPopup, setShowPopup] = useState(false);
 
   // Calculate total saved money from savings transactions
-  const totalSaved = savings.reduce((sum: number, saving: any) => {
-    const amount = parseFloat(saving.amount) || 0;
+  const totalSaved = savings.reduce((sum: number, saving: {amount: number | string}) => {
+    const amount = parseFloat(saving.amount.toString()) || 0;
     return sum + amount;
   }, 0);
 
   // Calculate total allocated amount across all goals
-  const totalAllocated = goals.reduce((sum: number, goal: any) => {
-    const allocatedAmount = parseFloat(goal.allocated_amount) || 0;
+  const totalAllocated = goals.reduce((sum: number, goal: {allocated_amount: number | string}) => {
+    const allocatedAmount = parseFloat(goal.allocated_amount.toString()) || 0;
     return sum + allocatedAmount;
   }, 0);
 
@@ -120,7 +120,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
 
   // Get icon component based on icon name
   const getIconComponent = (iconName: string | null) => {
-    const icons: Record<string, any> = {
+    const icons: Record<string, React.ComponentType<{className?: string}>> = {
       'laptop': Laptop,
       'car': Car,
       'home': Home,

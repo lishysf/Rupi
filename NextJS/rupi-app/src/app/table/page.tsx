@@ -60,10 +60,10 @@ function FinancialTable() {
     fetchTransactions(true); // Show loading state
   }, [fetchTransactions]);
 
-  const handleEdit = (tx: any) => setSelectedTx(tx);
-  const startInlineEdit = (tx: any) => {
+  const handleEdit = (tx: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => setSelectedTx(tx);
+  const startInlineEdit = (tx: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => {
     setEditingId(tx.id);
-    setEditingType(tx.type);
+    setEditingType(tx.type as 'income' | 'expense' | 'savings' | 'investment');
     // Normalize date to YYYY-MM-DD for input value
     const d = new Date(tx.date);
     const yyyy = d.getFullYear();
@@ -78,7 +78,7 @@ function FinancialTable() {
   };
   const handleClose = () => setSelectedTx(null);
 
-  const handleDelete = async (tx: any) => {
+  const handleDelete = async (tx: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => {
     if (deletingId === tx.id) return;
     
     setDeletingId(tx.id);
@@ -102,7 +102,7 @@ function FinancialTable() {
     if (editingId == null || !editingType || !editDraft) return;
     // Only income/expense updates are supported by current APIs
     const apiType: 'income' | 'expense' = editingType === 'income' ? 'income' : 'expense';
-    const payload: any = {
+    const payload: {description: string, amount: number, category?: string, source?: string, wallet_id?: number, date: string} = {
       description: editDraft.description,
       amount: Number(editDraft.amount),
       date: editDraft.date,
@@ -144,7 +144,7 @@ function FinancialTable() {
     setGlobalEditData({});
   };
 
-  const updateGlobalEditData = (id: string | number, field: string, value: any) => {
+  const updateGlobalEditData = (id: string | number, field: string, value: string | number) => {
     setGlobalEditData(prev => ({
       ...prev,
       [String(id)]: {
@@ -157,7 +157,7 @@ function FinancialTable() {
   const saveAllChanges = async () => {
     const promises = Object.entries(globalEditData).map(async ([id, data]) => {
       const apiType: 'income' | 'expense' = data.type === 'income' ? 'income' : 'expense';
-      const payload: any = {
+      const payload: {description: string, amount: number, category?: string, source?: string, wallet_id?: number, date: string} = {
         description: data.description,
         amount: Number(data.amount),
         date: data.date,
@@ -206,7 +206,7 @@ function FinancialTable() {
   // Helper function to get wallet name by ID
   const getWalletName = (walletId?: number) => {
     if (!walletId) return 'N/A';
-    const wallet = state.data.wallets.find((w: any) => w.id === walletId);
+    const wallet = state.data.wallets.find((w: {id: number, name: string, type: string, balance: number, color: string, icon: string, is_active: boolean}) => w.id === walletId);
     return wallet ? wallet.name : 'Unknown';
   };
 
