@@ -6,9 +6,13 @@ let pool: Pool;
 
 if (process.env.DATABASE_URL) {
   // Use connection string (recommended for Vercel and Supabase connection pooling)
+  const connectionString = process.env.DATABASE_URL;
+  
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    connectionString: connectionString,
+    ssl: {
+      rejectUnauthorized: false
+    },
     // Optimize for serverless
     max: 1, // Reduce connection pool size for serverless
     idleTimeoutMillis: 10000, // Close idle connections quickly

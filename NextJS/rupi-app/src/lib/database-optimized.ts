@@ -7,7 +7,9 @@ if (process.env.DATABASE_URL) {
   // Use connection string (recommended for Vercel and Supabase connection pooling)
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: {
+      rejectUnauthorized: false
+    },
     max: 1,
     idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 10000,

@@ -29,7 +29,7 @@ Go to your Vercel project → Settings → Environment Variables and add:
 
 ```env
 # Database Connection (use Supabase Pooling URL)
-DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true
+DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-1-[region].pooler.supabase.com:6543/postgres
 
 # NextAuth Configuration
 NEXTAUTH_URL=https://your-app.vercel.app
@@ -48,10 +48,11 @@ NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
 #### Important Notes:
 
 - ✅ Use `DATABASE_URL` instead of separate `SUPABASE_DB_HOST` and `SUPABASE_DB_PASSWORD`
-- ✅ Add `?pgbouncer=true` at the end of the DATABASE_URL
 - ✅ Use port `6543` (transaction mode) for better serverless compatibility
 - ✅ Make sure to replace `[project-ref]`, `[password]`, and `[region]` with your actual values
+- ✅ **URL-encode special characters** in your password (e.g., `#` becomes `%23`)
 - ✅ Apply these variables to **Production**, **Preview**, and **Development** environments
+- ⚠️ **Do NOT add** `?pgbouncer=true` - SSL is configured automatically
 
 ### 3. Get Your Connection Details from Supabase
 
@@ -67,8 +68,14 @@ If you can't find the pooling URL in the dashboard:
 
 4. **Full Connection String Example**:
    ```
-   postgresql://postgres.thkdrlozedfysuukvwmd:[YOUR_PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+   postgresql://postgres.thkdrlozedfysuukvwmd:Khalis%23150603@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres
    ```
+   
+   Note: Special characters in passwords must be URL-encoded:
+   - `#` → `%23`
+   - `@` → `%40`
+   - `$` → `%24`
+   - etc.
 
 ### 4. Deploy Your Changes
 
@@ -108,8 +115,13 @@ Check your Vercel deployment logs:
 
 2. **Verify the connection string format**:
    ```
-   postgresql://USER:PASSWORD@HOST:PORT/DATABASE?pgbouncer=true
+   postgresql://USER:PASSWORD@HOST:PORT/DATABASE
    ```
+   
+   Make sure:
+   - Password has special characters URL-encoded
+   - Using port `6543` for transaction mode
+   - No extra query parameters needed (SSL is auto-configured)
 
 3. **Test the connection**: Use Supabase's SQL Editor to verify your database is accessible
 
