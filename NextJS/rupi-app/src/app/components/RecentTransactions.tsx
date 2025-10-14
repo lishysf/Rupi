@@ -52,7 +52,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   let t = (key: string) => key;
   let translateCategory = (c: string) => c;
   try { const lang = useLanguage(); t = lang.t; translateCategory = lang.translateCategory; } catch {}
-  const { transactions, savings } = state.data as {transactions: Array<{id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}>, savings: Array<{id: number, type: string, description: string, amount: number | string, date: string, goal_name?: string}>};
+  const { transactions, savings } = state.data as {transactions: Array<{id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}>, savings: Array<{id: number, type: string, description: string, amount: number | string, date: string, goal_name?: string}>};
   const loading = state.loading.initial && transactions.length === 0;
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'txn' | 'savings'>('all');
@@ -81,10 +81,10 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       if (transaction.isTransfer) {
         // For grouped transfer transactions, we need to delete both the outgoing and incoming transactions
         // Find the corresponding transaction pair
-        const correspondingTransaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => 
+        const correspondingTransaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}) => 
           t.id !== transaction.id && 
           t.type === 'transfer' &&
-          Math.abs(t.amount) === Math.abs(transaction.amount) &&
+          Math.abs(Number(t.amount)) === Math.abs(Number(transaction.amount)) &&
           Math.abs(new Date(t.date).getTime() - new Date(transaction.date).getTime()) < 1000
         );
         
@@ -163,7 +163,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   const handleSaveEdit = async (id: number, type: 'income' | 'expense', data: {description: string, amount: number, category?: string, source?: string, wallet_id?: number}) => {
     try {
       setError(null);
-      const original = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => t.id === id);
+      const original = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}) => t.id === id);
       let success = false;
       if (original?.type === 'savings') {
         // Extract original ID from prefixed ID
@@ -288,7 +288,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     // In this case, we'll show the created_at time instead if available
     if (hours === 0 && minutes === 0 && seconds === 0) {
       // Try to get the created_at time from the transaction
-      const transaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => t.date === dateString);
+      const transaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}) => t.date === dateString);
       if (transaction && transaction.created_at) {
         const createdDate = new Date(transaction.created_at);
         return new Intl.DateTimeFormat('id-ID', {
@@ -310,10 +310,10 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
   // Use transactions array which already includes all data (expenses, income, savings)
   // No need to combine with separate savings array as it causes duplication
-  const allTransactions = transactions.map((txn: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => ({
+  const allTransactions = transactions.map((txn: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}) => ({
     ...txn,
     uniqueKey: txn.id, // Use the already unique ID from context
-    type: txn.type as 'income' | 'expense' | 'savings' | 'investment'
+    type: txn.type as 'income' | 'expense' | 'savings' | 'investment' | 'transfer'
   })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Group transfer transactions to avoid showing duplicates
@@ -325,10 +325,10 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     
     if (transaction.type === 'transfer') {
       // Find the corresponding transfer transaction (outgoing/incoming pair)
-      const correspondingTransaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => 
+      const correspondingTransaction = allTransactions.find((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}) => 
         t.id !== transaction.id && 
         t.type === 'transfer' &&
-        Math.abs(t.amount) === Math.abs(transaction.amount) &&
+        Math.abs(Number(t.amount)) === Math.abs(Number(transaction.amount)) &&
         Math.abs(new Date(t.date).getTime() - new Date(transaction.date).getTime()) < 1000 && // Within 1 second
         t.description.includes('Transfer') && 
         transaction.description.includes('Transfer')
@@ -336,8 +336,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       
       if (correspondingTransaction) {
         // Create a single grouped transfer entry
-        const fromTransaction = transaction.amount < 0 ? transaction : correspondingTransaction;
-        const toTransaction = transaction.amount > 0 ? transaction : correspondingTransaction;
+        const fromTransaction = Number(transaction.amount) < 0 ? transaction : correspondingTransaction;
+        const toTransaction = Number(transaction.amount) > 0 ? transaction : correspondingTransaction;
         
         // Extract wallet names from the description
         // fromTransaction (negative amount): "Transfer to GoPay" -> "GoPay" (destination)
@@ -353,7 +353,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           ...fromTransaction,
           uniqueKey: `transfer-${fromTransaction.id}`,
           isTransfer: true,
-          transferAmount: Math.abs(fromTransaction.amount),
+          transferAmount: Math.abs(Number(fromTransaction.amount)),
           fromWallet: fromTransaction.wallet_id,
           toWallet: toTransaction.wallet_id,
           description: `${fromWalletName} → ${toWalletName}` // Clear wallet-to-wallet description
@@ -373,7 +373,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     }
   }
 
-  const filtered = groupedTransactions.filter((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => {
+  const filtered = groupedTransactions.filter((t: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}) => {
     if (activeFilter === 'all') return true;
     if (activeFilter === 'txn') return t.type === 'income' || t.type === 'expense';
     if (activeFilter === 'savings') return t.type === 'savings';
@@ -457,7 +457,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
             </p>
           </div>
         ) : (
-          limitedTransactions.map((transaction: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => {
+          limitedTransactions.map((transaction: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string, isTransfer?: boolean, uniqueKey?: number, transferAmount?: number}) => {
           const categoryInfo = getCategoryInfo(transaction.category, transaction.type);
           const IconComponent = categoryInfo.icon;
           const isIncome = transaction.type === 'income';
@@ -555,8 +555,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                       : 'text-red-600 dark:text-red-400'
                   } break-words`}>
                     {isTransfer 
-                      ? formatCurrency(transaction.transferAmount || Math.abs(transaction.amount))
-                      : `${isIncome ? '+' : isSavings ? '💎' : '-'}${formatCurrency(Math.abs(transaction.amount))}`
+                      ? formatCurrency(transaction.transferAmount || Math.abs(Number(transaction.amount)))
+                      : `${isIncome ? '+' : isSavings ? '💎' : '-'}${formatCurrency(Math.abs(Number(transaction.amount)))}`
                     }
                   </div>
                   {widgetSize === 'square' && (
