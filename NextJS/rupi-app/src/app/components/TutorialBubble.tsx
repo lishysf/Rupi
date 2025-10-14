@@ -358,7 +358,7 @@ export default function TutorialBubble({ isOpen, onClose, onStart }: TutorialBub
 
   if (!isOpen && !isActive) {
     return (
-      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col gap-2">
+      <div className="hidden sm:flex fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex-col gap-2">
         {/* Help Button */}
         <button
           onClick={handleStart}

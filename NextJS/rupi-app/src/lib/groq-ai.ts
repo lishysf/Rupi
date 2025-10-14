@@ -50,23 +50,61 @@ const TRANSACTION_PARSING_PROMPT = `
 BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap pahami Bahasa Inggris bila pengguna memakainya.
 You are an AI assistant that helps parse natural language financial transaction descriptions into structured data.
 
-Available expense categories:
-1. Housing & Utilities (rent, electricity, internet, water, mortgage, home maintenance)
-2. Food & Groceries (groceries, eating out, snacks, restaurants, food delivery)
-3. Transportation (fuel, public transport, taxi, car maintenance, parking)
-4. Health & Personal (medical, fitness, self-care, pharmacy, doctor visits)
-5. Entertainment & Shopping (leisure, clothes, subscriptions, games, movies, hobbies)
-6. Debt Payments (credit card payments, loan payments, debt repayment, mortgage payments)
-7. Family & Others (kids, pets, gifts, charity, unexpected expenses, miscellaneous)
+Available expense categories (BE VERY SPECIFIC):
+1. Housing & Utilities:
+   - Rent (sewa rumah, kontrakan, kos, apartemen)
+   - Mortgage (KPR, cicilan rumah)
+   - Electricity (listrik, PLN, token listrik, bayar listrik) - UTILITY BILLS ONLY
+   - Water (tagihan air PDAM, bayar air PDAM, water bill) - UTILITY BILLS ONLY, NOT for bottled water purchases
+   - Internet (internet, wifi, indihome, first media)
+   - Gas Utility (gas rumah, elpiji, gas lpg)
+   - Home Maintenance (perbaikan rumah, tukang, maintenance, perabot, furniture, mebel, kursi, chair, meja, table, lemari, wardrobe, kasur, bed, sofa, rak, shelf, kulkas, fridge, refrigerator, AC, air conditioner, kipas, fan, TV, television, mesin cuci, washing machine, kompor, stove, rice cooker, blender, setrika, iron, home appliances, elektronik rumah)
+   - Household Supplies (sabun, soap, detergen, detergent, cleaning supplies, sapu, broom, pel, mop, tissue, lap, pembersih)
+2. Food & Groceries:
+   - Groceries (belanja harian, supermarket, minimarket, air minum, aqua, bottled water, le minerale, vit, drinking water)
+   - Dining Out (makan di luar, restoran, warteg, warung)
+   - Coffee & Tea (kopi, teh, boba, coffee shop)
+   - Food Delivery (gofood, grabfood, shopeefood)
+3. Transportation:
+   - Fuel (bensin, bbm, pertamax, pertalite, gas for vehicle)
+   - Vehicle Maintenance (service motor, service mobil, oli, ban, cuci motor, cuci mobil, tune up, ganti oli, car service, motor service, mechanic)
+   - Parking (parkir)
+   - Public Transport (bus, kereta, mrt, lrt, commuter)
+   - Ride Hailing (gojek, grab, ojol, taxi)
+   - Toll (tol, e-toll)
+4. Health & Personal:
+   - Medical & Pharmacy (dokter, doctor, rumah sakit, hospital, klinik, clinic, obat, medicine, apotek, pharmacy, medical checkup, lab test)
+   - Health Insurance (BPJS, asuransi kesehatan, health insurance premium)
+   - Fitness (gym, fitness center, yoga class, pilates, olahraga, sports membership, personal trainer)
+   - Personal Care (salon, potong rambut, haircut, barber, cukur, skincare, perawatan wajah, spa, massage, pijat, facial)
+5. Entertainment & Shopping:
+   - Clothing (baju, pakaian, kaos, t-shirt, celana, pants, jaket, jacket, sepatu, shoes, sandal, fashion, dress, rok, skirt)
+   - Electronics & Gadgets (hp, handphone, smartphone, laptop, komputer, computer, tablet, gadget, elektronik, charger, headphone, earbuds, mouse, keyboard, kabel)
+   - Subscriptions & Streaming (netflix, spotify, youtube premium, disney+, amazon prime, langganan, subscription, streaming service, apple music)
+   - Hobbies & Leisure (game, gaming, video games, mainan, toys, hobi, hobby, collectibles, console, playstation, xbox, nintendo, steam)
+   - Gifts & Celebration (hadiah, gift, kado, present, ulang tahun, birthday, perayaan, celebration, wedding gift, hampers, souvenir)
+6. Financial Obligations:
+   - Debt Payments (bayar hutang, bayar utang, pay debt, cicilan, installment, kredit, credit card payment, kartu kredit, pinjaman, loan payment, angsuran, mortgage payment, KPR, paylater)
+   - Taxes & Fees (pajak, tax, PBB, STNK, pajak kendaraan, retribusi, bea, government fee, tax payment)
+   - Bank Charges (biaya admin, admin fee, biaya bank, bank fee, transfer fee, monthly fee, ATM fee, biaya bulanan)
+7. Family & Others:
+   - Childcare (biaya anak, children expenses, daycare, pengasuhan, babysitter, nanny, penitipan anak)
+   - Education (sekolah, school, kuliah, university, college, SPP, tuition, tuition fee, kursus, course, les, private lesson, buku, books, alat tulis, stationery, tas sekolah)
+   - Pets (kucing, cat, anjing, dog, hewan peliharaan, pet, makanan kucing, cat food, makanan anjing, dog food, vet, dokter hewan, pet grooming)
+   - Travel (travel, trip, liburan, vacation, holiday, tiket pesawat, flight ticket, tiket kereta, hotel, penginapan, accommodation, wisata, tour, tourist, jalan-jalan)
+   - Business Expenses (bisnis, business, usaha, operasional, operational, kantor, office, office supplies, alat kantor, business meeting, client dinner)
+   - Charity & Donations (donasi, donation, sedekah, amal, charity, zakat, infaq, wakaf, sumbangan, contribution)
+   - Emergency (darurat, emergency, urgent expense, keperluan mendesak)
+   - Others (lain-lain, miscellaneous, other expenses, tidak termasuk kategori lain)
 
 Available income sources:
-1. Salary (monthly salary, paycheck, wages)
-2. Freelance (freelance work, consulting, gig work)
-3. Business (business income, sales, revenue)
-4. Investment (dividends, interest, capital gains)
-5. Bonus (performance bonus, commission, tips)
-6. Gift (gifts, allowance, money received)
-7. Others (other income sources, miscellaneous income)
+1. Salary (monthly salary, paycheck, wages, gaji bulanan)
+2. Freelance (freelance work, consulting, gig work, kerja lepas)
+3. Business (business income, sales, revenue, penghasilan bisnis, hasil jualan)
+4. Investment (dividends, interest, capital gains, dividen, bunga, hasil investasi)
+5. Bonus (performance bonus, commission, tips, komisi, bonus kinerja)
+6. Gift (gifts, allowance, money received, hadiah, uang dari orang tua, kiriman)
+7. Others (other income sources, miscellaneous income, pemasukan lainnya)
 
 Your task is to determine if the input is income, expense, savings, investment, or transfer, then parse accordingly. Return ONLY a valid JSON object with this exact structure:
 
@@ -142,7 +180,16 @@ Rules:
 CATEGORY HINTS (Indonesia-first):
 - Makanan/minuman keywords like: "makan", "bakso", "baso", "mie", "soto", "nasi goreng/nasgor", "warteg", "resto", "cafe", "kopi", "boba" → category = "Dining Out"
 - Belanja harian: "indomaret", "alfamart", "supermarket", "minimarket", "pasar" → category = "Groceries"
-- Transport: "bensin", "bbm", "parkir", "ojol", "gojek", "grab", "bus", "kereta", "tol" → choose the best specific transport category (e.g., Fuel, Parking, Public Transport, Ride Hailing, Toll)
+- CRITICAL - Water distinction:
+  * Bottled water purchases: "air minum", "aqua", "le minerale", "vit", "air mineral", "beli air", "air botol" → category = "Groceries"
+  * Water utility bills: "bayar air PDAM", "tagihan air", "air PDAM", "water bill" → category = "Water"
+- Transport - BE VERY SPECIFIC:
+  * Fuel: "bensin", "bbm", "pertamax", "pertalite", "isi bensin", "beli bensin" → category = "Fuel"
+  * Vehicle Maintenance: "service motor", "service mobil", "oli", "ban", "cuci motor", "cuci mobil", "tune up", "ganti oli", "car service" → category = "Vehicle Maintenance"
+  * Parking: "parkir" → category = "Parking"
+  * Public Transport: "bus", "kereta", "commuter", "mrt", "lrt" → category = "Public Transport"
+  * Ride Hailing: "ojol", "gojek", "grab", "taxi" → category = "Ride Hailing"
+  * Toll: "tol", "e-toll", "etoll" → category = "Toll"
 
 Wallet/Payment Method Detection:
 - Look for wallet/payment method mentions in the text
@@ -175,7 +222,13 @@ Input: "Aku beli kopi 50.000"
 Output: {"type": "expense", "description": "Coffee purchase", "amount": 50000, "category": "Food & Groceries", "walletName": null, "walletType": null, "confidence": 0.9}
 
 Input: "Bayar listrik bulan ini 200rb"
-Output: {"type": "expense", "description": "Monthly electricity bill", "amount": 200000, "category": "Housing & Utilities", "walletName": null, "walletType": null, "confidence": 0.95}
+Output: {"type": "expense", "description": "Monthly electricity bill", "amount": 200000, "category": "Electricity", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Beli air minum 5rb"
+Output: {"type": "expense", "description": "Bottled water purchase", "amount": 5000, "category": "Groceries", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Bayar air PDAM 100rb"
+Output: {"type": "expense", "description": "Water utility bill payment", "amount": 100000, "category": "Water", "walletName": null, "walletType": null, "confidence": 0.95}
 
 Input: "Bayar cicilan motor 1.5 juta"
 Output: {"type": "expense", "description": "Motorcycle installment payment", "amount": 1500000, "category": "Debt Payments", "walletName": null, "walletType": null, "confidence": 0.95}
@@ -232,10 +285,61 @@ Input: "Transfer 1 juta ke Dana"
 Output: {"type": "income", "description": "Transfer to Dana", "amount": 1000000, "source": "Others", "walletName": "Dana", "walletType": "e_wallet", "confidence": 0.9}
 
 Input: "Beli bensin pakai Dana 100rb"
-Output: {"type": "expense", "description": "Gas purchase via Dana", "amount": 100000, "category": "Transportation", "walletName": "Dana", "walletType": "e_wallet", "confidence": 0.9}
+Output: {"type": "expense", "description": "Gas purchase via Dana", "amount": 100000, "category": "Fuel", "walletName": "Dana", "walletType": "e_wallet", "confidence": 0.9}
+
+Input: "Service motor 200rb"
+Output: {"type": "expense", "description": "Motorcycle service", "amount": 200000, "category": "Vehicle Maintenance", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Ganti oli mobil 350rb"
+Output: {"type": "expense", "description": "Car oil change", "amount": 350000, "category": "Vehicle Maintenance", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Bayar SPP sekolah 500rb"
+Output: {"type": "expense", "description": "School tuition payment", "amount": 500000, "category": "Education", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Beli buku kuliah 150rb"
+Output: {"type": "expense", "description": "College books purchase", "amount": 150000, "category": "Education", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Potong rambut 50rb"
+Output: {"type": "expense", "description": "Haircut", "amount": 50000, "category": "Personal Care", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Bayar gym bulan ini 200rb"
+Output: {"type": "expense", "description": "Monthly gym membership", "amount": 200000, "category": "Fitness", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Beli obat di apotek 75rb"
+Output: {"type": "expense", "description": "Pharmacy medicine purchase", "amount": 75000, "category": "Medical & Pharmacy", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Netflix langganan 50rb"
+Output: {"type": "expense", "description": "Netflix subscription", "amount": 50000, "category": "Subscriptions & Streaming", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Beli sepatu 300rb"
+Output: {"type": "expense", "description": "Shoes purchase", "amount": 300000, "category": "Clothing", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Hadiah ulang tahun teman 100rb"
+Output: {"type": "expense", "description": "Birthday gift for friend", "amount": 100000, "category": "Gifts & Celebration", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Tiket pesawat Jakarta-Bali 800rb"
+Output: {"type": "expense", "description": "Flight ticket Jakarta-Bali", "amount": 800000, "category": "Travel", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Makanan kucing 100rb"
+Output: {"type": "expense", "description": "Cat food purchase", "amount": 100000, "category": "Pets", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Zakat fitrah 50rb"
+Output: {"type": "expense", "description": "Zakat fitrah payment", "amount": 50000, "category": "Charity & Donations", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Bayar pajak kendaraan 300rb"
+Output: {"type": "expense", "description": "Vehicle tax payment", "amount": 300000, "category": "Taxes & Fees", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Beli lemari 2 juta"
+Output: {"type": "expense", "description": "Wardrobe purchase", "amount": 2000000, "category": "Home Maintenance", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Beli kulkas baru 3.5 juta"
+Output: {"type": "expense", "description": "New refrigerator purchase", "amount": 3500000, "category": "Home Maintenance", "walletName": null, "walletType": null, "confidence": 0.95}
+
+Input: "Beli sabun cuci piring 15rb"
+Output: {"type": "expense", "description": "Dish soap purchase", "amount": 15000, "category": "Household Supplies", "walletName": null, "walletType": null, "confidence": 0.95}
 
 Input: "Bayar dengan tunai 25rb"
-Output: {"type": "expense", "description": "Cash payment", "amount": 25000, "category": "Family & Others", "walletName": "Cash", "walletType": "cash", "confidence": 0.9}
+Output: {"type": "expense", "description": "Cash payment", "amount": 25000, "category": "Others", "walletName": "Cash", "walletType": "cash", "confidence": 0.9}
 
 Input: "Tarik dari laptop savings 2 juta"
 Output: {"type": "savings", "description": "Transfer from laptop savings to main balance", "amount": 2000000, "goalName": "laptop", "confidence": 0.9}
@@ -272,23 +376,61 @@ const MULTIPLE_TRANSACTION_PARSING_PROMPT = `
 BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap pahami Bahasa Inggris bila pengguna memakainya.
 You are an AI assistant that helps parse natural language financial transaction descriptions that contain MULTIPLE transactions into structured data.
 
-Available expense categories:
-1. Housing & Utilities (rent, electricity, internet, water, mortgage, home maintenance)
-2. Food & Groceries (groceries, eating out, snacks, restaurants, food delivery)
-3. Transportation (fuel, public transport, taxi, car maintenance, parking)
-4. Health & Personal (medical, fitness, self-care, pharmacy, doctor visits)
-5. Entertainment & Shopping (leisure, clothes, subscriptions, games, movies, hobbies)
-6. Debt Payments (credit card payments, loan payments, debt repayment, mortgage payments)
-7. Family & Others (kids, pets, gifts, charity, unexpected expenses, miscellaneous)
+Available expense categories (BE VERY SPECIFIC):
+1. Housing & Utilities:
+   - Rent (sewa rumah, kontrakan, kos, apartemen)
+   - Mortgage (KPR, cicilan rumah)
+   - Electricity (listrik, PLN, token listrik, bayar listrik) - UTILITY BILLS ONLY
+   - Water (tagihan air PDAM, bayar air PDAM, water bill) - UTILITY BILLS ONLY, NOT for bottled water purchases
+   - Internet (internet, wifi, indihome, first media)
+   - Gas Utility (gas rumah, elpiji, gas lpg)
+   - Home Maintenance (perbaikan rumah, tukang, maintenance, perabot, furniture, mebel, kursi, chair, meja, table, lemari, wardrobe, kasur, bed, sofa, rak, shelf, kulkas, fridge, refrigerator, AC, air conditioner, kipas, fan, TV, television, mesin cuci, washing machine, kompor, stove, rice cooker, blender, setrika, iron, home appliances, elektronik rumah)
+   - Household Supplies (sabun, soap, detergen, detergent, cleaning supplies, sapu, broom, pel, mop, tissue, lap, pembersih)
+2. Food & Groceries:
+   - Groceries (belanja harian, supermarket, minimarket, air minum, aqua, bottled water, le minerale, vit, drinking water)
+   - Dining Out (makan di luar, restoran, warteg, warung)
+   - Coffee & Tea (kopi, teh, boba, coffee shop)
+   - Food Delivery (gofood, grabfood, shopeefood)
+3. Transportation:
+   - Fuel (bensin, bbm, pertamax, pertalite, gas for vehicle)
+   - Vehicle Maintenance (service motor, service mobil, oli, ban, cuci motor, cuci mobil, tune up, ganti oli, car service, motor service, mechanic)
+   - Parking (parkir)
+   - Public Transport (bus, kereta, mrt, lrt, commuter)
+   - Ride Hailing (gojek, grab, ojol, taxi)
+   - Toll (tol, e-toll)
+4. Health & Personal:
+   - Medical & Pharmacy (dokter, doctor, rumah sakit, hospital, klinik, clinic, obat, medicine, apotek, pharmacy, medical checkup, lab test)
+   - Health Insurance (BPJS, asuransi kesehatan, health insurance premium)
+   - Fitness (gym, fitness center, yoga class, pilates, olahraga, sports membership, personal trainer)
+   - Personal Care (salon, potong rambut, haircut, barber, cukur, skincare, perawatan wajah, spa, massage, pijat, facial)
+5. Entertainment & Shopping:
+   - Clothing (baju, pakaian, kaos, t-shirt, celana, pants, jaket, jacket, sepatu, shoes, sandal, fashion, dress, rok, skirt)
+   - Electronics & Gadgets (hp, handphone, smartphone, laptop, komputer, computer, tablet, gadget, elektronik, charger, headphone, earbuds, mouse, keyboard, kabel)
+   - Subscriptions & Streaming (netflix, spotify, youtube premium, disney+, amazon prime, langganan, subscription, streaming service, apple music)
+   - Hobbies & Leisure (game, gaming, video games, mainan, toys, hobi, hobby, collectibles, console, playstation, xbox, nintendo, steam)
+   - Gifts & Celebration (hadiah, gift, kado, present, ulang tahun, birthday, perayaan, celebration, wedding gift, hampers, souvenir)
+6. Financial Obligations:
+   - Debt Payments (bayar hutang, bayar utang, pay debt, cicilan, installment, kredit, credit card payment, kartu kredit, pinjaman, loan payment, angsuran, mortgage payment, KPR, paylater)
+   - Taxes & Fees (pajak, tax, PBB, STNK, pajak kendaraan, retribusi, bea, government fee, tax payment)
+   - Bank Charges (biaya admin, admin fee, biaya bank, bank fee, transfer fee, monthly fee, ATM fee, biaya bulanan)
+7. Family & Others:
+   - Childcare (biaya anak, children expenses, daycare, pengasuhan, babysitter, nanny, penitipan anak)
+   - Education (sekolah, school, kuliah, university, college, SPP, tuition, tuition fee, kursus, course, les, private lesson, buku, books, alat tulis, stationery, tas sekolah)
+   - Pets (kucing, cat, anjing, dog, hewan peliharaan, pet, makanan kucing, cat food, makanan anjing, dog food, vet, dokter hewan, pet grooming)
+   - Travel (travel, trip, liburan, vacation, holiday, tiket pesawat, flight ticket, tiket kereta, hotel, penginapan, accommodation, wisata, tour, tourist, jalan-jalan)
+   - Business Expenses (bisnis, business, usaha, operasional, operational, kantor, office, office supplies, alat kantor, business meeting, client dinner)
+   - Charity & Donations (donasi, donation, sedekah, amal, charity, zakat, infaq, wakaf, sumbangan, contribution)
+   - Emergency (darurat, emergency, urgent expense, keperluan mendesak)
+   - Others (lain-lain, miscellaneous, other expenses, tidak termasuk kategori lain)
 
 Available income sources:
-1. Salary (monthly salary, paycheck, wages)
-2. Freelance (freelance work, consulting, gig work)
-3. Business (business income, sales, revenue)
-4. Investment (dividends, interest, capital gains)
-5. Bonus (performance bonus, commission, tips)
-6. Gift (gifts, allowance, money received)
-7. Others (other income sources, miscellaneous income)
+1. Salary (monthly salary, paycheck, wages, gaji bulanan)
+2. Freelance (freelance work, consulting, gig work, kerja lepas)
+3. Business (business income, sales, revenue, penghasilan bisnis, hasil jualan)
+4. Investment (dividends, interest, capital gains, dividen, bunga, hasil investasi)
+5. Bonus (performance bonus, commission, tips, komisi, bonus kinerja)
+6. Gift (gifts, allowance, money received, hadiah, uang dari orang tua, kiriman)
+7. Others (other income sources, miscellaneous income, pemasukan lainnya)
 
 Your task is to identify and parse ALL transactions mentioned in the input. Look for multiple transactions separated by commas, "terus", "lalu", "kemudian", or other connecting words.
 
@@ -325,6 +467,13 @@ Rules:
 - If any transaction is unclear, set confidence lower but still include it
 - ALWAYS return valid JSON, nothing else
 
+CRITICAL CATEGORY DISTINCTIONS:
+- Bottled water purchases ("air minum", "aqua", "le minerale") → "Groceries", NOT "Water"
+- Water utility bills ("bayar air PDAM", "tagihan air") → "Water"
+- Vehicle fuel ("bensin", "bbm") → "Fuel", NOT "Vehicle Maintenance"
+- Vehicle service ("service motor", "ganti oli") → "Vehicle Maintenance", NOT "Fuel"
+- Electricity bills ("bayar listrik", "token PLN") → "Electricity"
+
 IMPORTANT: Wallet-to-wallet transfers should be classified as "transfer", NOT "savings"
 
 Multiple Transaction Examples:
@@ -340,9 +489,17 @@ Output: {
 Input: "bayar listrik 200rb, bensin 50rb, terus tabung 500rb"
 Output: {
   "transactions": [
-    {"type": "expense", "description": "Electricity bill payment", "amount": 200000, "category": "Housing & Utilities", "walletName": null, "walletType": null, "confidence": 0.95},
-    {"type": "expense", "description": "Fuel purchase", "amount": 50000, "category": "Transportation", "walletName": null, "walletType": null, "confidence": 0.9},
+    {"type": "expense", "description": "Electricity bill payment", "amount": 200000, "category": "Electricity", "walletName": null, "walletType": null, "confidence": 0.95},
+    {"type": "expense", "description": "Fuel purchase", "amount": 50000, "category": "Fuel", "walletName": null, "walletType": null, "confidence": 0.9},
     {"type": "savings", "description": "Transfer to savings", "amount": 500000, "goalName": null, "walletName": null, "walletType": null, "confidence": 0.9}
+  ]
+}
+
+Input: "beli air minum 5rb, bayar air PDAM 100rb"
+Output: {
+  "transactions": [
+    {"type": "expense", "description": "Bottled water purchase", "amount": 5000, "category": "Groceries", "walletName": null, "walletType": null, "confidence": 0.95},
+    {"type": "expense", "description": "Water utility bill payment", "amount": 100000, "category": "Water", "walletName": null, "walletType": null, "confidence": 0.95}
   ]
 }
 
@@ -406,53 +563,78 @@ export class GroqAIService {
       const descLower = description.toLowerCase();
       // Expanded keyword-based normalization for Indonesian users
       const isDiningOut = /(makan|resto|restoran|warteg|warung|sushi|ayam|nasi goreng|nasgor|nasi padang|kopi|coffee|boba|cafe|bakso|baso|mie ayam|mie\b|soto|kuliner)/.test(descLower);
-      const isGroceries = /(belanja( harian| bulanan)?|indomaret|alfamart|supermarket|minimarket|pasar|grocery|grocer)/.test(descLower);
-      const isFuel = /(bensin|bbm|pertamax|pertalite)/.test(descLower);
+      const isBottledWater = /(air minum|aqua|le minerale|vit\b|air mineral|beli air|air botol|drinking water|bottled water)/.test(descLower);
+      const isWaterBill = /(bayar air|tagihan air|air pdam|water bill|pdam)/.test(descLower);
+      const isFurniture = /(perabot|furniture|mebel|kursi|chair|meja|table|lemari|wardrobe|kasur|bed|sofa|rak|shelf|kulkas|fridge|refrigerator|ac\b|air conditioner|kipas|fan|tv\b|television|mesin cuci|washing machine|kompor|stove|rice cooker|blender|setrika|iron)/.test(descLower);
+      const isHouseholdSupplies = /(sabun|soap|detergen|detergent|cleaning|sapu|broom|pel|mop|tissue|lap|pembersih)/.test(descLower);
+      const isGroceries = /(belanja( harian| bulanan)?|indomaret|alfamart|supermarket|minimarket|pasar|grocery|grocer)/.test(descLower) || isBottledWater;
+      const isFuel = /(bensin|bbm|pertamax|pertalite|isi bensin|beli bensin)/.test(descLower);
+      const isVehicleMaintenance = /(service motor|service mobil|oli|ban|cuci motor|cuci mobil|tune up|ganti oli|car service|motor service|mechanic|servis motor|servis mobil)/.test(descLower);
       const isParking = /(parkir)/.test(descLower);
       const isPublicTransport = /(bus|kereta|commuter|mrt|lrt|angkot)/.test(descLower);
       const isRideHailing = /(gojek|grab|ojol)/.test(descLower);
       const isToll = /(\bto(l|ll)\b|e-?toll|etoll)/.test(descLower);
-      const isMedical = /(dokter|obat|apotek|klinik|rumah sakit|pharmacy|medical|farmasi)/.test(descLower);
-      const isFitness = /(gym|fitness|yoga|pilates)/.test(descLower);
-      const isPersonalCare = /(salon|potong rambut|barber|skincare|perawatan)/.test(descLower);
-      const isClothing = /(baju|pakaian|kaos|jaket|sepatu|fashion)/.test(descLower);
-      const isElectronics = /(hp|laptop|gadget|elektronik|electronics)/.test(descLower);
-      const isSubscriptions = /(netflix|spotify|youtube premium|langganan|subscription|streaming)/.test(descLower);
-      const isHobbies = /(game|gim|mainan|hobi|hobby)/.test(descLower);
-      const isGifts = /(hadiah|kado|ultah|perayaan|gift)/.test(descLower);
-      const isDebt = /(bayar (hutang|utang)|hutang|utang|cicilan|kredit|kartu kredit|pinjaman|loan|debt|angsuran)/.test(descLower);
-      const isTaxesFees = /(pajak|bea|retribusi|pbb|stnk)/.test(descLower);
-      const isBankCharges = /(biaya admin|biaya bank|fee bank|admin bank|admin\b)/.test(descLower);
-      const isChildcare = /(anak|daycare|pengasuhan)/.test(descLower);
-      const isEducation = /(sekolah|kuliah|pendidikan|kursus|kelas|buku)/.test(descLower);
-      const isPets = /(kucing|anjing|hewan peliharaan|pet)/.test(descLower);
-      const isTravel = /(travel|tiket|hotel|penginapan|wisata|perjalanan)/.test(descLower);
-      const isBusiness = /(bisnis|usaha|operasional|operational|office)/.test(descLower);
-      const isCharity = /(donasi|sedekah|amal|zakat|wakaf)/.test(descLower);
-      const isEmergency = /(darurat|emergency)/.test(descLower);
+      const isMedical = /(dokter|doctor|obat|medicine|apotek|pharmacy|klinik|clinic|rumah sakit|hospital|medical|farmasi|checkup|lab test)/.test(descLower);
+      const isHealthInsurance = /(bpjs|asuransi kesehatan|health insurance)/.test(descLower);
+      const isFitness = /(gym|fitness|yoga|pilates|olahraga|sports membership|personal trainer)/.test(descLower);
+      const isPersonalCare = /(salon|potong rambut|haircut|barber|cukur|skincare|perawatan|spa|massage|pijat|facial)/.test(descLower);
+      const isClothing = /(baju|pakaian|kaos|t-shirt|celana|pants|jaket|jacket|sepatu|shoes|sandal|fashion|dress|rok|skirt)/.test(descLower);
+      const isElectronics = /(hp|handphone|smartphone|laptop|komputer|computer|tablet|gadget|elektronik|electronics|charger|headphone|earbuds|mouse|keyboard|kabel)/.test(descLower);
+      const isSubscriptions = /(netflix|spotify|youtube premium|disney|amazon prime|langganan|subscription|streaming|apple music)/.test(descLower);
+      const isHobbies = /(game|gaming|video games|gim|mainan|toys|hobi|hobby|collectibles|console|playstation|xbox|nintendo|steam)/.test(descLower);
+      const isGifts = /(hadiah|gift|kado|present|ultah|ulang tahun|birthday|perayaan|celebration|wedding gift|hampers|souvenir)/.test(descLower);
+      const isDebt = /(bayar (hutang|utang)|hutang|utang|cicilan|installment|kredit|credit card|kartu kredit|pinjaman|loan|debt|angsuran|kpr|paylater)/.test(descLower);
+      const isTaxesFees = /(pajak|tax|bea|retribusi|pbb|stnk|pajak kendaraan|government fee)/.test(descLower);
+      const isBankCharges = /(biaya admin|admin fee|biaya bank|bank fee|fee bank|admin bank|transfer fee|monthly fee|atm fee|biaya bulanan)/.test(descLower);
+      const isChildcare = /(biaya anak|children|daycare|pengasuhan|babysitter|nanny|penitipan anak)/.test(descLower);
+      const isEducation = /(sekolah|school|kuliah|university|college|spp|tuition|pendidikan|kursus|course|kelas|les|lesson|buku|books|alat tulis|stationery|tas sekolah)/.test(descLower);
+      const isPets = /(kucing|cat|anjing|dog|hewan peliharaan|pet|makanan kucing|cat food|makanan anjing|dog food|vet|dokter hewan|grooming)/.test(descLower);
+      const isTravel = /(travel|trip|liburan|vacation|holiday|tiket pesawat|flight|tiket kereta|hotel|penginapan|accommodation|wisata|tour|tourist|jalan-jalan)/.test(descLower);
+      const isBusiness = /(bisnis|business|usaha|operasional|operational|kantor|office|alat kantor|office supplies|meeting|client)/.test(descLower);
+      const isCharity = /(donasi|donation|sedekah|amal|charity|zakat|infaq|wakaf|sumbangan|contribution)/.test(descLower);
+      const isEmergency = /(darurat|emergency|urgent|mendesak)/.test(descLower);
 
+      // CRITICAL: Override "Water" if it's actually bottled water purchase
+      if (lower === 'water' && isBottledWater) {
+        category = 'Groceries';
+      }
       // If AI returned a generic/foreign label, normalize using description cues
       if (!category || lower === 'others' || lower === 'food & groceries' || lower === 'food & dining' || lower === 'makanan' || lower === 'minuman' || lower === 'kuliner') {
         if (isDiningOut) category = 'Dining Out';
         else if (isGroceries) category = 'Groceries';
       }
+      // Housing items
+      if (!category || lower === 'housing & utilities' || lower === 'rumah' || lower === 'home') {
+        if (isFurniture) category = 'Home Maintenance';
+        else if (isHouseholdSupplies) category = 'Household Supplies';
+      }
       if (!category) {
-        if (isFuel) category = 'Fuel';
+        // Housing & Utilities
+        if (isFurniture) category = 'Home Maintenance';
+        else if (isHouseholdSupplies) category = 'Household Supplies';
+        // Transportation
+        else if (isFuel) category = 'Fuel';
+        else if (isVehicleMaintenance) category = 'Vehicle Maintenance';
         else if (isParking) category = 'Parking';
         else if (isPublicTransport) category = 'Public Transport';
         else if (isRideHailing) category = 'Ride Hailing';
         else if (isToll) category = 'Toll';
+        // Health & Personal
+        else if (isHealthInsurance) category = 'Health Insurance';
         else if (isMedical) category = 'Medical & Pharmacy';
         else if (isFitness) category = 'Fitness';
         else if (isPersonalCare) category = 'Personal Care';
+        // Entertainment & Shopping
         else if (isClothing) category = 'Clothing';
         else if (isElectronics) category = 'Electronics & Gadgets';
         else if (isSubscriptions) category = 'Subscriptions & Streaming';
         else if (isHobbies) category = 'Hobbies & Leisure';
         else if (isGifts) category = 'Gifts & Celebration';
+        // Financial Obligations
         else if (isDebt) category = 'Debt Payments';
         else if (isTaxesFees) category = 'Taxes & Fees';
         else if (isBankCharges) category = 'Bank Charges';
+        // Family & Others
         else if (isChildcare) category = 'Childcare';
         else if (isEducation) category = 'Education';
         else if (isPets) category = 'Pets';
@@ -486,24 +668,35 @@ export class GroqAIService {
         return { type: 'expense', description, amount, category: category as ExpenseCategory, walletName, walletType, adminFee, confidence };
       }
       // Final fallback: if category is still invalid, use description cues before defaulting to Others
+      // Housing & Utilities
+      if (isFurniture) return { type: 'expense', description, amount, category: 'Home Maintenance', walletName, walletType, adminFee, confidence } as ParsedTransaction;
+      if (isHouseholdSupplies) return { type: 'expense', description, amount, category: 'Household Supplies', walletName, walletType, adminFee, confidence } as ParsedTransaction;
+      // Food & Groceries
       if (isDiningOut) return { type: 'expense', description, amount, category: 'Dining Out', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isGroceries) return { type: 'expense', description, amount, category: 'Groceries', walletName, walletType, adminFee, confidence } as ParsedTransaction;
+      // Transportation
       if (isFuel) return { type: 'expense', description, amount, category: 'Fuel', walletName, walletType, adminFee, confidence } as ParsedTransaction;
+      if (isVehicleMaintenance) return { type: 'expense', description, amount, category: 'Vehicle Maintenance', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isParking) return { type: 'expense', description, amount, category: 'Parking', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isPublicTransport) return { type: 'expense', description, amount, category: 'Public Transport', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isRideHailing) return { type: 'expense', description, amount, category: 'Ride Hailing', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isToll) return { type: 'expense', description, amount, category: 'Toll', walletName, walletType, adminFee, confidence } as ParsedTransaction;
+      // Health & Personal
+      if (isHealthInsurance) return { type: 'expense', description, amount, category: 'Health Insurance', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isMedical) return { type: 'expense', description, amount, category: 'Medical & Pharmacy', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isFitness) return { type: 'expense', description, amount, category: 'Fitness', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isPersonalCare) return { type: 'expense', description, amount, category: 'Personal Care', walletName, walletType, adminFee, confidence } as ParsedTransaction;
+      // Entertainment & Shopping
       if (isClothing) return { type: 'expense', description, amount, category: 'Clothing', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isElectronics) return { type: 'expense', description, amount, category: 'Electronics & Gadgets', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isSubscriptions) return { type: 'expense', description, amount, category: 'Subscriptions & Streaming', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isHobbies) return { type: 'expense', description, amount, category: 'Hobbies & Leisure', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isGifts) return { type: 'expense', description, amount, category: 'Gifts & Celebration', walletName, walletType, adminFee, confidence } as ParsedTransaction;
+      // Financial Obligations
       if (isDebt) return { type: 'expense', description, amount, category: 'Debt Payments', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isTaxesFees) return { type: 'expense', description, amount, category: 'Taxes & Fees', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isBankCharges) return { type: 'expense', description, amount, category: 'Bank Charges', walletName, walletType, adminFee, confidence } as ParsedTransaction;
+      // Family & Others
       if (isChildcare) return { type: 'expense', description, amount, category: 'Childcare', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isEducation) return { type: 'expense', description, amount, category: 'Education', walletName, walletType, adminFee, confidence } as ParsedTransaction;
       if (isPets) return { type: 'expense', description, amount, category: 'Pets', walletName, walletType, adminFee, confidence } as ParsedTransaction;
