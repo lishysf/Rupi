@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, UserWalletDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
+import { TransactionDatabase, UserWalletDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
@@ -27,24 +27,18 @@ export async function GET(request: NextRequest) {
 
     let expenses;
 
-    if (summary) {
-      // Return expense summary by category
-      const start = startDate ? new Date(startDate) : undefined;
-      const end = endDate ? new Date(endDate) : undefined;
-      expenses = await ExpenseDatabase.getExpenseSummaryByCategory(user.id, start, end);
-    } else if (category && EXPENSE_CATEGORIES.includes(category as any)) {
-      // Filter by category
-      expenses = await ExpenseDatabase.getExpensesByCategory(user.id, category as any);
-    } else if (startDate && endDate) {
-      // Filter by date range
-      expenses = await ExpenseDatabase.getExpensesByDateRange(
-        user.id,
-        new Date(startDate),
-        new Date(endDate)
-      );
-    } else {
-      // Get all expenses with pagination
-      expenses = await ExpenseDatabase.getAllExpenses(user.id, limit, offset);
+    // Get expenses from unified transactions table
+    const allTransactions = await TransactionDatabase.getUserTransactions(user.id, limit, offset);
+    expenses = allTransactions.filter(t => t.type === 'expense');
+    
+    // Apply filters
+    if (category) {
+      expenses = expenses.filter(e => e.category === category);
+    }
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      expenses = expenses.filter(e => e.date >= start && e.date <= end);
     }
 
     return NextResponse.json({
@@ -150,14 +144,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create expense with wallet ID
-    const expense = await ExpenseDatabase.createExpense(
+    // Create expense using unified TransactionDatabase
+    const expense = await TransactionDatabase.createTransaction(
       user.id,
       description,
       amount,
+      'expense',
+      selectedWalletId,
       category,
-      date ? new Date(date) : undefined,
-      selectedWalletId
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      date ? new Date(date) : undefined
     );
 
     return NextResponse.json({

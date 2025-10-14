@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-import { initializeDatabase } from '@/lib/database';
+import { TransactionDatabase, initializeDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 const pool = new Pool({
@@ -28,20 +28,13 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    let query = `SELECT * FROM investments WHERE user_id = $1`;
-    const params: any[] = [user.id];
-    let pc = 1;
-    query += ' ORDER BY date DESC, created_at DESC';
-    if (limit > 0) {
-      pc++; query += ` LIMIT $${pc}`; params.push(limit);
-    }
-    if (offset > 0) {
-      pc++; query += ` OFFSET $${pc}`; params.push(offset);
-    }
-    const result = await pool.query(query, params);
+    // Get investments from unified transactions table
+    const allTransactions = await TransactionDatabase.getUserTransactions(user.id, limit, offset);
+    const investments = allTransactions.filter(t => t.type === 'investment');
+    
     return NextResponse.json({ 
       success: true, 
-      data: result.rows,
+      data: investments,
       message: 'Investments retrieved successfully'
     });
   } catch (error) {
@@ -78,22 +71,24 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // First, delete all existing investments for this user
-    await pool.query(
-      'DELETE FROM investments WHERE user_id = $1',
-      [user.id]
-    );
-    
-    // Then insert the new investment value
-    const result = await pool.query(
-      `INSERT INTO investments (user_id, description, amount, asset_name, date)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [user.id, description, amount, assetName || null, date ? new Date(date) : new Date()]
+    // Create investment using unified TransactionDatabase
+    const investment = await TransactionDatabase.createTransaction(
+      user.id,
+      description,
+      amount,
+      'investment',
+      undefined, // No wallet for investments
+      undefined,
+      undefined,
+      undefined,
+      assetName,
+      undefined,
+      date ? new Date(date) : new Date()
     );
     
     return NextResponse.json({ 
       success: true, 
-      data: result.rows[0],
+      data: investment,
       message: 'Investment portfolio value updated successfully'
     }, { status: 201 });
   } catch (error) {

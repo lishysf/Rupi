@@ -1,26 +1,35 @@
 'use client';
 
 import { useState } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Target, TrendingUp, AlertCircle, Plus, Edit2, Trash2 } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import BudgetEditModal from './BudgetEditModal';
 
-// Expense categories - duplicated here to avoid importing server-side modules
+// Expense categories - expanded to match backend categories
 const EXPENSE_CATEGORIES = [
-  'Housing & Utilities',
-  'Food & Groceries', 
-  'Transportation',
-  'Health & Personal',
-  'Entertainment & Shopping',
-  'Debt Payments',
-  'Savings & Investments',
-  'Family & Others'
+  // Housing & Utilities
+  'Rent', 'Mortgage', 'Electricity', 'Water', 'Internet', 'Gas Utility', 'Home Maintenance', 'Household Supplies',
+  // Food & Dining
+  'Groceries', 'Dining Out', 'Coffee & Tea', 'Food Delivery',
+  // Transportation
+  'Fuel', 'Parking', 'Public Transport', 'Ride Hailing', 'Vehicle Maintenance', 'Toll',
+  // Health & Personal
+  'Medical & Pharmacy', 'Health Insurance', 'Fitness', 'Personal Care',
+  // Entertainment & Shopping
+  'Clothing', 'Electronics & Gadgets', 'Subscriptions & Streaming', 'Hobbies & Leisure', 'Gifts & Celebration',
+  // Financial Obligations
+  'Debt Payments', 'Taxes & Fees', 'Bank Charges',
+  // Family & Education
+  'Childcare', 'Education', 'Pets',
+  // Miscellaneous
+  'Travel', 'Business Expenses', 'Charity & Donations', 'Emergency', 'Others'
 ] as const;
 
 interface Budget {
   id?: number;
   category: string;
-  budget: number;
+  amount: number;
   spent: number;
   month: number;
   year: number;
@@ -32,6 +41,9 @@ interface BudgetTrackingProps {
 
 export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTrackingProps) {
   const { state, saveBudget, deleteBudget } = useFinancialData();
+  let t = (key: string) => key;
+  let translateCategory = (c: string) => c;
+  try { const lang = useLanguage(); t = lang.t; translateCategory = lang.translateCategory; } catch {}
   const { budgets } = state.data;
   const loading = state.loading.initial && budgets.length === 0;
   
@@ -116,7 +128,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
     return 'bg-neutral-50 dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-600';
   };
 
-  const totalBudget = budgets.reduce((sum, item) => sum + item.budget, 0);
+  const totalBudget = budgets.reduce((sum, item) => sum + item.amount, 0);
   const totalSpent = budgets.reduce((sum, item) => sum + item.spent, 0);
   const overallProgress = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
@@ -144,7 +156,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
           <div className="flex items-center">
             <Target className={`${widgetSize === 'half' ? 'w-4 h-4' : 'w-5 h-5'} text-emerald-600 dark:text-emerald-400 mr-2`} />
             <h2 className={`${widgetSize === 'half' ? 'text-base' : 'text-lg'} font-semibold text-neutral-900 dark:text-neutral-100`}>
-              Budget Tracking
+              {t('budgetTracking')}
             </h2>
           </div>
         </div>
@@ -203,7 +215,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
           <button
             onClick={startAdd}
             className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs"
-            title="Add Budget"
+            title={t('addBudget')}
           >
             <Plus className="w-3 h-3" />
           </button>
@@ -226,7 +238,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
             <span className={`${
               widgetSize === 'half' ? 'text-xs' : 'text-sm'
             } font-medium text-emerald-900 dark:text-emerald-100`}>
-              Monthly Budget
+              {t('monthlyBudget')}
             </span>
             <span className="text-xs text-emerald-700 dark:text-emerald-300">
               {overallProgress.toFixed(1)}%
@@ -239,7 +251,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
               {formatCurrency(totalSpent)}
             </span>
             <span className="text-xs text-emerald-700 dark:text-emerald-300">
-              of {formatCurrency(totalBudget)}
+              {t('ofLabel')} {formatCurrency(totalBudget)}
             </span>
           </div>
           <div className="w-full bg-emerald-200 dark:bg-emerald-800 rounded-full h-1.5">
@@ -259,19 +271,19 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
           <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
             <Target className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mb-4" />
             <p className="text-neutral-500 dark:text-neutral-400 text-sm mb-4">
-              No budgets set for this month
+              {t('noBudgetsThisMonth')}
             </p>
             <button
               onClick={startAdd}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm flex items-center"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Set Your First Budget
+              {t('setFirstBudget')}
             </button>
           </div>
         ) : (
           visibleBudgets.map((budget) => {
-            const percentage = budget.budget > 0 ? (budget.spent / budget.budget) * 100 : 0;
+            const percentage = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
             const isOverspending = percentage >= 100;
             
             return (
@@ -279,14 +291,14 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                 key={budget.category}
                 className={`${
                   widgetSize === 'half' ? 'p-1.5' : 'p-2'
-                } rounded-lg border ${getBackgroundColor(budget.spent, budget.budget)}`}
+                } rounded-lg border ${getBackgroundColor(budget.spent, budget.amount)}`}
               >
                 <div className="flex justify-between items-center mb-1">
                   <div className="flex items-center">
                     <span className={`${
                       widgetSize === 'half' ? 'text-xs' : 'text-sm'
                     } font-medium text-neutral-900 dark:text-neutral-100`}>
-                      {budget.category}
+                      {translateCategory(budget.category)}
                     </span>
                     {isOverspending && (
                       <AlertCircle className="w-3 h-3 text-red-500 ml-1" />
@@ -299,14 +311,14 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                     <button
                       onClick={() => startEdit(budget)}
                       className="p-0.5 text-neutral-400 hover:text-emerald-600"
-                      title="Edit Budget"
+                      title={t('editBudget')}
                     >
                       <Edit2 className="w-3 h-3" />
                     </button>
                     <button
                       onClick={() => handleDeleteBudget(budget.category)}
                       className="p-0.5 text-neutral-400 hover:text-red-600"
-                      title="Delete Budget"
+                      title={t('deleteBudget')}
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -318,13 +330,13 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                     {formatCurrency(budget.spent)}
                   </span>
                   <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                    / {formatCurrency(budget.budget)}
+                    / {formatCurrency(budget.amount)}
                   </span>
                 </div>
 
                 <div className="w-full bg-neutral-200 dark:bg-neutral-600 rounded-full h-1">
                   <div 
-                    className={`h-1 rounded-full transition-all duration-300 ${getProgressColor(budget.spent, budget.budget)}`}
+                    className={`h-1 rounded-full transition-all duration-300 ${getProgressColor(budget.spent, budget.amount)}`}
                     style={{ width: `${Math.min(percentage, 100)}%` }}
                   ></div>
                 </div>
@@ -344,20 +356,20 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
               <div className={`${
                 widgetSize === 'half' ? 'text-xs' : 'text-sm'
               } font-bold text-emerald-600 dark:text-emerald-400`}>
-                {budgets.filter(b => (b.spent / b.budget) * 100 < 80).length}
+                {budgets.filter(b => (b.spent / b.amount) * 100 < 80).length}
               </div>
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                On Track
+                {t('onTrack')}
               </div>
             </div>
             <div className="text-center">
               <div className={`${
                 widgetSize === 'half' ? 'text-xs' : 'text-sm'
               } font-bold text-red-600 dark:text-red-400`}>
-                {budgets.filter(b => (b.spent / b.budget) * 100 >= 100).length}
+                {budgets.filter(b => (b.spent / b.amount) * 100 >= 100).length}
               </div>
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                Over Budget
+                {t('overBudget')}
               </div>
             </div>
           </div>

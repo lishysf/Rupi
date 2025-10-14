@@ -19,7 +19,7 @@ interface Transaction {
 interface Budget {
   id?: number;
   category: string;
-  budget: number;
+  amount: number;
   spent: number;
   month: number;
   year: number;
@@ -238,9 +238,11 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
         ...state,
         data: {
           ...state.data,
-          transactions: state.data.transactions.map(transaction => 
-            transaction.id === action.payload.id ? action.payload : transaction
-          ),
+          transactions: state.data.transactions.map(transaction => {
+            const txId = typeof transaction.id === 'string' ? parseInt((transaction.id as string).split('-').pop() || 'NaN') : transaction.id;
+            const payloadId = typeof action.payload.id === 'string' ? parseInt((action.payload.id as string).split('-').pop() || 'NaN') : action.payload.id;
+            return txId === payloadId ? action.payload : transaction;
+          }),
           lastUpdated: {
             ...state.data.lastUpdated,
             transactions: Date.now(),
@@ -253,7 +255,11 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
         ...state,
         data: {
           ...state.data,
-          transactions: state.data.transactions.filter(transaction => transaction.id !== action.payload),
+          transactions: state.data.transactions.filter(transaction => {
+            const txId = typeof transaction.id === 'string' ? parseInt((transaction.id as string).split('-').pop() || 'NaN') : transaction.id;
+            const payloadId = typeof action.payload === 'string' ? parseInt((action.payload as string).split('-').pop() || 'NaN') : action.payload;
+            return txId !== payloadId;
+          }),
           lastUpdated: {
             ...state.data.lastUpdated,
             transactions: Date.now(),
@@ -330,7 +336,7 @@ interface FinancialDataContextType {
   dispatch: React.Dispatch<FinancialDataAction>;
   // Data fetchers
   fetchTransactions: (showLoading?: boolean) => Promise<void>;
-  fetchBudgets: () => Promise<void>;
+  fetchBudgets: (showLoading?: boolean) => Promise<void>;
   fetchExpenses: () => Promise<void>;
   fetchIncome: () => Promise<void>;
   fetchSavings: () => Promise<void>;
@@ -367,7 +373,18 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
   const fetchWithRetry = async (url: string, options: RequestInit = {}, maxRetries = 3): Promise<Response> => {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const response = await fetch(url, options);
+        // Add cache-busting and disable caching to avoid stale data
+        const cacheBuster = `_ts=${Date.now()}`;
+        const separator = url.includes('?') ? '&' : '?';
+        const finalUrl = `${url}${separator}${cacheBuster}`;
+        const response = await fetch(finalUrl, {
+          ...options,
+          cache: 'no-store',
+          headers: {
+            ...(options.headers || {}),
+            'Cache-Control': 'no-store'
+          }
+        });
         if (response.ok) {
           return response;
         }
@@ -399,55 +416,29 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         dispatch({ type: 'SET_LOADING', payload: { key: 'transactions', value: true } });
       }
       
-      const [expensesResponse, incomeResponse, savingsResponse] = await Promise.all([
-        fetchWithRetry('/api/expenses?limit=50'),
-        fetchWithRetry('/api/income?limit=50'),
-        fetchWithRetry('/api/savings?limit=50')
-      ]);
+      // Use unified transactions endpoint
+      const response = await fetchWithRetry('/api/transactions?limit=100');
+      const data = await response.json();
 
-      const [expensesData, incomeData, savingsData] = await Promise.all([
-        expensesResponse.json(),
-        incomeResponse.json(),
-        savingsResponse.json()
-      ]);
-
-      let allTransactions: Transaction[] = [];
-
-      if (expensesData.success) {
-        const expenseTransactions = expensesData.data.map((expense: any) => ({
-          ...expense,
-          id: `expense-${expense.id}`, // Make ID unique by prefixing type
-          type: 'expense' as const,
-          category: expense.category,
-          wallet_id: expense.wallet_id // Preserve wallet information
+      if (data.success) {
+        // All transactions are already in the correct format from the unified endpoint
+        const allTransactions: Transaction[] = data.data.map((transaction: any) => ({
+          ...transaction,
+          // Ensure consistent field mapping
+          category: transaction.type === 'income' ? transaction.source : transaction.category,
+          wallet_id: transaction.wallet_id
         }));
-        allTransactions = [...allTransactions, ...expenseTransactions];
-      }
 
-      if (incomeData.success) {
-        const incomeTransactions = incomeData.data.map((income: any) => ({
-          ...income,
-          id: `income-${income.id}`, // Make ID unique by prefixing type
-          type: 'income' as const,
-          category: income.source,
-          wallet_id: income.wallet_id // Preserve wallet information
-        }));
-        allTransactions = [...allTransactions, ...incomeTransactions];
-      }
+        // Sort by date (newest first)
+        allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      if (savingsData.success) {
-        const savingsTransactions = savingsData.data.map((saving: any) => ({
-          ...saving,
-          id: `savings-${saving.id}`, // Make ID unique by prefixing type
-          type: 'savings' as const,
-          category: saving.goal_name || 'Savings', // Use goal_name as category
-          wallet_id: saving.wallet_id // Preserve wallet information
-        }));
-        allTransactions = [...allTransactions, ...savingsTransactions];
+        dispatch({
+          type: 'SET_TRANSACTIONS',
+          payload: allTransactions
+        });
+      } else {
+        throw new Error(data.error || 'Failed to fetch transactions');
       }
-
-      allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      dispatch({ type: 'SET_TRANSACTIONS', payload: allTransactions });
     } catch (error) {
       console.error('Error fetching transactions:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Failed to load transactions' });
@@ -460,16 +451,6 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
 
   const fetchBudgets = useCallback(async (showLoading = false) => {
     if (!session) return;
-    
-    // Check if we have recent budget data (within last 2 minutes) to avoid unnecessary requests
-    const now = Date.now();
-    const lastUpdated = state.data.lastUpdated.budgets;
-    const isRecent = (now - lastUpdated) < 2 * 60 * 1000; // 2 minutes
-    
-    if (isRecent && state.data.budgets.length > 0 && !showLoading) {
-      console.log('Using cached budget data');
-      return;
-    }
     
     try {
       if (showLoading) {
@@ -744,32 +725,50 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
   // Transaction action functions
   const deleteTransaction = useCallback(async (id: string | number, type: 'income' | 'expense') => {
     try {
-      // Extract original ID from prefixed ID
-      const originalId = typeof id === 'string' ? id.split('-')[1] : id;
-      const endpoint = type === 'expense' ? `/api/expenses/${originalId}` : `/api/income/${originalId}`;
-      const response = await fetch(endpoint, {
+      // Use the ID directly - no need to extract from prefixed ID
+      const transactionId = typeof id === 'string' ? parseInt(id.split('-')[1]) : id;
+      
+      console.log('Deleting transaction:', { id, transactionId, type });
+      
+      // Use unified transaction endpoint
+      const response = await fetch(`/api/transactions/${transactionId}`, {
         method: 'DELETE',
       });
 
+      console.log('Delete response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`Failed to delete ${type}`);
+        let errorMessage = `Failed to delete ${type}`;
+        try {
+          const errorData = await response.json();
+          console.error('Delete error response:', errorData);
+          errorMessage = `Failed to delete ${type}: ${errorData.error || 'Unknown error'}`;
+        } catch (jsonError) {
+          console.error('Delete error response (non-JSON):', response.status, response.statusText);
+          errorMessage = `Failed to delete ${type}: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+        console.log('Delete success response:', data);
+      } catch (jsonError) {
+        console.error('Failed to parse delete response as JSON:', jsonError);
+        throw new Error(`Failed to delete ${type}: Invalid response format`);
+      }
+      
       if (data.success) {
-        // Update local state immediately
-        dispatch({ type: 'DELETE_TRANSACTION', payload: id });
-        
-        // Refresh all related data to keep all components in sync (no loading states)
-        await Promise.all([
-          fetchTransactions(false),
-          fetchExpenses(false),
-          fetchIncome(false),
-          fetchSavings(false),
-          fetchInvestments(false),
-          fetchWallets(false)
-        ]);
-        
+        // Update local state immediately with the parsed numeric ID
+        dispatch({ type: 'DELETE_TRANSACTION', payload: transactionId });
+        // Force a no-cache refetch to guarantee no reappearance
+        await fetchTransactions(false);
+        // Light background refresh of wallets and budgets (no delays)
+        Promise.all([
+          fetchWallets(false),
+          fetchBudgets(false)
+        ]).catch(() => {});
         return true;
       }
       return false;
@@ -777,19 +776,23 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       console.error(`Error deleting ${type}:`, error);
       return false;
     }
-  }, [fetchTransactions, fetchExpenses, fetchIncome, fetchSavings]);
+  }, [fetchTransactions]);
 
   const updateTransaction = useCallback(async (id: string | number, type: 'income' | 'expense', data: any) => {
     try {
       // Extract original ID from prefixed ID
       const originalId = typeof id === 'string' ? id.split('-')[1] : id;
-      const endpoint = type === 'expense' ? `/api/expenses/${originalId}` : `/api/income/${originalId}`;
-      const response = await fetch(endpoint, {
+      
+      // Use unified transaction endpoint
+      const response = await fetch(`/api/transactions/${originalId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          type: type
+        }),
       });
 
       if (!response.ok) {
@@ -798,25 +801,14 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
 
       const result = await response.json();
       if (result.success) {
-        // Update local state immediately
+        // Keep numeric IDs to prevent mismatches with subsequent operations
         const updatedTransaction = {
           ...result.data,
-          id: `${type}-${result.data.id}`, // Use prefixed ID
+          id: result.data.id,
           type,
           category: type === 'expense' ? result.data.category : result.data.source
         };
         dispatch({ type: 'UPDATE_TRANSACTION', payload: updatedTransaction });
-        
-        // Refresh all related data to keep all components in sync (no loading states)
-        await Promise.all([
-          fetchTransactions(false),
-          fetchExpenses(false),
-          fetchIncome(false),
-          fetchSavings(false),
-          fetchInvestments(false),
-          fetchWallets(false)
-        ]);
-        
         return true;
       }
       return false;
@@ -824,7 +816,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
       console.error(`Error updating ${type}:`, error);
       return false;
     }
-  }, [fetchTransactions, fetchExpenses, fetchIncome, fetchSavings]);
+  }, [fetchTransactions]);
 
   // Savings action functions
   const deleteSavings = useCallback(async (id: number) => {
@@ -932,13 +924,14 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
   // Refresh function specifically for after adding transactions
   const refreshAfterTransaction = useCallback(async () => {
     try {
-      // Refresh all data including wallets and savings to show updated balances
+      // Refresh all data including wallets, savings, and budgets to show updated balances and tracking
       await Promise.all([
         fetchTransactions(false),
         fetchExpenses(false),
         fetchIncome(false),
         fetchSavings(false),
-        fetchWallets(false)
+        fetchWallets(false),
+        fetchBudgets(false) // Include budgets for real-time tracking updates
       ]);
     } catch (error) {
       console.error('Error refreshing after transaction:', error);

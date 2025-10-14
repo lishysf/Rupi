@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-import { initializeDatabase } from '@/lib/database';
+import { TransactionDatabase, initializeDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 const pool = new Pool({
@@ -34,12 +34,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     
     // First check if the investment exists and belongs to the user
-    const existingResult = await pool.query(
-      'SELECT * FROM investments WHERE id = $1 AND user_id = $2',
-      [id, user.id]
-    );
+    // Get investment from unified transactions table
+    const allTransactions = await TransactionDatabase.getUserTransactions(user.id);
+    const existingInvestment = allTransactions.find(t => t.id === id && t.type === 'investment');
     
-    if (existingResult.rows.length === 0) {
+    if (!existingInvestment) {
       return NextResponse.json({ 
         success: false, 
         error: 'Investment not found or access denied' 
@@ -119,10 +118,10 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       }, { status: 400 });
     }
     
-    // Delete only if the investment belongs to the user
+    // Delete investment from unified transactions table
     const res = await pool.query(
-      'DELETE FROM investments WHERE id = $1 AND user_id = $2', 
-      [id, user.id]
+      'DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND type = $3', 
+      [id, user.id, 'investment']
     );
     
     const success = res.rowCount !== null && res.rowCount > 0;

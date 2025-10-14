@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Pool } from 'pg';
 import { requireAuth } from '@/lib/auth-utils';
+import { initializeDatabase, pool, TransactionDatabase } from '@/lib/database';
 
-// Database connection
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'rupi_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+let dbInitialized = false;
+
+async function ensureDbInitialized() {
+  if (!dbInitialized) {
+    await initializeDatabase();
+    dbInitialized = true;
+  }
+}
 
 // POST - Create wallet transfer
 export async function POST(request: NextRequest) {
   try {
+    await ensureDbInitialized();
     const user = await requireAuth(request);
     const body = await request.json();
     const { fromWalletId, toWalletId, amount, description } = body;
@@ -65,31 +65,13 @@ export async function POST(request: NextRequest) {
       }
 
       // Check if source wallet has sufficient balance (calculate from transactions)
-      const { TransactionDatabase } = await import('@/lib/database');
       const sourceBalance = await TransactionDatabase.calculateWalletBalance(user.id, fromWalletId);
       
       if (sourceBalance < amount) {
         throw new Error(`Insufficient balance in ${fromWallet.name}. Available: ${sourceBalance}, Required: ${amount}`);
       }
 
-      // Create wallet transfer record
-      const transferQuery = `
-        INSERT INTO wallet_transfers (user_id, from_wallet_id, to_wallet_id, to_savings, amount, description, transfer_type)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *
-      `;
-      
-      const transferResult = await client.query(transferQuery, [
-        user.id,
-        fromWalletId,
-        toWalletId,
-        false, // to_savings = false for wallet-to-wallet transfer
-        amount,
-        description || `Transfer from ${fromWallet.name} to ${toWallet.name}`,
-        'wallet_to_wallet'
-      ]);
-
-      // Create transaction records for the transfer
+      // Create transaction records for the transfer (no separate wallet_transfers table needed)
       
       // Create outgoing transaction for source wallet
       await TransactionDatabase.createTransaction(
@@ -123,7 +105,13 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        data: transferResult.rows[0],
+        data: {
+          fromWalletId,
+          toWalletId,
+          amount,
+          description: description || `Transfer from ${fromWallet.name} to ${toWallet.name}`,
+          transferType: 'wallet_to_wallet'
+        },
         message: 'Transfer completed successfully'
       }, { status: 201 });
 
@@ -150,50 +138,66 @@ export async function POST(request: NextRequest) {
 // GET - Get wallet transfers for user
 export async function GET(request: NextRequest) {
   try {
+    await ensureDbInitialized();
     const user = await requireAuth(request);
     
-    const query = `
-      SELECT 
-        wt.*,
-        fw.name as from_wallet_name,
-        fw.type as from_wallet_type,
-        fw.color as from_wallet_color,
-        tw.name as to_wallet_name,
-        tw.type as to_wallet_type,
-        tw.color as to_wallet_color
-      FROM wallet_transfers wt
-      LEFT JOIN user_wallets fw ON wt.from_wallet_id = fw.id
-      LEFT JOIN user_wallets tw ON wt.to_wallet_id = tw.id
-      WHERE wt.user_id = $1
-      ORDER BY wt.created_at DESC
-    `;
-
-    const result = await pool.query(query, [user.id]);
+    // Get transfer transactions from the unified transactions table
+    const transactions = await TransactionDatabase.getUserTransactions(user.id);
+    
+    // Filter for transfer transactions and group them
+    const transferTransactions = transactions.filter(t => t.type === 'transfer');
+    
+    // Group outgoing and incoming transfers to create transfer pairs
+    const transfers = [];
+    const processedIds = new Set();
+    
+    for (const transaction of transferTransactions) {
+      if (processedIds.has(transaction.id)) continue;
+      
+      // Find the corresponding transaction (outgoing/incoming pair)
+      const correspondingTransaction = transferTransactions.find(t => 
+        t.id !== transaction.id && 
+        Math.abs(t.amount) === Math.abs(transaction.amount) &&
+        Math.abs(new Date(t.created_at).getTime() - new Date(transaction.created_at).getTime()) < 1000 && // Within 1 second
+        t.description.includes('Transfer') && 
+        transaction.description.includes('Transfer')
+      );
+      
+      if (correspondingTransaction) {
+        const fromTransaction = transaction.amount < 0 ? transaction : correspondingTransaction;
+        const toTransaction = transaction.amount > 0 ? transaction : correspondingTransaction;
+        
+        transfers.push({
+          id: fromTransaction.id, // Use outgoing transaction ID as transfer ID
+          fromWalletId: fromTransaction.wallet_id,
+          toWalletId: toTransaction.wallet_id,
+          toSavings: false,
+          amount: Math.abs(fromTransaction.amount),
+          description: fromTransaction.description,
+          transferType: 'wallet_to_wallet',
+          createdAt: fromTransaction.created_at,
+          fromWallet: {
+            id: fromTransaction.wallet_id,
+            name: 'Wallet', // Will be populated by frontend if needed
+            type: 'bank',
+            color: '#3B82F6'
+          },
+          toWallet: {
+            id: toTransaction.wallet_id,
+            name: 'Wallet', // Will be populated by frontend if needed
+            type: 'bank',
+            color: '#3B82F6'
+          }
+        });
+        
+        processedIds.add(transaction.id);
+        processedIds.add(correspondingTransaction.id);
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      data: result.rows.map(row => ({
-        id: row.id,
-        fromWalletId: row.from_wallet_id,
-        toWalletId: row.to_wallet_id,
-        toSavings: row.to_savings,
-        amount: parseFloat(row.amount),
-        description: row.description,
-        transferType: row.transfer_type,
-        createdAt: row.created_at,
-        fromWallet: row.from_wallet_name ? {
-          id: row.from_wallet_id,
-          name: row.from_wallet_name,
-          type: row.from_wallet_type,
-          color: row.from_wallet_color
-        } : null,
-        toWallet: row.to_wallet_name ? {
-          id: row.to_wallet_id,
-          name: row.to_wallet_name,
-          type: row.to_wallet_type,
-          color: row.to_wallet_color
-        } : null
-      }))
+      data: transfers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     });
 
   } catch (error) {

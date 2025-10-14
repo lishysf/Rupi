@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GroqAIService } from '@/lib/groq-ai';
-import { ExpenseDatabase, IncomeDatabase, SavingsDatabase, InvestmentDatabase, UserWalletDatabase, initializeDatabase } from '@/lib/database';
+import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDatabase, initializeDatabase } from '@/lib/database';
 import pool from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
+import { PerformanceMonitor } from '@/lib/performance-monitor';
+import { createDatabaseIndexes } from '@/lib/database-indexes';
 
 // Helper function to handle expense creation
 async function handleExpenseCreation(userId: number, description: string, amount: number, category: string, walletId?: number) {
@@ -20,7 +22,9 @@ async function handleExpenseCreation(userId: number, description: string, amount
   }
 
   // Check if wallet has sufficient balance (calculated from transactions)
-  const currentBalance = await UserWalletDatabase.calculateWalletBalance(userId, walletId);
+  PerformanceMonitor.startTimer('wallet-balance-calculation');
+  const currentBalance = await TransactionDatabase.calculateWalletBalance(userId, walletId);
+  PerformanceMonitor.endTimer('wallet-balance-calculation');
   
   if (currentBalance < amount) {
     throw new Error(`Insufficient balance in ${wallet.name}. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
@@ -37,8 +41,19 @@ async function handleExpenseCreation(userId: number, description: string, amount
     newBalance: currentBalance - amount
   });
   
-  // Create expense record (balance will be calculated from transactions)
-  return await ExpenseDatabase.createExpense(userId, description, amount, category as any, new Date(), walletId);
+  // Create expense using unified transaction system
+  return await TransactionDatabase.createTransaction(
+    userId, 
+    description, 
+    amount, 
+    'expense',
+    walletId,
+    category,
+    undefined,
+    undefined,
+    undefined,
+    new Date()
+  );
 }
 
 // Helper function to handle income creation
@@ -57,7 +72,9 @@ async function handleIncomeCreation(userId: number, description: string, amount:
   }
 
   // Get current balance (calculated from transactions)
-  const currentBalance = await UserWalletDatabase.calculateWalletBalance(userId, walletId);
+  PerformanceMonitor.startTimer('wallet-balance-calculation-income');
+  const currentBalance = await TransactionDatabase.calculateWalletBalance(userId, walletId);
+  PerformanceMonitor.endTimer('wallet-balance-calculation-income');
   const newBalance = currentBalance + amount;
   
   console.log('Income creation debug:', {
@@ -71,8 +88,19 @@ async function handleIncomeCreation(userId: number, description: string, amount:
     newBalance: newBalance
   });
   
-  // Create income record (balance will be calculated from transactions)
-  return await IncomeDatabase.createIncome(userId, description, amount, source as any, new Date(), walletId);
+  // Create income using unified transaction system
+  return await TransactionDatabase.createTransaction(
+    userId, 
+    description, 
+    amount, 
+    'income',
+    walletId,
+    undefined,
+    source,
+    undefined,
+    undefined,
+    new Date()
+  );
 }
 
 // Helper function to handle wallet-to-wallet transfers
@@ -105,77 +133,38 @@ async function handleWalletTransfer(userId: number, description: string, amount:
     throw new Error(`Insufficient balance in ${fromWallet.name}. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
   }
 
-  // Create wallet transfer directly using database
+  // Create paired transfer transactions using the unified transaction system
   const { TransactionDatabase } = await import('@/lib/database');
-  const { Pool } = await import('pg');
-  
-  const pool = new Pool({
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    database: process.env.DB_NAME || 'rupi_db',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'password',
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  });
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  // Outgoing transaction (source wallet)
+  const outgoing = await TransactionDatabase.createTransaction(
+    userId,
+    `Transfer to ${toWallet.name}${description ? `: ${description}` : ''}`,
+    -amount,
+    'transfer',
+    fromWalletId,
+    'Transfer',
+    undefined,
+    undefined,
+    undefined,
+    new Date()
+  );
 
-    // Create wallet transfer record
-    const transferQuery = `
-      INSERT INTO wallet_transfers (user_id, from_wallet_id, to_wallet_id, to_savings, amount, description, transfer_type)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `;
-    
-    const transferResult = await client.query(transferQuery, [
-      userId,
-      fromWalletId,
-      toWalletId,
-      false, // to_savings = false for wallet-to-wallet transfer
-      amount,
-      description.trim() || `Transfer from ${fromWallet.name} to ${toWallet.name}`,
-      'wallet_to_wallet'
-    ]);
+  // Incoming transaction (destination wallet)
+  const incoming = await TransactionDatabase.createTransaction(
+    userId,
+    `Transfer from ${fromWallet.name}${description ? `: ${description}` : ''}`,
+    amount,
+    'transfer',
+    toWalletId,
+    'Transfer',
+    undefined,
+    undefined,
+    undefined,
+    new Date()
+  );
 
-    // Create outgoing transaction for source wallet
-    await TransactionDatabase.createTransaction(
-      userId,
-      `Transfer to ${toWallet.name}${description ? `: ${description}` : ''}`,
-      -amount, // Negative amount for outgoing
-      'transfer',
-      fromWalletId,
-      'Transfer', // Transfer category
-      undefined,
-      undefined,
-      undefined,
-      new Date()
-    );
-
-    // Create incoming transaction for destination wallet
-    await TransactionDatabase.createTransaction(
-      userId,
-      `Transfer from ${fromWallet.name}${description ? `: ${description}` : ''}`,
-      amount, // Positive amount for incoming
-      'transfer',
-      toWalletId,
-      'Transfer', // Transfer category
-      undefined,
-      undefined,
-      undefined,
-      new Date()
-    );
-
-    await client.query('COMMIT');
-    return transferResult.rows[0];
-
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  return { success: true, outgoing, incoming };
 }
 
 // Helper function to handle savings transfers with wallet balance validation
@@ -190,22 +179,44 @@ async function handleSavingsTransfer(userId: number, description: string, amount
                              descriptionLower.includes('transfer ke tabungan') ||
                              descriptionLower.includes('masuk ke tabungan') ||
                              descriptionLower.includes('to savings') ||
-                             descriptionLower.includes('savings from') ||
-                             (descriptionLower.includes('savings') && descriptionLower.includes('from'));
+                             descriptionLower.includes('saving to') ||
+                             (descriptionLower.includes('savings') && descriptionLower.includes('to')) ||
+                             (descriptionLower.includes('saving') && descriptionLower.includes('to'));
   
   // Check for transfer FROM savings (withdrawal) keywords
   const isTransferFromSavings = descriptionLower.includes('ambil') ||
                                descriptionLower.includes('pakai') ||
+                               descriptionLower.includes('tarik') ||
                                descriptionLower.includes('tarik dari tabungan') ||
                                descriptionLower.includes('transfer from') ||
                                descriptionLower.includes('keluar dari tabungan') ||
                                descriptionLower.includes('withdraw') ||
                                descriptionLower.includes('from savings') ||
-                               descriptionLower.includes('savings to');
+                               descriptionLower.includes('savings to') ||
+                               (descriptionLower.includes('savings') && descriptionLower.includes('from'));
   
-  // Default to deposit if no clear direction is specified
-  // If wallet is specified, it's likely a deposit (money going from wallet to savings)
-  const isDeposit = isTransferToSavings || (!isTransferFromSavings && !isTransferToSavings) || (walletId && !isTransferFromSavings);
+  // Determine if it's a deposit or withdrawal
+  // If both are true, prioritize the more specific keywords
+  let isDeposit = false;
+  
+  if (isTransferToSavings && !isTransferFromSavings) {
+    isDeposit = true;
+  } else if (isTransferFromSavings && !isTransferToSavings) {
+    isDeposit = false;
+  } else if (isTransferToSavings && isTransferFromSavings) {
+    // Both are true - use more specific keywords to determine
+    if (descriptionLower.includes('to savings') || descriptionLower.includes('tabung') || descriptionLower.includes('simpan')) {
+      isDeposit = true;
+    } else if (descriptionLower.includes('from savings') || descriptionLower.includes('ambil') || descriptionLower.includes('pakai')) {
+      isDeposit = false;
+    } else {
+      // Default to withdrawal if unclear
+      isDeposit = false;
+    }
+  } else {
+    // Neither is true - default to deposit if wallet is specified (money from wallet to savings)
+    isDeposit = walletId ? true : false;
+  }
   
   console.log('Savings direction debug:', {
     originalDescription: description,
@@ -233,69 +244,80 @@ async function handleSavingsTransfer(userId: number, description: string, amount
       throw new Error('Specified wallet not found');
     }
     
-    const currentBalance = await UserWalletDatabase.calculateWalletBalance(userId, walletId);
+    const currentBalance = await TransactionDatabase.calculateWalletBalance(userId, walletId);
     
     if (currentBalance < amount) {
       throw new Error(`Insufficient balance in ${wallet.name} for savings transfer. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
     }
     
-    // Create savings record
-    const savings = await SavingsDatabase.createSavings(userId, description, amount, goalName, new Date(), walletId);
-    
-    // Create wallet transfer record (NOT an expense - just money movement)
-    const { WalletTransferDatabase } = await import('@/lib/database');
-    await WalletTransferDatabase.createTransfer(
+    // Create savings transaction using unified system
+    const savings = await TransactionDatabase.createTransaction(
       userId,
-      walletId, // from wallet
-      undefined, // to wallet (none, going to savings)
-      true, // to savings
+      description,
       amount,
-      `Savings: ${description}`,
-      'wallet_to_savings'
-    );
-    
-    // Also create a transaction record for the new unified system
-    const { TransactionDatabase } = await import('@/lib/database');
-    await TransactionDatabase.createTransaction(
-      userId,
-      `Savings: ${description}`,
-      -amount, // Negative amount for outgoing from wallet
-      'transfer',
+      'savings',
       walletId,
-      'Savings Transfer',
+      undefined,
       undefined,
       goalName,
       undefined,
       new Date()
     );
     
+    // Create wallet to savings transfer using unified transaction system
+    // The savings transaction was already created above, no need for additional transfer
+    
     return savings;
   } else {
     // Transfer FROM savings: Check if savings balance is sufficient
-    const allSavings = await SavingsDatabase.getAllSavings(userId, 100, 0);
-    const totalSavings = allSavings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
+    // Calculate total savings from transactions
+    const savingsTransactions = await TransactionDatabase.getUserTransactions(userId);
+    const totalSavings = savingsTransactions
+      .filter(t => t.type === 'savings')
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
     
     if (totalSavings < amount) {
       throw new Error(`Insufficient savings balance. Current savings: Rp${totalSavings.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
     }
     
-    // Create savings withdrawal record
-    const savings = await SavingsDatabase.createSavings(userId, description, -amount, goalName, new Date());
-    
-    // Also create a transaction record for the new unified system
-    const { TransactionDatabase } = await import('@/lib/database');
-    await TransactionDatabase.createTransaction(
-      userId,
-      `Savings Withdrawal: ${description}`,
-      amount, // Positive amount for incoming to wallet
-      'transfer',
-      undefined, // No specific wallet for savings withdrawal
-      'Savings Withdrawal',
-      undefined,
-      goalName,
-      undefined,
-      new Date()
-    );
+     // Create savings withdrawal transaction using unified system
+     const savings = await TransactionDatabase.createTransaction(
+       userId,
+       description,
+       -amount, // Negative amount for withdrawal
+       'savings',
+       undefined, // No wallet_id for savings withdrawal - it's a savings operation
+       undefined,
+       undefined,
+       goalName,
+       undefined,
+       new Date()
+     );
+     
+     // If a destination wallet is specified, create a corresponding income transaction
+     if (walletId) {
+       // Verify wallet exists
+       const wallets = await UserWalletDatabase.getAllWallets(userId);
+       const wallet = wallets.find(w => w.id === walletId);
+       
+       if (!wallet) {
+         throw new Error('Specified destination wallet not found');
+       }
+       
+       // Create transfer transaction in destination wallet (not income)
+       await TransactionDatabase.createTransaction(
+         userId,
+         `Transfer from savings to ${wallet.name}`,
+         amount, // Positive amount for transfer
+         'transfer',
+         walletId,
+         'Transfer', // Transfer category
+         undefined,
+         undefined,
+         undefined,
+         new Date()
+       );
+     }
     
     return savings;
   }
@@ -306,12 +328,20 @@ let dbInitialized = false;
 async function ensureDbInitialized() {
   if (!dbInitialized) {
     await initializeDatabase();
+    // Create database indexes for performance
+    try {
+      await createDatabaseIndexes();
+    } catch (error) {
+      console.warn('Database indexes creation failed (non-critical):', error);
+    }
     dbInitialized = true;
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    PerformanceMonitor.startTimer('chat-request-total');
+    
     await ensureDbInitialized();
     const user = await requireAuth(request);
 
@@ -331,16 +361,90 @@ export async function POST(request: NextRequest) {
     let response;
     let transactionCreated = null;
     let multipleTransactionsCreated = null;
+    let aiDebug: any = {};
 
-    // Analyze message intent to determine the best response type
-    const intent = await GroqAIService.analyzeMessageIntent(message);
-    console.log('Message intent detected:', intent);
+    // Unified decision (intent + optional parsed transactions)
+    PerformanceMonitor.startTimer('intent-analysis');
+    const decision = await GroqAIService.decideAndParse(message, user.id);
+    PerformanceMonitor.endTimer('intent-analysis');
+    const intent = decision.intent;
+    console.log('Message intent detected:', intent, 'for message:', message.substring(0, 50) + '...');
+    aiDebug.intent = intent;
+    aiDebug.transactions = decision.transactions || [];
 
     // Handle based on detected intent
     if (intent === 'multiple_transaction') {
       try {
-        // Parse multiple transactions using Groq AI
-        const parsedMultipleTransactions = await GroqAIService.parseMultipleTransactions(message);
+        // Use AI-supplied transactions if present; fallback to parser
+        let parsedMultipleTransactions = decision.transactions && decision.transactions.length > 0
+          ? { transactions: decision.transactions, totalTransactions: decision.transactions.length, successCount: decision.transactions.length, failedCount: 0 }
+          : await GroqAIService.parseMultipleTransactions(message, user.id);
+        
+        // If multiple transaction parsing fails or returns no transactions, try single transaction parsing
+        if (parsedMultipleTransactions.transactions.length === 0) {
+          console.log('Multiple transaction parsing failed, trying single transaction parsing...');
+          console.log('Original message:', message);
+          console.log('Parsed result:', parsedMultipleTransactions);
+          const parsedTransaction = await GroqAIService.parseTransaction(message, user.id);
+          
+          if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
+            // Process as single transaction
+            let walletId: number | undefined;
+            if (parsedTransaction.walletName && parsedTransaction.walletType) {
+              const wallets = await UserWalletDatabase.getAllWallets(user.id);
+              const walletNameLower = parsedTransaction.walletName.toLowerCase();
+              
+              let matchingWallet = wallets.find(w => w.name.toLowerCase() === walletNameLower);
+              if (!matchingWallet) {
+                matchingWallet = wallets.find(w => w.name.toLowerCase().includes(walletNameLower));
+              }
+              if (!matchingWallet) {
+                matchingWallet = wallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
+              }
+              
+              walletId = matchingWallet?.id;
+            }
+            
+            if (parsedTransaction.type === 'expense') {
+              try {
+                transactionCreated = await handleExpenseCreation(
+                  user.id,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  parsedTransaction.category!,
+                  walletId
+                );
+                
+                const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
+                response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category${walletInfo}. Your expense has been saved successfully!`;
+              } catch (expenseError) {
+                console.error('Error creating expense:', expenseError);
+                response = expenseError instanceof Error ? expenseError.message : 'Unknown error';
+              }
+            } else if (parsedTransaction.type === 'income') {
+              transactionCreated = await handleIncomeCreation(
+                user.id,
+                parsedTransaction.description,
+                parsedTransaction.amount,
+                parsedTransaction.source!,
+                walletId
+              );
+
+              const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
+              response = `Excellent! I've recorded your income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}. Your income has been saved successfully!`;
+            }
+            
+            return NextResponse.json({
+              success: true,
+              data: {
+                response,
+                transactionCreated,
+                multipleTransactionsCreated: null,
+                timestamp: new Date().toISOString()
+              }
+            });
+          }
+        }
         
         if (parsedMultipleTransactions.transactions.length > 0) {
           const createdTransactions = [];
@@ -428,17 +532,67 @@ export async function POST(request: NextRequest) {
                     });
                   }
                 } else if (transaction.type === 'investment') {
-                  // Replace investment portfolio value using database
+                  // Create investment transaction using unified system
                   try {
-                    createdTransaction = await InvestmentDatabase.replaceInvestmentPortfolio(
+                    createdTransaction = await TransactionDatabase.createTransaction(
                       user.id,
                       transaction.description,
                       transaction.amount,
+                      'investment',
+                      undefined, // No wallet for investments
+                      undefined,
+                      undefined,
+                      undefined,
                       transaction.assetName,
                       new Date()
                     );
                   } catch (investmentError) {
                     console.error('Error updating investment portfolio:', investmentError);
+                  }
+                } else if (transaction.type === 'transfer') {
+                  // Handle wallet-to-wallet transfer
+                  try {
+                    // For transfer transactions, we need to parse the transfer details
+                    const transferDetails = await GroqAIService.parseWalletTransfer(message, user.id);
+                    console.log('Transfer details parsed:', transferDetails);
+                    
+                    if (transferDetails.fromWalletId && transferDetails.toWalletId) {
+                      // Create the main transfer
+                      createdTransaction = await handleWalletTransfer(
+                        user.id,
+                        transaction.description,
+                        transaction.amount,
+                        transferDetails.fromWalletId,
+                        transferDetails.toWalletId
+                      );
+                      
+                      // Handle admin fee if present
+                      const adminFee = transaction.adminFee || 0;
+                      if (adminFee > 0) {
+                        console.log('Creating admin fee expense:', adminFee);
+                        try {
+                          await handleExpenseCreation(
+                            user.id,
+                            `Admin fee for ${transaction.description}`,
+                            adminFee,
+                            'Family & Others', // Admin fees are miscellaneous expenses
+                            transferDetails.fromWalletId // Admin fee is deducted from source wallet
+                          );
+                          console.log('Admin fee expense created successfully');
+                        } catch (adminFeeError) {
+                          console.error('Error creating admin fee expense:', adminFeeError);
+                          // Don't fail the entire transfer if admin fee creation fails
+                        }
+                      }
+                    } else {
+                      throw new Error('Could not determine source and destination wallets for transfer');
+                    }
+                  } catch (transferError) {
+                    console.error('Error creating transfer:', transferError);
+                    failedTransactions.push({
+                      transaction,
+                      error: transferError instanceof Error ? transferError.message : 'Unknown error'
+                    });
                   }
                 }
                 
@@ -463,6 +617,9 @@ export async function POST(request: NextRequest) {
           if (createdTransactions.length > 0) {
             const transactionSummaries = createdTransactions.map(({ transaction }) => {
               const amount = transaction.amount.toLocaleString();
+              const adminFee = transaction.adminFee || 0;
+              const adminFeeText = adminFee > 0 ? ` (with Rp ${adminFee.toLocaleString()} admin fee)` : '';
+              
               if (transaction.type === 'expense') {
                 return `${transaction.description} (Rp${amount})`;
               } else if (transaction.type === 'income') {
@@ -471,6 +628,8 @@ export async function POST(request: NextRequest) {
                 return `Transfer to savings: ${transaction.description} (Rp${amount})`;
               } else if (transaction.type === 'investment') {
                 return `Investment portfolio updated to Rp${amount}`;
+              } else if (transaction.type === 'transfer') {
+                return `Transfer: ${transaction.description} (Rp${amount})${adminFeeText}`;
               }
               return `${transaction.description} (Rp${amount})`;
             });
@@ -489,6 +648,9 @@ export async function POST(request: NextRequest) {
               failedCount: failedTransactions.length
             };
           } else {
+            console.log('No valid transactions found in multiple transaction parsing');
+            console.log('Failed transactions:', parsedMultipleTransactions.failedCount);
+            console.log('Total transactions:', parsedMultipleTransactions.totalTransactions);
             response = `I understood that you mentioned multiple transactions, but I couldn't process any of them clearly. Could you please try again with more specific details? For example: "I bought coffee for 25,000, paid electricity bill 200,000, and got salary 8 million".`;
           }
         } else {
@@ -502,10 +664,11 @@ export async function POST(request: NextRequest) {
     // Check if this is a single transaction input
     else if (intent === 'transaction') {
         try {
-          // Parse transaction using Groq AI - let AI determine the type
-          const parsedTransaction = await GroqAIService.parseTransaction(message);
+          // Use AI-supplied transaction if present; fallback to parser
+          const parsedTransaction = decision.transactions?.[0] || await GroqAIService.parseTransaction(message, user.id);
           
           console.log('Parsed transaction:', parsedTransaction);
+          aiDebug.parsedTransaction = parsedTransaction;
           console.log('Transaction type:', parsedTransaction.type);
           console.log('Has wallet name:', !!parsedTransaction.walletName);
           console.log('Description contains tabungan:', parsedTransaction.description?.toLowerCase().includes('tabungan'));
@@ -514,7 +677,66 @@ export async function POST(request: NextRequest) {
           // Handle based on AI-determined transaction type
           if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
             
-            // Check if AI detected this as a wallet transfer (not savings transfer)
+            // Find wallet if mentioned - require exact match or close match
+            let walletId: number | undefined;
+            if (parsedTransaction.walletName && parsedTransaction.walletType) {
+              const wallets = await UserWalletDatabase.getAllWallets(user.id);
+              const walletNameLower = parsedTransaction.walletName.toLowerCase();
+              
+              console.log('Wallet matching debug:', {
+                mentionedWallet: parsedTransaction.walletName,
+                mentionedWalletLower: walletNameLower,
+                availableWallets: wallets.map(w => ({ id: w.id, name: w.name, nameLower: w.name.toLowerCase() }))
+              });
+              
+              // Try exact match first
+              let matchingWallet = wallets.find(w => w.name.toLowerCase() === walletNameLower);
+              
+              // If no exact match, try partial match (wallet name contains the mentioned name)
+              if (!matchingWallet) {
+                matchingWallet = wallets.find(w => w.name.toLowerCase().includes(walletNameLower));
+              }
+              
+              // If still no match, try reverse (mentioned name contains wallet name)
+              if (!matchingWallet) {
+                matchingWallet = wallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
+              }
+              
+              walletId = matchingWallet?.id;
+              
+              console.log('Wallet matching result:', {
+                foundWallet: matchingWallet ? { id: matchingWallet.id, name: matchingWallet.name } : null,
+                walletId: walletId
+              });
+            } else {
+              // Fallback: infer wallet from message text even if AI didn't return walletName
+              const wallets = await UserWalletDatabase.getAllWallets(user.id);
+              const messageLower = message.toLowerCase();
+              const aliasMap: Record<string, string[]> = {
+                bca: ['bca', 'bank bca'],
+                mandiri: ['mandiri', 'bank mandiri'],
+                bri: ['bri', 'bank bri'],
+                bni: ['bni', 'bank bni'],
+                cimb: ['cimb', 'cimb niaga'],
+                jago: ['jago', 'bank jago'],
+                gopay: ['gopay', 'gojek'],
+                dana: ['dana'],
+                ovo: ['ovo'],
+                shopeepay: ['shopeepay', 'shopee pay'],
+                cash: ['cash', 'tunai', 'uang tunai']
+              };
+              let inferred = wallets.find(w => {
+                const nameLower = w.name.toLowerCase();
+                const aliases = aliasMap[nameLower as keyof typeof aliasMap] || [];
+                return messageLower.includes(nameLower) || aliases.some(a => messageLower.includes(a));
+              });
+              if (inferred) {
+                walletId = inferred.id;
+                console.log('Wallet inferred from message:', { id: inferred.id, name: inferred.name });
+              }
+            }
+            
+            // Check if AI detected this as a wallet transfer
             if (parsedTransaction.type === 'transfer' && 
                 parsedTransaction.walletName && 
                 !parsedTransaction.description.toLowerCase().includes('tabungan') &&
@@ -526,9 +748,30 @@ export async function POST(request: NextRequest) {
               
               if (transferDetails.fromWalletId && transferDetails.toWalletId) {
                 const result = await handleWalletTransfer(user.id, message, parsedTransaction.amount, transferDetails.fromWalletId, transferDetails.toWalletId);
+                
+                // Handle admin fee if present
+                const adminFee = parsedTransaction.adminFee || 0;
+                if (adminFee > 0) {
+                  console.log('Creating admin fee expense:', adminFee);
+                  try {
+                    await handleExpenseCreation(
+                      user.id,
+                      `Admin fee for ${parsedTransaction.description}`,
+                      adminFee,
+                      'Bank Charges', // Categorize admin fees under Bank Charges
+                      transferDetails.fromWalletId // Admin fee is deducted from source wallet
+                    );
+                    console.log('Admin fee expense created successfully');
+                  } catch (adminFeeError) {
+                    console.error('Error creating admin fee expense:', adminFeeError);
+                    // Don't fail the entire transfer if admin fee creation fails
+                  }
+                }
+                
+                const adminFeeMessage = adminFee > 0 ? ` (with Rp ${adminFee.toLocaleString()} admin fee)` : '';
                 return NextResponse.json({
                   success: true,
-                  message: `Perfect! I've transferred Rp ${parsedTransaction.amount.toLocaleString()} from your ${transferDetails.fromWalletName} to your ${transferDetails.toWalletName}. Your wallet balances have been updated!`,
+                  message: `Perfect! I've transferred Rp ${parsedTransaction.amount.toLocaleString()} from your ${transferDetails.fromWalletName} to your ${transferDetails.toWalletName}${adminFeeMessage}. Your wallet balances have been updated!`,
                   data: result
                 });
               } else {
@@ -551,82 +794,12 @@ export async function POST(request: NextRequest) {
                   parsedTransaction.description.toLowerCase().includes('savings')
                 ))) {
               
-              console.log('AI detected savings transfer, processing...');
-              // Handle savings transfer with balance validation
-              try {
-                console.log('AI parsed savings transaction:', {
-                  originalMessage: message,
-                  parsedDescription: parsedTransaction.description,
-                  parsedAmount: parsedTransaction.amount,
-                  parsedGoalName: parsedTransaction.goalName,
-                  walletId: walletId
-                });
-                
-                transactionCreated = await handleSavingsTransfer(
-                  user.id,
-                  parsedTransaction.description,
-                  parsedTransaction.amount,
-                  parsedTransaction.goalName,
-                  walletId
-                );
-                
-                const descriptionLower = parsedTransaction.description.toLowerCase();
-                const isTransferToSavings = descriptionLower.includes('transfer to') || 
-                                           descriptionLower.includes('tabung') ||
-                                           descriptionLower.includes('simpan') ||
-                                           descriptionLower.includes('nabung') ||
-                                           descriptionLower.includes('transfer ke tabungan') ||
-                                           descriptionLower.includes('masuk ke tabungan');
-                
-                if (isTransferToSavings) {
-                  response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your wallet to your savings account. Your savings balance has been updated!`;
-                } else {
-                  response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your savings account to your wallet. Your wallet balance has been updated!`;
-                }
-              } catch (savingsError) {
-                console.error('Error creating savings:', savingsError);
-                response = savingsError instanceof Error ? savingsError.message : 'Unknown error';
-              }
+              // Savings transactions are already handled in the main transaction processing flow above
+              // No need for duplicate handling here
+              console.log('Savings transaction already processed in main flow');
             }
             
             // Handle other transaction types (income, expense, investment)
-            // Find wallet if mentioned - require exact match or close match
-            let walletId: number | undefined;
-            if (parsedTransaction.walletName && parsedTransaction.walletType) {
-            const wallets = await UserWalletDatabase.getAllWallets(user.id);
-            const walletNameLower = parsedTransaction.walletName.toLowerCase();
-            
-            console.log('Wallet matching debug:', {
-              mentionedWallet: parsedTransaction.walletName,
-              mentionedWalletLower: walletNameLower,
-              availableWallets: wallets.map(w => ({ id: w.id, name: w.name, nameLower: w.name.toLowerCase() }))
-            });
-            
-            // Try exact match first
-            let matchingWallet = wallets.find(w => w.name.toLowerCase() === walletNameLower);
-            
-            // If no exact match, try partial match (wallet name contains the mentioned name)
-            if (!matchingWallet) {
-              matchingWallet = wallets.find(w => w.name.toLowerCase().includes(walletNameLower));
-            }
-            
-            // If still no match, try reverse (mentioned name contains wallet name)
-            if (!matchingWallet) {
-              matchingWallet = wallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
-            }
-            
-            walletId = matchingWallet?.id;
-            
-            console.log('Wallet matching result:', {
-              foundWallet: matchingWallet ? { id: matchingWallet.id, name: matchingWallet.name } : null,
-              walletId
-            });
-            
-            // If wallet was mentioned but not found, throw an error
-            if (!walletId) {
-              throw new Error(`Wallet "${parsedTransaction.walletName}" not found. Please create this wallet first or use an existing wallet.`);
-            }
-          }
 
           if (parsedTransaction.type === 'expense') {
             // Handle expense creation with balance validation
@@ -686,19 +859,26 @@ export async function POST(request: NextRequest) {
               if (isTransferToSavings) {
                 response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your wallet to your savings account. Your savings balance has been updated!`;
               } else {
-                response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your savings account to your wallet. Your wallet balance has been updated!`;
+                // Check if a specific wallet was mentioned for the withdrawal
+                const walletName = parsedTransaction.walletName || 'wallet';
+                response = `Perfect! I've withdrawn Rp${parsedTransaction.amount.toLocaleString()} from your savings and added it to your ${walletName}. Your savings and wallet balances have been updated!`;
               }
             } catch (savingsError) {
               console.error('Error creating savings:', savingsError);
               response = savingsError instanceof Error ? savingsError.message : 'Unknown error';
             }
           } else if (parsedTransaction.type === 'investment') {
-            // Replace investment portfolio value using database
+            // Create investment transaction using unified system
             try {
-              transactionCreated = await InvestmentDatabase.replaceInvestmentPortfolio(
+              transactionCreated = await TransactionDatabase.createTransaction(
                 user.id,
                 parsedTransaction.description,
                 parsedTransaction.amount,
+                'investment',
+                undefined, // No wallet for investments
+                undefined,
+                undefined,
+                undefined,
                 parsedTransaction.assetName,
                 new Date()
               );
@@ -760,52 +940,79 @@ export async function POST(request: NextRequest) {
         }
         
         // Get comprehensive financial data for analysis
-        const [allExpenses, allIncome] = await Promise.all([
-          ExpenseDatabase.getAllExpenses(user.id, 100, 0), // Get more data for analysis
-          IncomeDatabase.getAllIncome(user.id, 100, 0)
-        ]);
-
-        // Get savings data directly from database
-        let allSavings: any[] = [];
-        try {
-          allSavings = await SavingsDatabase.getAllSavings(user.id, 100, 0);
-        } catch (savingsError) {
-          console.error('Error fetching savings:', savingsError);
-        }
-
-        // Get investments data directly from database
-        let allInvestments: any[] = [];
-        try {
-          allInvestments = await InvestmentDatabase.getAllInvestments(user.id, 100, 0);
-        } catch (investmentsError) {
-          console.error('Error fetching investments:', investmentsError);
-        }
-
-        // Filter data based on time period
-        let filteredExpenses = allExpenses || [];
-        let filteredIncome = allIncome || [];
-        let filteredSavings = allSavings || [];
-        let filteredInvestments = allInvestments || [];
-
-        if (dateFilter) {
-          const filterByDate = (transactions: any[]) => {
-            return transactions.filter(transaction => {
+        // Note: We fetch recent transactions and filter client-side for now
+        const limit = 200; // Slightly higher to cover monthly scope comfortably
+        const allTransactions = await TransactionDatabase.getUserTransactions(user.id, limit, 0);
+        
+        // Filter transactions by type and date in one pass for better performance
+        const filterTransactions = (transactions: any[], type: string) => {
+          return transactions.filter(transaction => {
+            if (transaction.type !== type) return false;
+            
+            if (dateFilter) {
               const transactionDate = new Date(transaction.date);
               return transactionDate >= dateFilter.startDate && transactionDate <= dateFilter.endDate;
-            });
-          };
+            }
+            return true;
+          });
+        };
 
-          filteredExpenses = filterByDate(filteredExpenses);
-          filteredIncome = filterByDate(filteredIncome);
-          filteredSavings = filterByDate(filteredSavings);
-          filteredInvestments = filterByDate(filteredInvestments);
+        const filteredExpenses = filterTransactions(allTransactions, 'expense');
+        const filteredIncome = filterTransactions(allTransactions, 'income');
+        const filteredSavings = filterTransactions(allTransactions, 'savings');
+        const filteredInvestments = filterTransactions(allTransactions, 'investment');
+
+        // Compute totals for requested period
+        const sum = (arr: any[]) => arr.reduce((s, t) => s + (typeof t.amount === 'string' ? parseFloat(t.amount) : (t.amount || 0)), 0);
+        const totalExpenses = sum(filteredExpenses);
+        const totalIncome = sum(filteredIncome);
+        const totalSavings = sum(filteredSavings);
+        // Investment: use latest value if available, else sum
+        const latestInvestment = filteredInvestments
+          .slice()
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        const totalInvestments = latestInvestment
+          ? (typeof latestInvestment.amount === 'string' ? parseFloat(latestInvestment.amount) : latestInvestment.amount || 0)
+          : sum(filteredInvestments);
+
+        // Wallets with balances and total assets
+        const walletsWithBalances = await UserWalletDatabase.getAllWalletsWithBalances(user.id);
+        const totalWalletBalance = walletsWithBalances.reduce((s: number, w: any) => s + (typeof w.balance === 'string' ? parseFloat(w.balance) : (w.balance || 0)), 0);
+        const totalAssets = totalWalletBalance + (totalInvestments || 0);
+
+        // Budgets for current month with spent
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        const budgets = await BudgetDatabase.getAllBudgets(user.id, currentMonth, currentYear);
+
+        // Savings goals progression
+        const savingsGoals = await SavingsGoalDatabase.getAllSavingsGoals(user.id);
+
+        // Category breakdown for the period
+        const expensesByCategory: Record<string, { total: number, transactions: any[] }> = {};
+        for (const e of filteredExpenses) {
+          const cat = e.category || 'Others';
+          if (!expensesByCategory[cat]) expensesByCategory[cat] = { total: 0, transactions: [] };
+          expensesByCategory[cat].total += typeof e.amount === 'string' ? parseFloat(e.amount) : (e.amount || 0);
+          expensesByCategory[cat].transactions.push(e);
         }
 
         const financialData = {
           expenses: filteredExpenses,
           income: filteredIncome,
           savings: filteredSavings,
-          investments: filteredInvestments
+          investments: filteredInvestments,
+          wallets: walletsWithBalances,
+          budgets,
+          savingsGoals,
+          totals: {
+            totalExpenses,
+            totalIncome,
+            totalSavings,
+            totalInvestments,
+            totalAssets,
+          },
+          expensesByCategory
         };
 
         console.log('Financial data for analysis:', {
@@ -824,11 +1031,11 @@ export async function POST(request: NextRequest) {
         response = "I'm having trouble analyzing your financial data right now. Please try again.";
       }
     } else {
-      // Generate general chat response
-      const [recentExpenses, recentIncome] = await Promise.all([
-        ExpenseDatabase.getAllExpenses(3, 0),
-        IncomeDatabase.getAllIncome(3, 0)
-      ]);
+      // Generate general chat response using optimized system
+      // Use smaller limit for faster response
+      const allTransactions = await TransactionDatabase.getUserTransactions(user.id, 20, 0);
+      const recentExpenses = allTransactions.filter(t => t.type === 'expense').slice(0, 2);
+      const recentIncome = allTransactions.filter(t => t.type === 'income').slice(0, 2);
       
       const expenseContext = recentExpenses.length > 0 
         ? `Recent expenses: ${recentExpenses.map(e => `${e.description} (Rp${e.amount.toLocaleString()})`).join(', ')}`
@@ -851,12 +1058,15 @@ export async function POST(request: NextRequest) {
       response = await GroqAIService.generateChatResponse(messageWithDateContext, context, conversationHistory);
     }
 
+    PerformanceMonitor.endTimer('chat-request-total');
+    
     return NextResponse.json({
       success: true,
       data: {
         response,
         transactionCreated,
         multipleTransactionsCreated,
+        ai: aiDebug,
         timestamp: new Date().toISOString()
       }
     });

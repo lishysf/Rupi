@@ -345,5 +345,66 @@
   }
 }
 
+/* Tutorial-specific styles */
+@layer utilities {
+  .tutorial-highlight {
+    position: relative;
+    z-index: 10;
+    animation: tutorialPulse 2s ease-in-out infinite;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3), 0 0 0 8px rgba(59, 130, 246, 0.1);
+    border-radius: 0.75rem;
+  }
+  
+  .tutorial-bubble {
+    animation: tutorialBubbleIn 0.3s ease-out;
+  }
+  
+  .tutorial-overlay {
+    animation: tutorialOverlayIn 0.2s ease-out;
+  }
+  
+  .tutorial-button-hover {
+    animation: tutorialButtonHover 0.3s ease-out;
+  }
+}
+
+@keyframes tutorialPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3), 0 0 0 8px rgba(59, 130, 246, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.4), 0 0 0 12px rgba(59, 130, 246, 0.15);
+  }
+}
+
+@keyframes tutorialBubbleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes tutorialOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tutorialButtonHover {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.1);
+  }
+}
+
 
 

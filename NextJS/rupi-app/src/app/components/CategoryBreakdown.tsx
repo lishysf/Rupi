@@ -5,6 +5,7 @@ import { TrendingUp, PieChart as PieChartIcon } from "lucide-react";
 import { Pie, PieChart, Cell, Sector } from "recharts";
 import { PieSectorDataItem } from "recharts/types/polar/Pie";
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 import {
   Card,
@@ -33,6 +34,8 @@ interface CategoryBreakdownProps {
 
 export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBreakdownProps) {
   const { state } = useFinancialData();
+  let t = (key: string) => key;
+  try { t = useLanguage().t; } catch {}
   const { expenses } = state.data;
   const loading = state.loading.initial && expenses.length === 0;
 
@@ -166,10 +169,10 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
               <PieChartIcon className="w-8 h-8 text-neutral-400" />
             </div>
             <p className="text-neutral-500 dark:text-neutral-400 text-sm">
-              No expense data available
+              {t('noExpenseData')}
             </p>
             <p className="text-neutral-400 dark:text-neutral-500 text-xs mt-1">
-              Start tracking expenses with the AI chat
+              {t('startTracking')}
             </p>
           </div>
         </CardContent>
@@ -192,8 +195,8 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
   return (
     <Card className="bg-white dark:bg-neutral-900 flex flex-col h-full">
       <CardHeader className="items-center pb-0">
-        <CardTitle className="text-lg">Expense Breakdown</CardTitle>
-        <CardDescription>Category-wise spending analysis</CardDescription>
+        <CardTitle className="text-lg">{t('expenseBreakdown')}</CardTitle>
+        <CardDescription>{t('categoryAnalysis')}</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 pb-0">
         <ChartContainer

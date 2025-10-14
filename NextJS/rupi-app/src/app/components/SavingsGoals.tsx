@@ -2,6 +2,7 @@
 
 import { Target, Laptop, Car, Home, Plane, Plus, Trash2, Wallet, ExternalLink } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useState, useEffect } from 'react';
 import SavingsGoalsPopup from './SavingsGoalsPopup';
 
@@ -13,6 +14,7 @@ interface SavingsGoal {
   id: number;
   goal_name: string;
   target_amount: number;
+  allocated_amount: number;
   current_amount: number;
   target_date: string | null;
   icon: string | null;
@@ -21,6 +23,8 @@ interface SavingsGoal {
 
 export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProps) {
   const { state, fetchSavings } = useFinancialData();
+  let t = (key: string) => key;
+  try { t = useLanguage().t; } catch {}
   const { savings } = state.data;
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +35,16 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
     const amount = parseFloat(saving.amount) || 0;
     return sum + amount;
   }, 0);
+
+  // Calculate total allocated amount across all goals
+  const totalAllocated = goals.reduce((sum: number, goal: any) => {
+    const allocatedAmount = parseFloat(goal.allocated_amount) || 0;
+    return sum + allocatedAmount;
+  }, 0);
+
+  // Calculate allocable amount (total saved - total allocated)
+  const allocableAmount = Math.max(0, totalSaved - totalAllocated);
+
 
   // Fetch savings goals from API
   useEffect(() => {
@@ -72,6 +86,37 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
       refreshGoals();
     }
   }, [savings.length]);
+
+  // Listen for savings goals updates from popup
+  useEffect(() => {
+    const handleGoalsUpdate = () => {
+      const refreshGoals = async () => {
+        try {
+          const response = await fetch('/api/savings-goals');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              setGoals(data.data || []);
+            }
+          }
+        } catch (error) {
+          console.error('Error refreshing savings goals:', error);
+        }
+      };
+      refreshGoals();
+    };
+
+    // Listen for custom events from popup
+    window.addEventListener('savingsGoalsUpdated', handleGoalsUpdate);
+    window.addEventListener('savingsGoalCreated', handleGoalsUpdate);
+    window.addEventListener('savingsGoalAllocated', handleGoalsUpdate);
+
+    return () => {
+      window.removeEventListener('savingsGoalsUpdated', handleGoalsUpdate);
+      window.removeEventListener('savingsGoalCreated', handleGoalsUpdate);
+      window.removeEventListener('savingsGoalAllocated', handleGoalsUpdate);
+    };
+  }, []);
 
   // Get icon component based on icon name
   const getIconComponent = (iconName: string | null) => {
@@ -159,7 +204,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
       <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
-            Savings Goals
+            {t('savingsGoals')}
           </h2>
           <div className="w-4 h-4 animate-spin border-2 border-emerald-400 border-t-transparent rounded-full"></div>
         </div>
@@ -191,7 +236,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium flex items-center gap-1"
         >
           <ExternalLink className="w-3 h-3" />
-          Manage Goals
+          {t('manageGoals')}
         </button>
       </div>
 
@@ -199,18 +244,18 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
       <div className="mb-3 p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Total Money Saved</div>
+            <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{t('totalMoneySaved')}</div>
             <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
               {formatCurrency(totalSaved)}
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-emerald-600 dark:text-emerald-400">
-              {goals.length > 0 ? `${goals.length} goal${goals.length !== 1 ? 's' : ''} set` : 'No goals yet'}
+            <div className="text-xs text-neutral-600 dark:text-neutral-400">
+              {goals.length > 0 ? `${goals.length} ${t('goalsSet')}` : t('noSavingsGoalsYet')}
             </div>
             {goals.length > 0 && (
-              <div className="text-xs text-emerald-600 dark:text-emerald-400">
-                {formatCurrency(goals.reduce((sum, goal) => sum + (goal.current_amount || 0), 0))} allocated
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                {formatCurrency(allocableAmount)} {t('availableToAllocate')}
               </div>
             )}
           </div>
@@ -222,20 +267,22 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           <div className="text-center py-8">
             <Target className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
             <p className="text-neutral-500 dark:text-neutral-400 text-sm mb-4">
-              No savings goals yet
+              {t('noSavingsGoalsYet')}
             </p>
             <button
               onClick={() => setShowPopup(true)}
               className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
             >
-              Create your first goal
+              {t('createFirstGoal')}
             </button>
           </div>
         ) : (
           goals.slice(0, 2).map((goal) => {
-            const currentAmount = goal.current_amount || 0;
-            const targetAmount = goal.target_amount || 0;
-            const percentage = targetAmount > 0 ? Math.min(100, (currentAmount / targetAmount) * 100) : 0;
+            const currentAmount = Number(goal.current_amount) || 0;
+            const allocatedAmount = Number(goal.allocated_amount) || 0;
+            const targetAmount = Number(goal.target_amount) || 0;
+            const totalProgress = currentAmount + allocatedAmount;
+            const percentage = targetAmount > 0 ? Math.min(100, (totalProgress / targetAmount) * 100) : 0;
             const IconComponent = getIconComponent(goal.icon);
             const colors = getColorClasses(goal.color || 'blue');
             
@@ -255,7 +302,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
                         {goal.goal_name}
                       </h3>
                       <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                        {goal.target_date ? `Target: ${formatDate(goal.target_date)}` : 'No deadline set'}
+                        {goal.target_date ? `${t('targetLabel')}: ${formatDate(goal.target_date)}` : t('noDeadline')}
                       </p>
                     </div>
                   </div>
@@ -270,10 +317,10 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
                 <div className="mb-2">
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-neutral-600 dark:text-neutral-300">
-                      {formatCurrency(currentAmount)}
+                      {formatCurrency(Number(totalProgress))}
                     </span>
                     <span className="text-neutral-600 dark:text-neutral-300">
-                      {formatCurrency(goal.target_amount)}
+                      {formatCurrency(Number(goal.target_amount))}
                     </span>
                   </div>
                   <div className="w-full bg-neutral-200 dark:bg-neutral-600 rounded-full h-1.5">
@@ -283,6 +330,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
                     ></div>
                   </div>
                 </div>
+
               </div>
             );
           })
@@ -294,7 +342,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
               onClick={() => setShowPopup(true)}
               className="text-xs text-neutral-500 dark:text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
             >
-              View all {goals.length} goals
+              {t('viewAllGoals')}
             </button>
           </div>
         )}

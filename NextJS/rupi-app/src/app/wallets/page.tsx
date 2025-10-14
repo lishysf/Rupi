@@ -19,7 +19,7 @@ const WALLET_TYPES = [
 ];
 
 function WalletsContent() {
-  const { state, fetchWallets } = useFinancialData();
+  const { state, fetchWallets, fetchSavings } = useFinancialData();
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [editingWallet, setEditingWallet] = useState<any>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -27,10 +27,11 @@ function WalletsContent() {
 
   useEffect(() => {
     fetchWallets();
-  }, [fetchWallets]);
+    fetchSavings();
+  }, [fetchWallets, fetchSavings]);
 
   const handleDelete = async (walletId: number, walletName: string) => {
-    if (!confirm(`Are you sure you want to delete "${walletName}"? This action cannot be undone.`)) return;
+    if (!confirm(`Apakah Anda yakin ingin menghapus "${walletName}"? Tindakan ini tidak dapat dibatalkan.`)) return;
 
     try {
       const response = await fetch(`/api/wallets/${walletId}`, {
@@ -42,13 +43,14 @@ function WalletsContent() {
       if (data.success) {
         await fetchWallets();
       } else {
-        alert(data.error || 'Failed to delete wallet');
+        alert(data.error || 'Gagal menghapus dompet');
       }
     } catch (err) {
       console.error('Error deleting wallet:', err);
-      alert('Failed to delete wallet');
+      alert('Gagal menghapus dompet');
     }
   };
+
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -119,8 +121,8 @@ function WalletsContent() {
       <div className="mb-4 sm:mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">My Wallets</h1>
-            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">Manage your payment methods and balances</p>
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Dompet Saya</h1>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">Kelola metode pembayaran dan saldo Anda</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <button
@@ -131,7 +133,7 @@ function WalletsContent() {
               className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl text-sm"
             >
               <ArrowRight className="w-4 h-4" />
-              <span className="hidden sm:inline">Transfer Money</span>
+              <span className="hidden sm:inline">Transfer Uang</span>
               <span className="sm:hidden">Transfer</span>
             </button>
             <button
@@ -139,8 +141,8 @@ function WalletsContent() {
               className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-lg hover:shadow-xl text-sm"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Add Wallet</span>
-              <span className="sm:hidden">Add</span>
+              <span className="hidden sm:inline">Tambah Dompet</span>
+              <span className="sm:hidden">Tambah</span>
             </button>
           </div>
         </div>
@@ -283,35 +285,40 @@ function WalletsContent() {
                    </div>
 
                   {/* Statistics - Responsive grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-neutral-200 dark:border-transparent">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-3 sm:pt-4 border-t border-neutral-200 dark:border-transparent">
+                    {/* Income */}
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
                         <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-neutral-600 dark:text-neutral-400">Income</p>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400">Pendapatan (Bulan Ini)</p>
                         <p className="text-xs sm:text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
                           {formatCurrency(stats.income)}
                         </p>
                       </div>
                     </div>
+                    
+                    {/* Expenses */}
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
                         <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4 text-red-600 dark:text-red-400" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-neutral-600 dark:text-neutral-400">Expenses</p>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400">Pengeluaran (Bulan Ini)</p>
                         <p className="text-xs sm:text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
                           {formatCurrency(stats.expenses)}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    
+                    {/* Total Saved - Full width on mobile, half on desktop */}
+                    <div className="flex items-center gap-2 sm:col-span-2">
                       <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
                         <Target className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600 dark:text-blue-400" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-neutral-600 dark:text-neutral-400">Total Saved</p>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400">Total Tersimpan</p>
                         <p className="text-xs sm:text-sm font-semibold text-blue-600 dark:text-blue-400 truncate">
                           {formatCurrency(savings.totalSavings)}
                         </p>
@@ -322,7 +329,7 @@ function WalletsContent() {
                   {/* Transaction count */}
                   <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-transparent">
                     <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                      {stats.transactionCount} transaction{stats.transactionCount !== 1 ? 's' : ''} recorded
+                      {stats.transactionCount} transaksi tercatat
                     </p>
                   </div>
                 </CardContent>
@@ -353,6 +360,7 @@ function WalletsContent() {
         }}
         fromWalletId={transferFromWallet || undefined}
       />
+
     </div>
   );
 }

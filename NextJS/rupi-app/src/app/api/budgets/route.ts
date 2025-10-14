@@ -1,73 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BudgetDatabase, initializeDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
-import pool from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
+import { BudgetDatabase } from '@/lib/database';
 
-// Initialize database on first request
-let dbInitialized = false;
-async function ensureDbInitialized() {
-  if (!dbInitialized) {
-    await initializeDatabase();
-    dbInitialized = true;
-  }
-}
-
-// GET - Fetch budgets for current month
+// GET - Get budgets for user
 export async function GET(request: NextRequest) {
   try {
-    await ensureDbInitialized();
     const user = await requireAuth(request);
-    
-    const searchParams = request.nextUrl.searchParams;
-    const month = parseInt(searchParams.get('month') || (new Date().getMonth() + 1).toString()); // Frontend already sends 1-based month
-    const year = parseInt(searchParams.get('year') || new Date().getFullYear().toString());
-    
-    console.log('API: Fetching budgets for month:', month, 'year:', year);
-    
-    // Get budgets for the specified month/year
-    const budgets = await BudgetDatabase.getAllBudgets(user.id, month, year);
-    console.log('API: Found budgets:', budgets);
-    
-    // Get actual spending for each category in the same month with optimized query
-    const startDate = new Date(year, month - 1, 1); // First day of month
-    const endDate = new Date(year, month, 0); // Last day of month
-    
-    // Optimized query with better indexing and only fetch categories that have budgets
-    const budgetCategories = budgets.map(b => b.category);
-    const spendingQuery = `
-      SELECT 
-        category,
-        SUM(amount) as spent
-      FROM expenses 
-      WHERE user_id = $1 
-        AND date >= $2 
-        AND date <= $3
-        AND category = ANY($4)
-      GROUP BY category
-    `;
-    const spendingResult = await pool.query(spendingQuery, [user.id, startDate, endDate, budgetCategories]);
-    
-    // Create a map of spending by category
-    const spendingMap = new Map();
-    spendingResult.rows.forEach(row => {
-      spendingMap.set(row.category, parseFloat(row.spent) || 0);
-    });
-    
-    // Combine budget and spending data
-    const budgetData = budgets.map(budget => ({
-      id: budget.id,
-      category: budget.category,
-      budget: budget.budget,
-      spent: spendingMap.get(budget.category) || 0,
-      month: budget.month,
-      year: budget.year
-    }));
+    const { searchParams } = new URL(request.url);
+    const month = parseInt(searchParams.get('month') || '0');
+    const year = parseInt(searchParams.get('year') || '0');
 
-    console.log('API: Returning budget data:', budgetData);
+    let budgets;
+    if (month && year) {
+      budgets = await BudgetDatabase.getAllBudgets(user.id, month, year);
+    } else {
+      budgets = await BudgetDatabase.getAllBudgets(user.id);
+    }
 
     return NextResponse.json({
       success: true,
-      data: budgetData,
+      data: budgets,
       message: 'Budgets retrieved successfully'
     });
 
@@ -84,68 +36,30 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create or update budget
+// POST - Create new budget
 export async function POST(request: NextRequest) {
   try {
-    await ensureDbInitialized();
     const user = await requireAuth(request);
-
     const body = await request.json();
+    
     const { category, amount, month, year } = body;
-    
-    console.log('API: Budget POST request received:', { category, amount, month, year });
 
-    // Validate required fields
-    if (!category || !amount) {
+    if (!category || !amount || !month || !year) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Missing required fields: category, amount'
+          error: 'Missing required fields: category, amount, month, year'
         },
         { status: 400 }
       );
     }
 
-    // Validate amount
-    if (typeof amount !== 'number' || amount <= 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Amount must be a positive number'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate category
-    if (!EXPENSE_CATEGORIES.includes(category)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Invalid category. Must be one of: ${EXPENSE_CATEGORIES.join(', ')}`
-        },
-        { status: 400 }
-      );
-    }
-
-    const budgetMonth = month || (new Date().getMonth() + 1);
-    const budgetYear = year || new Date().getFullYear();
-
-    // Create or update budget
-    const budget = await BudgetDatabase.createOrUpdateBudget(
-      user.id,
-      category,
-      amount,
-      budgetMonth,
-      budgetYear
-    );
-    
-    console.log('API: Budget query result:', budget);
+    const budget = await BudgetDatabase.createOrUpdateBudget(user.id, category, amount, month, year);
 
     return NextResponse.json({
       success: true,
       data: budget,
-      message: 'Budget saved successfully'
+      message: 'Budget created successfully'
     }, { status: 201 });
 
   } catch (error) {
@@ -153,7 +67,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to save budget',
+        error: 'Failed to create budget',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
@@ -161,37 +75,40 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Remove budget
+// DELETE - Delete budget
 export async function DELETE(request: NextRequest) {
   try {
-    await ensureDbInitialized();
     const user = await requireAuth(request);
-
-    const searchParams = request.nextUrl.searchParams;
+    const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
-    const month = parseInt(searchParams.get('month') || (new Date().getMonth() + 1).toString()); // Frontend already sends 1-based month
-    const year = parseInt(searchParams.get('year') || new Date().getFullYear().toString());
+    const month = parseInt(searchParams.get('month') || '0');
+    const year = parseInt(searchParams.get('year') || '0');
 
-    console.log('API: Deleting budget for category:', category, 'month:', month, 'year:', year);
-
-    if (!category) {
+    if (!category || !month || !year) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Category is required'
+          error: 'Missing required parameters: category, month, year'
         },
         { status: 400 }
       );
     }
 
     const success = await BudgetDatabase.deleteBudget(user.id, category, month, year);
-    
-    console.log('API: Delete result:', success);
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Budget not found'
+        },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Budget deleted successfully',
-      deleted: success ? 1 : 0
+      message: 'Budget deleted successfully'
     });
 
   } catch (error) {

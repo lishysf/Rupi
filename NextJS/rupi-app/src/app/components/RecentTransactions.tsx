@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ArrowUpRight, ArrowDownLeft, Car, Coffee, ShoppingBag, Utensils, Home, Calendar, Zap, Plane, Heart, GamepadIcon, CreditCard, Users, DollarSign, TrendingUp, Briefcase, Gift, Edit3, Trash2 } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import TransactionEditModal from './TransactionEditModal';
 import AddTransactionModal from './AddTransactionModal';
 
@@ -14,8 +15,12 @@ interface Transaction {
   date: string;
   created_at: string;
   updated_at: string;
-  type: 'income' | 'expense' | 'savings' | 'investment';
+  type: 'income' | 'expense' | 'savings' | 'investment' | 'transfer';
   wallet_id?: number;
+  isTransfer?: boolean;
+  transferAmount?: number;
+  fromWallet?: number;
+  toWallet?: number;
 }
 
 interface Expense {
@@ -44,6 +49,9 @@ interface RecentTransactionsProps {
 
 export default function RecentTransactions({ widgetSize = 'long' }: RecentTransactionsProps) {
   const { state, deleteTransaction, updateTransaction, deleteSavings, updateSavings, updateInvestment, deleteInvestment, fetchTransactions } = useFinancialData();
+  let t = (key: string) => key;
+  let translateCategory = (c: string) => c;
+  try { const lang = useLanguage(); t = lang.t; translateCategory = lang.translateCategory; } catch {}
   const { transactions, savings } = state.data as any;
   const loading = state.loading.initial && transactions.length === 0;
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +78,36 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       setDeleting(transaction.id);
       setError(null);
       
-      if (transaction.type === 'savings') {
+      if (transaction.isTransfer) {
+        // For grouped transfer transactions, we need to delete both the outgoing and incoming transactions
+        // Find the corresponding transaction pair
+        const correspondingTransaction = allTransactions.find((t: any) => 
+          t.id !== transaction.id && 
+          t.type === 'transfer' &&
+          Math.abs(t.amount) === Math.abs(transaction.amount) &&
+          Math.abs(new Date(t.date).getTime() - new Date(transaction.date).getTime()) < 1000
+        );
+        
+        if (correspondingTransaction) {
+          // Delete both transactions
+          const success1 = await deleteTransaction(transaction.id, 'expense'); // Use expense as fallback
+          const success2 = await deleteTransaction(correspondingTransaction.id, 'expense'); // Use expense as fallback
+          
+          if (!success1 || !success2) {
+            setError('Failed to delete transfer transaction');
+          } else {
+            // Optimistic update already applied by context; no extra refetch needed
+          }
+        } else {
+          // Fallback: delete just the current transaction
+          const success = await deleteTransaction(transaction.id, 'expense'); // Use expense as fallback
+          if (!success) {
+            setError('Failed to delete transfer transaction');
+          } else {
+            // Optimistic update already applied by context
+          }
+        }
+      } else if (transaction.type === 'savings') {
         // Extract original ID from prefixed ID (e.g., "savings-1" -> 1)
         const originalId = typeof transaction.id === 'string' 
           ? parseInt((transaction.id as string).split('-')[1]) 
@@ -79,7 +116,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         if (!success) {
           setError('Failed to delete savings transaction');
         } else {
-          await fetchTransactions();
+          // Optimistic update will be reflected on next context refresh
         }
       } else if (transaction.type === 'investment') {
         // Extract original ID from prefixed ID (e.g., "investment-1" -> 1)
@@ -90,10 +127,10 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         if (!success) {
           setError('Failed to delete investment transaction');
         } else {
-          await fetchTransactions();
+          // Optimistic update will be reflected on next context refresh
         }
       } else {
-        const success = await deleteTransaction(transaction.id, transaction.type);
+        const success = await deleteTransaction(transaction.id, transaction.type === 'transfer' ? 'expense' : transaction.type);
         if (!success) {
           setError('Failed to delete transaction');
         }
@@ -279,7 +316,64 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     type: txn.type as 'income' | 'expense' | 'savings' | 'investment'
   })).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const filtered = allTransactions.filter((t: any) => {
+  // Group transfer transactions to avoid showing duplicates
+  const groupedTransactions = [];
+  const processedIds = new Set();
+  
+  for (const transaction of allTransactions) {
+    if (processedIds.has(transaction.id)) continue;
+    
+    if (transaction.type === 'transfer') {
+      // Find the corresponding transfer transaction (outgoing/incoming pair)
+      const correspondingTransaction = allTransactions.find((t: any) => 
+        t.id !== transaction.id && 
+        t.type === 'transfer' &&
+        Math.abs(t.amount) === Math.abs(transaction.amount) &&
+        Math.abs(new Date(t.date).getTime() - new Date(transaction.date).getTime()) < 1000 && // Within 1 second
+        t.description.includes('Transfer') && 
+        transaction.description.includes('Transfer')
+      );
+      
+      if (correspondingTransaction) {
+        // Create a single grouped transfer entry
+        const fromTransaction = transaction.amount < 0 ? transaction : correspondingTransaction;
+        const toTransaction = transaction.amount > 0 ? transaction : correspondingTransaction;
+        
+        // Extract wallet names from the description
+        // fromTransaction (negative amount): "Transfer to GoPay" -> "GoPay" (destination)
+        // toTransaction (positive amount): "Transfer from BCA" -> "BCA" (source)
+        const fromWalletName = toTransaction.description.includes('from ') 
+          ? toTransaction.description.split('from ')[1]?.split(':')[0]?.trim() || `Wallet ${toTransaction.wallet_id}`
+          : `Wallet ${toTransaction.wallet_id}`;
+        const toWalletName = fromTransaction.description.includes('to ') 
+          ? fromTransaction.description.split('to ')[1]?.split(':')[0]?.trim() || `Wallet ${fromTransaction.wallet_id}`
+          : `Wallet ${fromTransaction.wallet_id}`;
+        
+        groupedTransactions.push({
+          ...fromTransaction,
+          uniqueKey: `transfer-${fromTransaction.id}`,
+          isTransfer: true,
+          transferAmount: Math.abs(fromTransaction.amount),
+          fromWallet: fromTransaction.wallet_id,
+          toWallet: toTransaction.wallet_id,
+          description: `${fromWalletName} → ${toWalletName}` // Clear wallet-to-wallet description
+        });
+        
+        processedIds.add(transaction.id);
+        processedIds.add(correspondingTransaction.id);
+      } else {
+        // Single transfer transaction (shouldn't happen but handle gracefully)
+        groupedTransactions.push(transaction);
+        processedIds.add(transaction.id);
+      }
+    } else {
+      // Non-transfer transaction, add as-is
+      groupedTransactions.push(transaction);
+      processedIds.add(transaction.id);
+    }
+  }
+
+  const filtered = groupedTransactions.filter((t: any) => {
     if (activeFilter === 'all') return true;
     if (activeFilter === 'txn') return t.type === 'income' || t.type === 'expense';
     if (activeFilter === 'savings') return t.type === 'savings';
@@ -293,7 +387,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h2 className={`${widgetSize === 'square' ? 'text-base' : 'text-lg'} font-semibold text-neutral-900 dark:text-neutral-100`}>
-            Recent Transactions
+            {t('recentTransactions')}
           </h2>
           <div className="w-4 h-4 animate-spin border-2 border-emerald-400 border-t-transparent rounded-full"></div>
         </div>
@@ -334,9 +428,9 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       {/* Filter Tabs */}
       <div className="mb-3 flex gap-1 sm:gap-2 overflow-x-auto">
         {[
-          { key: 'all', label: 'All' },
-          { key: 'txn', label: 'Expense/Income' },
-          { key: 'savings', label: 'Savings' },
+          { key: 'all', label: t('filterAll') },
+          { key: 'txn', label: t('filterTxn') },
+          { key: 'savings', label: t('filterSavings') },
         ].map(tab => (
           <button
             key={tab.key}
@@ -359,7 +453,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           <div className="text-center py-8">
             <Calendar className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
             <p className="text-neutral-500 dark:text-neutral-400 text-sm">
-              No transactions yet. Start by chatting with the AI assistant
+              {t('noTransactions')}
             </p>
           </div>
         ) : (
@@ -368,6 +462,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
           const IconComponent = categoryInfo.icon;
           const isIncome = transaction.type === 'income';
           const isSavings = transaction.type === 'savings';
+          const isTransfer = transaction.isTransfer || transaction.type === 'transfer';
           const isDeleting = deleting === transaction.id;
           
           return (
@@ -385,11 +480,19 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                     ? 'bg-emerald-100 dark:bg-emerald-900/30' 
                     : isSavings
                     ? 'bg-blue-100 dark:bg-blue-900/30'
+                    : isTransfer
+                    ? 'bg-purple-100 dark:bg-purple-900/30'
                     : 'bg-neutral-100 dark:bg-neutral-700'
                 }`}>
-                  <IconComponent className={`${
-                    widgetSize === 'square' ? 'w-3 h-3 sm:w-4 sm:h-4' : 'w-4 h-4 sm:w-5 sm:h-5'
-                  } ${categoryInfo.color}`} />
+                  {isTransfer ? (
+                    <ArrowUpRight className={`${
+                      widgetSize === 'square' ? 'w-3 h-3 sm:w-4 sm:h-4' : 'w-4 h-4 sm:w-5 sm:h-5'
+                    } text-purple-600 dark:text-purple-400`} />
+                  ) : (
+                    <IconComponent className={`${
+                      widgetSize === 'square' ? 'w-3 h-3 sm:w-4 sm:h-4' : 'w-4 h-4 sm:w-5 sm:h-5'
+                    } ${categoryInfo.color}`} />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className={`${
@@ -399,7 +502,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                   </div>
                   {widgetSize !== 'square' && (
                     <div className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 flex items-center flex-wrap gap-1">
-                      <span className="truncate max-w-[120px] sm:max-w-none">{transaction.category}</span>
+                      <span className="truncate max-w-[120px] sm:max-w-none">{translateCategory(transaction.category)}</span>
                       <span className="hidden sm:inline">•</span>
                       <div className="flex items-center">
                         <Calendar className="w-3 h-3 mr-1 flex-shrink-0" />
@@ -420,17 +523,17 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                   <button
                     onClick={() => handleEdit(transaction)}
                     className="p-1 text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={'Edit transaction'}
+                    title={t('editTransaction')}
                   >
                     <Edit3 className="w-3 h-3" />
                   </button>
                   <button
                     onClick={() => handleDelete(transaction)}
-                    disabled={isDeleting}
+                    disabled={deleting === transaction.id}
                     className="p-1 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
-                    title="Delete transaction"
+                    title={t('deleteTransaction')}
                   >
-                    {isDeleting ? (
+                    {deleting === transaction.id ? (
                       <div className="w-3 h-3 animate-spin border border-red-600 border-t-transparent rounded-full"></div>
                     ) : (
                       <Trash2 className="w-3 h-3" />
@@ -447,9 +550,14 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                       ? 'text-emerald-600 dark:text-emerald-400' 
                       : isSavings
                       ? 'text-blue-600 dark:text-blue-400'
+                      : isTransfer
+                      ? 'text-purple-600 dark:text-purple-400'
                       : 'text-red-600 dark:text-red-400'
                   } break-words`}>
-                    {isIncome ? '+' : isSavings ? '💎' : '-'}{formatCurrency(transaction.amount)}
+                    {isTransfer 
+                      ? formatCurrency(transaction.transferAmount || Math.abs(transaction.amount))
+                      : `${isIncome ? '+' : isSavings ? '💎' : '-'}${formatCurrency(Math.abs(transaction.amount))}`
+                    }
                   </div>
                   {widgetSize === 'square' && (
                     <div className="text-xs text-neutral-500 dark:text-neutral-400">
@@ -471,15 +579,15 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
               <summary className={`list-none cursor-pointer ${
                 widgetSize === 'half' ? 'w-full' : 'inline-flex'
               } bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-3 sm:px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-between`}>
-                <span>Add Activity</span>
+                <span>{t('addActivity')}</span>
                 <span className="ml-2 transition-transform group-open:rotate-180">▾</span>
               </summary>
               <div className="mt-2 sm:mt-3 grid grid-cols-2 gap-1 sm:gap-2">
                 {[
-                  { key: 'expense', label: 'Expense', color: 'bg-red-600 hover:bg-red-700' },
-                  { key: 'income', label: 'Income', color: 'bg-emerald-600 hover:bg-emerald-700' },
-                  { key: 'savings', label: 'Savings', color: 'bg-blue-600 hover:bg-blue-700' },
-                  { key: 'investment', label: 'Investment', color: 'bg-purple-600 hover:bg-purple-700' },
+                  { key: 'expense', label: t('addExpense'), color: 'bg-red-600 hover:bg-red-700' },
+                  { key: 'income', label: t('addIncome'), color: 'bg-emerald-600 hover:bg-emerald-700' },
+                  { key: 'savings', label: t('addSavings'), color: 'bg-blue-600 hover:bg-blue-700' },
+                  { key: 'investment', label: t('addInvestment'), color: 'bg-purple-600 hover:bg-purple-700' },
                 ].map(opt => (
                   <button
                     key={opt.key}

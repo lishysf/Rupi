@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Target, Laptop, Car, Home, Plane, Plus, Trash2, X, Wallet, Edit3 } from 'lucide-react';
+import { Target, Laptop, Car, Home, Plane, Plus, Trash2, X, Wallet, Edit3, Save, Sliders, AlertTriangle } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import SavingsGoalModal from './SavingsGoalModal';
-import WalletSavingsAllocation from './WalletSavingsAllocation';
 
 interface SavingsGoalsPopupProps {
   isOpen: boolean;
@@ -16,10 +15,23 @@ interface SavingsGoal {
   id: number;
   goal_name: string;
   target_amount: number;
+  allocated_amount: number;
   current_amount: number;
   target_date: string | null;
   icon: string | null;
   color: string | null;
+}
+
+interface Wallet {
+  id: number;
+  name: string;
+  type: string;
+  balance: number;
+}
+
+interface WalletSavings {
+  totalSavings: number;
+  savingsCount: number;
 }
 
 export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopupProps) {
@@ -28,8 +40,14 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [showWalletAllocation, setShowWalletAllocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Allocation state
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [walletSavings, setWalletSavings] = useState<Record<number, WalletSavings>>({});
+  const [allocations, setAllocations] = useState<Record<string, number>>({});
+  const [expandedGoal, setExpandedGoal] = useState<number | null>(null);
+  const [allocationLoading, setAllocationLoading] = useState(false);
 
   // Calculate total saved money from savings transactions
   const totalSaved = savings.reduce((sum: number, saving: any) => {
@@ -37,10 +55,21 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
     return sum + amount;
   }, 0);
 
-  // Load goals when popup opens
+  // Calculate total allocated amount across all goals
+  const totalAllocated = goals.reduce((sum: number, goal: any) => {
+    const allocatedAmount = parseFloat(goal.allocated_amount) || 0;
+    return sum + allocatedAmount;
+  }, 0);
+
+  // Calculate allocable amount (total saved - total allocated)
+  const allocableAmount = Math.max(0, totalSaved - totalAllocated);
+
+
+  // Load goals and wallet data when popup opens
   useEffect(() => {
     if (isOpen) {
       loadGoals();
+      loadAllocationData(); // Load wallet data immediately when popup opens
     }
   }, [isOpen]);
 
@@ -79,6 +108,10 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
         const data = await response.json();
         if (data.success) {
           await loadGoals();
+          
+          // Notify dashboard to refresh
+          window.dispatchEvent(new CustomEvent('savingsGoalCreated'));
+          
           return true;
         }
       }
@@ -104,6 +137,9 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
 
       if (response.ok) {
         await loadGoals();
+        
+        // Notify dashboard to refresh
+        window.dispatchEvent(new CustomEvent('savingsGoalsUpdated'));
       } else {
         const errorData = await response.json();
         setError(`Failed to delete goal: ${errorData.error || 'Unknown error'}`);
@@ -114,36 +150,6 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
     }
   };
 
-  // Handle wallet-based allocation save
-  const handleWalletAllocationSave = async (allocations: Array<{goalId: number, walletId: number, amount: number}>) => {
-    try {
-      setError(null);
-      
-      const response = await fetch('/api/savings-goals/allocate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ allocations }),
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        // Refresh goals and savings data
-        await fetchSavings();
-        await loadGoals();
-        return true;
-      } else {
-        setError(data.error || 'Failed to save wallet allocations');
-        return false;
-      }
-    } catch (error) {
-      console.error('Error saving wallet allocations:', error);
-      setError('Failed to save wallet allocations');
-      return false;
-    }
-  };
 
   // Get icon component based on icon name
   const getIconComponent = (iconName: string | null) => {
@@ -208,6 +214,179 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
     return colors[color as keyof typeof colors] || colors.blue;
   };
 
+  // Load wallets and their savings data for allocation (when popup opens)
+  const loadAllocationData = async () => {
+    try {
+      setAllocationLoading(true);
+      
+      // Load wallets
+      const walletsResponse = await fetch('/api/wallets');
+      let walletsList: Wallet[] = [];
+      if (walletsResponse.ok) {
+        const walletsData = await walletsResponse.json();
+        if (walletsData.success) {
+          walletsList = walletsData.data || [];
+          setWallets(walletsList);
+        }
+      }
+
+      // Load savings data for each wallet
+      const walletSavingsData: Record<number, WalletSavings> = {};
+      for (const wallet of walletsList) {
+        const savingsResponse = await fetch(`/api/wallets/${wallet.id}/savings`);
+        if (savingsResponse.ok) {
+          const savingsData = await savingsResponse.json();
+          if (savingsData.success) {
+            walletSavingsData[wallet.id] = {
+              totalSavings: savingsData.data.totalSavings || 0,
+              savingsCount: savingsData.data.savingsCount || 0
+            };
+          }
+        }
+      }
+      setWalletSavings(walletSavingsData);
+    } catch (error) {
+      console.error('Error loading allocation data:', error);
+      setError('Failed to load wallet data for allocation');
+    } finally {
+      setAllocationLoading(false);
+    }
+  };
+
+  // Handle allocation change
+  const handleAllocationChange = (goalId: number, walletId: number, amount: number) => {
+    const key = `${goalId}-${walletId}`;
+    setAllocations(prev => ({
+      ...prev,
+      [key]: amount
+    }));
+  };
+
+  // Handle input change with validation
+  const handleInputChange = (goalId: number, walletId: number, value: string) => {
+    const cleanValue = value.replace(/[^0-9.]/g, '');
+    const numericValue = parseFloat(cleanValue) || 0;
+    
+    const maxAllowed = getMaxAllocation(goalId, walletId);
+    const finalValue = Math.min(numericValue, maxAllowed);
+    
+    handleAllocationChange(goalId, walletId, finalValue);
+  };
+
+  // Get maximum allowed allocation for a goal-wallet combination
+  const getMaxAllocation = (goalId: number, walletId: number) => {
+    const goal = goals.find(g => g.id === goalId);
+    const wallet = walletSavings[walletId];
+    if (!goal || !wallet) return 0;
+
+    // Calculate remaining target amount (considering already allocated amount)
+    const currentAllocated = goal.allocated_amount || 0;
+    const remainingTarget = Math.max(0, goal.target_amount - currentAllocated);
+    
+    return Math.min(remainingTarget, wallet.totalSavings);
+  };
+
+  // Get total allocated to a goal
+  const getTotalAllocatedToGoal = (goalId: number) => {
+    return Object.entries(allocations)
+      .filter(([key]) => key.startsWith(`${goalId}-`))
+      .reduce((sum, [, amount]) => sum + (amount || 0), 0);
+  };
+
+  // Get total allocated from a wallet
+  const getTotalAllocatedFromWallet = (walletId: number) => {
+    return Object.entries(allocations)
+      .filter(([key]) => key.endsWith(`-${walletId}`))
+      .reduce((sum, [, amount]) => sum + (amount || 0), 0);
+  };
+
+  // Check if goal allocations are affected by withdrawals
+  const checkAllocationHealth = (goal: any) => {
+    const currentAmount = parseFloat(String(goal.current_amount)) || 0;
+    const allocatedAmount = parseFloat(String(goal.allocated_amount)) || 0;
+    const targetAmount = parseFloat(String(goal.target_amount)) || 0;
+    
+    // Only show warnings if there are actual allocations to this goal
+    if (allocatedAmount <= 0) {
+      return { hasWarning: false };
+    }
+    
+    // If current amount is negative (due to withdrawals exceeding deposits)
+    // and there are allocations, show warning
+    if (currentAmount < 0) {
+      return {
+        hasWarning: true,
+        message: `Withdrawals have exceeded deposits for this goal. Consider reducing allocations by Rp${Math.abs(currentAmount).toLocaleString()}.`,
+        severity: 'high'
+      };
+    }
+    
+    // If current amount is positive but significantly less than allocated amount
+    // Only warn if the difference is substantial (more than 20% of allocated amount)
+    if (currentAmount > 0 && currentAmount < (allocatedAmount * 0.8)) {
+      return {
+        hasWarning: true,
+        message: `Current savings (Rp${currentAmount.toLocaleString()}) is significantly less than allocated amount (Rp${allocatedAmount.toLocaleString()}). Consider adjusting allocations.`,
+        severity: 'medium'
+      };
+    }
+    
+    return { hasWarning: false };
+  };
+
+  // Save allocations
+  const handleSaveAllocations = async () => {
+    try {
+      setAllocationLoading(true);
+      setError(null);
+
+      const allocationArray = Object.entries(allocations)
+        .filter(([, amount]) => amount > 0)
+        .map(([key, amount]) => {
+          const [goalId, walletId] = key.split('-').map(Number);
+          return { goalId, walletId, amount };
+        });
+
+      console.log('Sending allocation data:', { allocations: allocationArray });
+
+      const response = await fetch('/api/savings-goals/allocate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ allocations: allocationArray }),
+      });
+
+      const data = await response.json();
+      
+      console.log('Allocation response:', data);
+      
+      if (data.success) {
+        // Refresh goals and savings data
+        await fetchSavings();
+        await loadGoals();
+        setExpandedGoal(null);
+        setAllocations({});
+        
+        // Notify dashboard to refresh
+        window.dispatchEvent(new CustomEvent('savingsGoalAllocated'));
+        
+        return true;
+      } else {
+        const errorMessage = data.details || data.error || 'Failed to save allocations';
+        console.error('Allocation failed:', errorMessage);
+        setError(errorMessage);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error saving allocations:', error);
+      setError('Failed to save allocations');
+      return false;
+    } finally {
+      setAllocationLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -260,15 +439,6 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
                   <div className="text-sm text-emerald-600 dark:text-emerald-400">
                     {goals.length > 0 ? `${goals.length} goal${goals.length !== 1 ? 's' : ''} set` : 'No goals yet'}
                   </div>
-                  {totalSaved > 0 && goals.length > 0 && (
-                    <button
-                      onClick={() => setShowWalletAllocation(true)}
-                      className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
-                    >
-                      <Wallet className="w-4 h-4" />
-                      Allocate Savings
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -282,6 +452,12 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
                 <Plus className="w-4 h-4" />
                 Add New Goal
               </button>
+              {allocationLoading && (
+                <div className="flex items-center gap-2 px-4 py-2 text-blue-600 dark:text-blue-400">
+                  <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <span className="text-sm">Loading wallet data...</span>
+                </div>
+              )}
             </div>
 
             {/* Goals List */}
@@ -311,12 +487,16 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {goals.map((goal) => {
-                  const currentAmount = goal.current_amount || 0;
-                  const targetAmount = goal.target_amount || 0;
-                  const percentage = targetAmount > 0 ? Math.min(100, (currentAmount / targetAmount) * 100) : 0;
-                  const remaining = Math.max(0, targetAmount - currentAmount);
+                  const currentAmount = parseFloat(String(goal.current_amount)) || 0;
+                  const allocatedAmount = parseFloat(String(goal.allocated_amount)) || 0;
+                  const targetAmount = parseFloat(String(goal.target_amount)) || 0;
+                  const totalProgress = currentAmount + allocatedAmount;
+                  const percentage = targetAmount > 0 ? Math.min(100, (totalProgress / targetAmount) * 100) : 0;
+                  const remaining = Math.max(0, targetAmount - totalProgress);
+                  const allocableToGoal = Math.max(0, targetAmount - allocatedAmount);
                   const IconComponent = getIconComponent(goal.icon);
                   const colors = getColorClasses(goal.color || 'blue');
+                  const allocationHealth = checkAllocationHealth(goal);
                   
                   return (
                     <div
@@ -350,7 +530,7 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
                       <div className="mb-3">
                         <div className="flex justify-between text-sm mb-1">
                           <span className="text-neutral-600 dark:text-neutral-300">
-                            {formatCurrency(currentAmount)}
+                            {formatCurrency(totalProgress)}
                           </span>
                           <span className="text-neutral-600 dark:text-neutral-300">
                             {formatCurrency(goal.target_amount)}
@@ -371,11 +551,161 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
                           </span>
                         </div>
                       </div>
+
+                      {/* Allocation Health Warning */}
+                      {allocationHealth.hasWarning && (
+                        <div className={`mb-3 p-3 rounded-lg border ${
+                          allocationHealth.severity === 'high' 
+                            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' 
+                            : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                        }`}>
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                              allocationHealth.severity === 'high' 
+                                ? 'text-red-600 dark:text-red-400' 
+                                : 'text-amber-600 dark:text-amber-400'
+                            }`} />
+                            <div className="flex-1">
+                              <p className={`text-sm font-medium ${
+                                allocationHealth.severity === 'high' 
+                                  ? 'text-red-800 dark:text-red-200' 
+                                  : 'text-amber-800 dark:text-amber-200'
+                              }`}>
+                                {allocationHealth.severity === 'high' ? 'Allocation Adjustment Needed' : 'Allocation Review Recommended'}
+                              </p>
+                              <p className={`text-xs mt-1 ${
+                                allocationHealth.severity === 'high' 
+                                  ? 'text-red-700 dark:text-red-300' 
+                                  : 'text-amber-700 dark:text-amber-300'
+                              }`}>
+                                {allocationHealth.message}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Allocation Controls */}
+                      {remaining > 0 && (
+                        <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-600">
+                          <button
+                            onClick={() => {
+                              if (expandedGoal === goal.id) {
+                                setExpandedGoal(null);
+                              } else {
+                                setExpandedGoal(goal.id);
+                                // Wallet data is already loaded when popup opened
+                              }
+                            }}
+                            className="w-full flex items-center justify-between p-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Sliders className="w-4 h-4" />
+                              Allocate from wallets
+                            </div>
+                            <div className="text-xs">
+                              {expandedGoal === goal.id ? 'Hide' : 'Show'}
+                            </div>
+                          </button>
+
+                          {/* Expanded Allocation Interface */}
+                          {expandedGoal === goal.id && (
+                            <div className="mt-3 space-y-3">
+                              {allocationLoading ? (
+                                <div className="text-center py-4">
+                                  <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Loading wallet data...</p>
+                                </div>
+                              ) : wallets.length === 0 ? (
+                                <div className="text-center py-4">
+                                  <p className="text-xs text-neutral-500 dark:text-neutral-400">No wallets available</p>
+                                </div>
+                              ) : (
+                                <>
+                                  {wallets.map((wallet) => {
+                                    const walletSavingsData = walletSavings[wallet.id];
+                                    const maxAllocation = getMaxAllocation(goal.id, wallet.id);
+                                    const currentAllocation = allocations[`${goal.id}-${wallet.id}`] || 0;
+
+                                    if (!walletSavingsData || walletSavingsData.totalSavings <= 0) return null;
+
+                                    return (
+                                      <div key={`${goal.id}-${wallet.id}`} className="p-3 bg-neutral-50 dark:bg-neutral-700 rounded-lg">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-sm font-medium text-neutral-900 dark:text-white">
+                                            {wallet.name}
+                                          </span>
+                                          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                            {formatCurrency(walletSavingsData.totalSavings)} available
+                                          </span>
+                                        </div>
+                                        
+                                        {/* Slider */}
+                                        <div className="mb-2">
+                                          <input
+                                            type="range"
+                                            min="0"
+                                            max={maxAllocation}
+                                            step="1000"
+                                            value={currentAllocation}
+                                            onChange={(e) => handleAllocationChange(goal.id, wallet.id, parseFloat(e.target.value))}
+                                            className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-600 rounded-lg appearance-none cursor-pointer"
+                                            style={{
+                                              background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentAllocation / maxAllocation) * 100}%, #E5E7EB ${(currentAllocation / maxAllocation) * 100}%, #E5E7EB 100%)`
+                                            }}
+                                          />
+                                        </div>
+
+                                        {/* Manual Input */}
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="text"
+                                            value={currentAllocation > 0 ? currentAllocation.toLocaleString() : ''}
+                                            onChange={(e) => handleInputChange(goal.id, wallet.id, e.target.value)}
+                                            placeholder="0"
+                                            className="flex-1 px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                                          />
+                                          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                            Max: {formatCurrency(maxAllocation)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {/* Goal Allocation Summary */}
+                                  <div className="pt-2 border-t border-neutral-200 dark:border-neutral-600">
+                                    <div className="flex justify-between items-center text-sm">
+                                      <span className="text-neutral-600 dark:text-neutral-400">Total allocated:</span>
+                                      <span className="font-medium text-blue-600 dark:text-blue-400">
+                                        {formatCurrency(getTotalAllocatedToGoal(goal.id))}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Save Button for this goal */}
+                                  <div className="flex justify-end">
+                                    <button
+                                      onClick={handleSaveAllocations}
+                                      disabled={allocationLoading || getTotalAllocatedToGoal(goal.id) === 0}
+                                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-400 disabled:cursor-not-allowed text-white text-xs rounded-lg transition-colors flex items-center gap-1"
+                                    >
+                                      <Save className="w-3 h-3" />
+                                      {allocationLoading ? 'Saving...' : 'Save'}
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             )}
+
           </div>
 
           {/* Footer */}
@@ -383,7 +713,7 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
             <div className="text-sm text-neutral-600 dark:text-neutral-400">
               {goals.length > 0 && (
                 <>
-                  {formatCurrency(goals.reduce((sum, goal) => sum + (goal.current_amount || 0), 0))} allocated across {goals.length} goal{goals.length !== 1 ? 's' : ''}
+                  {formatCurrency(totalSaved)} total saved • {formatCurrency(allocableAmount)} available to allocate
                 </>
               )}
             </div>
@@ -404,11 +734,6 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
         onSave={handleCreateGoal}
       />
 
-      <WalletSavingsAllocation
-        isOpen={showWalletAllocation}
-        onClose={() => setShowWalletAllocation(false)}
-        onSave={handleWalletAllocationSave}
-      />
     </>,
     document.body
   );

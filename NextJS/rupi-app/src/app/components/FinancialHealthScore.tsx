@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Heart, TrendingUp, Activity, PiggyBank } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface FinancialData {
   totalIncome: number;
@@ -32,6 +33,8 @@ interface FinancialHealthScoreProps {
 
 export default function FinancialHealthScore({ widgetSize = 'square' }: FinancialHealthScoreProps) {
   const { state } = useFinancialData();
+  let t = (key: string) => key;
+  try { t = useLanguage().t; } catch {}
   const { expenses, income, savings, investments, wallets } = state.data;
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
   
@@ -225,13 +228,13 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
   
   const factors = [
     { 
-      name: 'Monthly Buffer', 
+      name: t('monthlyBufferLabel'), 
       score: monthlyBuffer.score,
-      detail: `${monthlyBuffer.percentage}% of income`,
+      detail: `${monthlyBuffer.percentage}%`,
       icon: Activity 
     },
     { 
-      name: 'Total Assets', 
+      name: t('totalAssetsLabel'), 
       score: totalAssets.percentage, // Use percentage for progress bar
       detail: `${formatCurrency(totalAssets.amount)} (${totalAssets.class})`,
       icon: PiggyBank 
@@ -244,7 +247,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
         <div className="flex items-center mb-4 flex-shrink-0">
           <Heart className="w-5 h-5 text-emerald-500 mr-2" />
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-            Financial Health
+            {t('financialHealth')}
           </h2>
         </div>
         <div className="flex-1 animate-pulse space-y-4">
@@ -301,7 +304,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
           <Heart className="w-2.5 h-2.5 text-white" />
         </div>
         <h2 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-          Financial Health
+          {t('financialHealth')}
         </h2>
       </div>
 
@@ -315,7 +318,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
               {healthScore}
             </div>
             <div className="text-xs text-neutral-500 dark:text-neutral-400">
-              Financial Score
+              {t('financialScore')}
             </div>
           </div>
         </div>

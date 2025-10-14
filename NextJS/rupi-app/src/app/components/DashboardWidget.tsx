@@ -18,7 +18,6 @@ const DASHBOARD_DATA_KEYS = {
   'income-expense': ['expenses', 'income'],
   'category-breakdown': ['expenses'],
   'trends-chart': ['expenses'],
-  'ai-insights': ['transactions', 'expenses', 'income'],
   'recent-transactions': ['transactions'],
   'budget-tracking': ['budgets'], // Simplified - only needs budgets
   'savings-goals': ['savings'],

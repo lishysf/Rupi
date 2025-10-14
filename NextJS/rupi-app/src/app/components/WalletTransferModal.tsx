@@ -15,6 +15,7 @@ interface Wallet {
   id: number;
   name: string;
   type: string;
+  balance: number;
   color: string;
   icon: string;
   is_active: boolean;
@@ -33,6 +34,7 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
   const [toWallet, setToWallet] = useState<number | null>(null);
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
+  const [adminFee, setAdminFee] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +53,7 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
       setToWallet(null);
       setAmount('');
       setDescription('');
+      setAdminFee('');
       setError(null);
     }
   }, [isOpen]);
@@ -61,9 +64,15 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
     setAmount(cleanValue);
   };
 
+  const handleAdminFeeChange = (value: string) => {
+    // Remove any non-numeric characters except decimal point
+    const cleanValue = value.replace(/[^0-9.]/g, '');
+    setAdminFee(cleanValue);
+  };
+
   const handleTransfer = async () => {
-    if (!fromWallet || !toWallet || !amount || !description.trim()) {
-      setError('Please fill in all fields');
+    if (!fromWallet || !toWallet || !amount) {
+      setError('Please fill in all required fields');
       return;
     }
 
@@ -94,7 +103,8 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
           fromWalletId: fromWallet.id,
           toWalletId: toWallet,
           amount: transferAmount,
-          description: description.trim()
+          description: description.trim() || 'Transfer antar dompet',
+          adminFee: adminFee ? parseFloat(adminFee) : 0
         }),
       });
 
@@ -157,10 +167,10 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-neutral-900 dark:text-white">
-                  Transfer Money
+                  Transfer Uang
                 </h2>
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Move money between your wallets
+                  Pindahkan uang antar dompet Anda
                 </p>
               </div>
             </div>
@@ -177,7 +187,7 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
             {/* From Wallet */}
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                From Wallet
+                Dari Dompet
               </label>
               {fromWallet ? (
                 <div className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
@@ -218,7 +228,7 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
             {/* To Wallet */}
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                To Wallet
+                Ke Dompet
               </label>
               <select
                 value={toWallet || ''}
@@ -239,7 +249,7 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
             {/* Amount */}
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                Amount
+                Jumlah
               </label>
               <input
                 type="text"
@@ -258,7 +268,7 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
             {/* Description */}
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                Description (Optional)
+                Deskripsi (Opsional)
               </label>
               <input
                 type="text"
@@ -267,6 +277,25 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
                 placeholder="e.g., Transfer to savings wallet"
                 className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
               />
+            </div>
+
+            {/* Admin Fee */}
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Biaya Admin (Optional)
+              </label>
+              <input
+                type="text"
+                value={adminFee}
+                onChange={(e) => handleAdminFeeChange(e.target.value)}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+              />
+              {adminFee && (
+                <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                  {formatCurrency(parseFloat(adminFee) || 0)}
+                </div>
+              )}
             </div>
 
             {/* Error Display */}
@@ -280,15 +309,18 @@ export default function WalletTransferModal({ isOpen, onClose, fromWalletId }: W
             {fromWallet && toWallet && amount && (
               <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <div className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
-                  Transfer Summary
+                  Ringkasan Transfer
                 </div>
                 <div className="space-y-1 text-sm text-blue-700 dark:text-blue-300">
-                  <div>From: {fromWallet.name}</div>
-                  <div>To: {state.data.wallets.find((w: Wallet) => w.id === toWallet)?.name || 'Unknown'}</div>
-                  <div>Amount: {formatCurrency(parseFloat(amount) || 0)}</div>
+                  <div>Dari: {fromWallet.name}</div>
+                  <div>Ke: {state.data.wallets.find((w: Wallet) => w.id === toWallet)?.name || 'Unknown'}</div>
+                  <div>Jumlah: {formatCurrency(parseFloat(amount) || 0)}</div>
+                  {adminFee && parseFloat(adminFee) > 0 && (
+                    <div>Biaya Admin: {formatCurrency(parseFloat(adminFee))}</div>
+                  )}
                   {parseFloat(amount) > fromWallet.balance && (
                     <div className="text-red-600 dark:text-red-400 font-medium">
-                      ⚠️ Insufficient balance
+                      ⚠️ Saldo tidak mencukupi
                     </div>
                   )}
                 </div>

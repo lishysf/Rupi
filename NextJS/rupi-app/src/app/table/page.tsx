@@ -1,8 +1,31 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+// Define constants locally to avoid importing server-side modules in client component
+const EXPENSE_CATEGORIES = [
+  'Food & Dining',
+  'Transportation',
+  'Shopping',
+  'Entertainment',
+  'Bills & Utilities',
+  'Healthcare',
+  'Education',
+  'Travel',
+  'Gifts & Donations',
+  'Other'
+];
+
+const INCOME_SOURCES = [
+  'Salary',
+  'Freelance',
+  'Business',
+  'Investment',
+  'Rental',
+  'Gift',
+  'Other'
+];
 import Sidebar from '@/app/components/Sidebar';
 import { FinancialDataProvider, useFinancialData } from '@/contexts/FinancialDataContext';
 import TransactionEditModal from '@/app/components/TransactionEditModal';
@@ -20,6 +43,7 @@ function FinancialTable() {
   const [editDraft, setEditDraft] = useState<{ description: string; amount: number; category: string; date: string } | null>(null);
   const [globalEditMode, setGlobalEditMode] = useState<boolean>(false);
   const [globalEditData, setGlobalEditData] = useState<Record<string, { description: string; amount: number; category: string; date: string; type: string }>>({});
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   // Defaults to current month (YYYY-MM)
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
@@ -55,8 +79,17 @@ function FinancialTable() {
   const handleClose = () => setSelectedTx(null);
 
   const handleDelete = async (tx: any) => {
-    const type = tx.type === 'income' ? 'income' : 'expense';
-    await deleteTransaction(tx.id, type);
+    if (deletingId === tx.id) return;
+    
+    setDeletingId(tx.id);
+    try {
+      const type = tx.type === 'income' ? 'income' : 'expense';
+      await deleteTransaction(tx.id, type);
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const cancelInlineEdit = () => {
@@ -188,25 +221,8 @@ function FinancialTable() {
     return filteredRows.slice(start, start + pageSize);
   }, [filteredRows, page, pageSize]);
 
-  const EXPENSE_CATEGORIES = [
-    'Housing & Utilities',
-    'Food & Groceries',
-    'Transportation',
-    'Health & Personal',
-    'Entertainment & Shopping',
-    'Debt Payments',
-    'Savings & Investments',
-    'Family & Others',
-  ];
-  const INCOME_SOURCES = [
-    'Salary',
-    'Freelance',
-    'Business',
-    'Investment',
-    'Bonus',
-    'Gift',
-    'Others',
-  ];
+  
+  
 
   // Show loading state if data is being fetched
   if (state.loading.transactions) {
@@ -497,9 +513,17 @@ function FinancialTable() {
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => handleDelete(tx)}
-                        className="px-3 py-1.5 text-xs rounded-lg bg-red-600 hover:bg-red-700 text-white"
+                        disabled={deletingId === tx.id}
+                        className="px-3 py-1.5 text-xs rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       >
-                        Delete
+                        {deletingId === tx.id ? (
+                          <>
+                            <div className="w-3 h-3 animate-spin border border-white border-t-transparent rounded-full"></div>
+                            Deleting...
+                          </>
+                        ) : (
+                          'Delete'
+                        )}
                       </button>
                     </td>
                   </>

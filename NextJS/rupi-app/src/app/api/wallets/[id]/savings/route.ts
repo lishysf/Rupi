@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Pool } from 'pg';
+import { TransactionDatabase, initializeDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
-// Database connection
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'rupi_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+let dbInitialized = false;
+
+async function ensureDbInitialized() {
+  if (!dbInitialized) {
+    await initializeDatabase();
+    dbInitialized = true;
+  }
+}
 
 // GET - Get savings data for a specific wallet
 export async function GET(
@@ -18,6 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureDbInitialized();
     const user = await requireAuth(request);
     const { id } = await params;
     const walletId = parseInt(id);
@@ -29,80 +29,60 @@ export async function GET(
       );
     }
 
-    // Verify wallet belongs to user
-    const walletCheck = await pool.query(
-      'SELECT id FROM user_wallets WHERE id = $1 AND user_id = $2',
-      [walletId, user.id]
+    // Get all transactions for the user and filter for savings from this wallet
+    const allTransactions = await TransactionDatabase.getUserTransactions(user.id, 1000, 0);
+    const walletSavings = allTransactions.filter(t => 
+      t.type === 'savings' && t.wallet_id === walletId
     );
 
-    if (walletCheck.rows.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Wallet not found' },
-        { status: 404 }
-      );
-    }
+    // Calculate total savings
+    const totalSavings = walletSavings.reduce((sum, t) => sum + (parseFloat(t.amount.toString()) || 0), 0);
+    const savingsCount = walletSavings.length;
 
-    // Get total savings from this wallet
-    const savingsQuery = `
-      SELECT 
-        COALESCE(SUM(amount), 0) as total_savings,
-        COUNT(*) as savings_count
-      FROM savings 
-      WHERE user_id = $1 AND wallet_id = $2 AND amount > 0
-    `;
+    // Group savings by goal
+    const savingsByGoalMap = new Map<string, { totalAmount: number; transactionCount: number }>();
+    walletSavings.forEach(transaction => {
+      const goalName = transaction.goal_name || 'General Savings';
+      const amount = parseFloat(transaction.amount.toString()) || 0;
+      
+      if (savingsByGoalMap.has(goalName)) {
+        const existing = savingsByGoalMap.get(goalName)!;
+        existing.totalAmount += amount;
+        existing.transactionCount += 1;
+      } else {
+        savingsByGoalMap.set(goalName, { totalAmount: amount, transactionCount: 1 });
+      }
+    });
 
-    const savingsResult = await pool.query(savingsQuery, [user.id, walletId]);
+    const savingsByGoal = Array.from(savingsByGoalMap.entries())
+      .map(([goalName, data]) => ({
+        goalName,
+        totalAmount: data.totalAmount,
+        transactionCount: data.transactionCount
+      }))
+      .sort((a, b) => b.totalAmount - a.totalAmount);
 
-    // Get savings by goal for this wallet
-    const savingsByGoalQuery = `
-      SELECT 
-        s.goal_name,
-        COALESCE(SUM(s.amount), 0) as total_amount,
-        COUNT(*) as transaction_count
-      FROM savings s
-      WHERE s.user_id = $1 AND s.wallet_id = $2 AND s.amount > 0
-      GROUP BY s.goal_name
-      ORDER BY total_amount DESC
-    `;
-
-    const savingsByGoalResult = await pool.query(savingsByGoalQuery, [user.id, walletId]);
-
-    // Get recent savings transactions from this wallet
-    const recentSavingsQuery = `
-      SELECT 
-        s.id,
-        s.description,
-        s.amount,
-        s.goal_name,
-        s.date,
-        s.created_at
-      FROM savings s
-      WHERE s.user_id = $1 AND s.wallet_id = $2
-      ORDER BY s.date DESC, s.created_at DESC
-      LIMIT 10
-    `;
-
-    const recentSavingsResult = await pool.query(recentSavingsQuery, [user.id, walletId]);
+    // Get recent savings transactions (last 10)
+    const recentSavings = walletSavings
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 10)
+      .map(transaction => ({
+        id: transaction.id,
+        description: transaction.description,
+        amount: parseFloat(transaction.amount.toString()) || 0,
+        goalName: transaction.goal_name,
+        date: transaction.date,
+        createdAt: transaction.created_at
+      }));
 
     return NextResponse.json({
       success: true,
       data: {
         walletId,
-        totalSavings: parseFloat(savingsResult.rows[0].total_savings) || 0,
-        savingsCount: parseInt(savingsResult.rows[0].savings_count) || 0,
-        savingsByGoal: savingsByGoalResult.rows.map((row: any) => ({
-          goalName: row.goal_name,
-          totalAmount: parseFloat(row.total_amount) || 0,
-          transactionCount: parseInt(row.transaction_count) || 0
-        })),
-        recentSavings: recentSavingsResult.rows.map((row: any) => ({
-          id: row.id,
-          description: row.description,
-          amount: parseFloat(row.amount) || 0,
-          goalName: row.goal_name,
-          date: row.date,
-          createdAt: row.created_at
-        }))
+        totalSavings,
+        savingsCount,
+        savingsByGoal,
+        recentSavings
       }
     });
 

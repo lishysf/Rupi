@@ -14,32 +14,33 @@ import {
   WalletIcon
 } from '@heroicons/react/24/outline';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface SidebarProps {
   currentPage?: string;
 }
 
-const getNavigationItems = (username: string) => [
+const getNavigationItems = (username: string, t: (k: string) => string) => [
   {
-    name: 'Dashboard',
+    name: t('dashboard'),
     href: `/${username}/dashboard`,
     icon: HomeIcon,
     current: true
   },
   {
-    name: 'Wallets',
+    name: t('wallets'),
     href: `/wallets`,
     icon: WalletIcon,
     current: false
   },
   {
-    name: 'Table',
+    name: t('table'),
     href: `/table`,
     icon: ChartBarIcon,
     current: false
   },
   {
-    name: 'Settings',
+    name: t('settingsLabel'),
     href: '/settings',
     icon: CogIcon,
     current: false
@@ -52,8 +53,14 @@ export default function Sidebar({ currentPage = 'Dashboard' }: SidebarProps) {
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
   const router = useRouter();
   
+  // Language context with safe fallback
+  let t = (key: string) => key;
+  try {
+    t = useLanguage().t;
+  } catch {}
+  
   const username = session?.user?.name || 'user';
-  const navigationItems = getNavigationItems(username);
+  const navigationItems = getNavigationItems(username, t);
 
   const handleSignOut = async () => {
     await signOut({ callbackUrl: '/auth/signin' });
@@ -193,7 +200,7 @@ export default function Sidebar({ currentPage = 'Dashboard' }: SidebarProps) {
                   className="w-full flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors duration-200"
                 >
                   <ArrowRightOnRectangleIcon className="mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5" />
-                  Sign out
+                  {t('signOut')}
                 </button>
               </div>
             )}

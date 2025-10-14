@@ -92,7 +92,8 @@ export default function WalletModal({ isOpen, onClose, onWalletUpdate }: WalletM
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          balance: parseFloat(formData.balance) || 0
+          // Only include balance for new wallets, not when editing
+          ...(editingWallet ? {} : { balance: parseFloat(formData.balance) || 0 })
         })
       });
 
@@ -318,17 +319,23 @@ export default function WalletModal({ isOpen, onClose, onWalletUpdate }: WalletM
                     {/* Initial Balance */}
                     <div>
                       <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                        Initial Balance
+                        {editingWallet ? 'Current Balance' : 'Initial Balance'}
                       </label>
-                      <input
-                        type="number"
-                        value={formData.balance}
-                        onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
-                        placeholder="Enter initial balance"
-                        min="0"
-                        step="0.01"
-                        className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      />
+                      {editingWallet ? (
+                        <div className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400">
+                          Rp{editingWallet.balance.toLocaleString()} (calculated from transactions)
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          value={formData.balance}
+                          onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+                          placeholder="Enter initial balance"
+                          min="0"
+                          step="0.01"
+                          className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                        />
+                      )}
                     </div>
 
                     {/* Color */}

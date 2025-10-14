@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { IncomeDatabase, UserWalletDatabase, initializeDatabase, INCOME_SOURCES } from '@/lib/database';
+import { TransactionDatabase, UserWalletDatabase, initializeDatabase, INCOME_SOURCES } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // Initialize database on first request
@@ -27,24 +27,18 @@ export async function GET(request: NextRequest) {
 
     let income;
 
-    if (summary) {
-      // Return income summary by source
-      const start = startDate ? new Date(startDate) : undefined;
-      const end = endDate ? new Date(endDate) : undefined;
-      income = await IncomeDatabase.getIncomeSummaryBySource(user.id, start, end);
-    } else if (source && INCOME_SOURCES.includes(source as any)) {
-      // Filter by source
-      income = await IncomeDatabase.getIncomeBySource(user.id, source as any);
-    } else if (startDate && endDate) {
-      // Filter by date range
-      income = await IncomeDatabase.getIncomeByDateRange(
-        user.id,
-        new Date(startDate),
-        new Date(endDate)
-      );
-    } else {
-      // Get all income with pagination
-      income = await IncomeDatabase.getAllIncome(user.id, limit, offset);
+    // Get income from unified transactions table
+    const allTransactions = await TransactionDatabase.getUserTransactions(user.id, limit, offset);
+    income = allTransactions.filter(t => t.type === 'income');
+    
+    // Apply filters
+    if (source) {
+      income = income.filter(i => i.source === source);
+    }
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      income = income.filter(i => i.date >= start && i.date <= end);
     }
 
     return NextResponse.json({
@@ -139,13 +133,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Create income with wallet ID
-    const income = await IncomeDatabase.createIncome(
+    const income = await TransactionDatabase.createTransaction(
       user.id,
       description,
       amount,
+      'income',
+      selectedWalletId,
+      undefined,
       source,
-      date ? new Date(date) : undefined,
-      selectedWalletId
+      undefined,
+      undefined,
+      undefined,
+      date ? new Date(date) : undefined
     );
 
     return NextResponse.json({

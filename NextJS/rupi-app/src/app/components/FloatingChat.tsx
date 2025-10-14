@@ -17,7 +17,7 @@ interface ChatMessage {
 }
 
 export default function FloatingChat() {
-  const { refreshAll } = useFinancialData();
+  const { refreshAll, refreshAfterTransaction } = useFinancialData();
   const [isExpanded, setIsExpanded] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -51,19 +51,19 @@ export default function FloatingChat() {
       isUser: true
     };
 
-    setMessages(prev => [...prev, newMessage]);
+    // Optimize state updates by batching them
+    setMessages(prev => {
+      const loadingMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text: 'Thinking...',
+        timestamp: new Date(),
+        isUser: false,
+        isLoading: true
+      };
+      return [...prev, newMessage, loadingMessage];
+    });
     setInputValue('');
     setIsLoading(true);
-
-    // Add loading message
-    const loadingMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      text: 'Thinking...',
-      timestamp: new Date(),
-      isUser: false,
-      isLoading: true
-    };
-    setMessages(prev => [...prev, loadingMessage]);
 
     try {
       // Prepare conversation history (last 2 exchanges for context)
@@ -105,18 +105,13 @@ export default function FloatingChat() {
           msg.isLoading ? aiResponse : msg
         ));
 
-        // If transactions were created, refresh all dashboard data
+        // If transactions were created, refresh dashboard data immediately (no delay)
         if (data.data.transactionCreated || data.data.multipleTransactionsCreated) {
           console.log('AI created transaction(s), refreshing dashboard data...');
-          
-          // Add a brief delay to let the user see the success message, then refresh
-          setTimeout(() => {
-            refreshAll().then(() => {
-              console.log('Dashboard data refreshed after AI transaction(s)');
-            }).catch((error) => {
-              console.error('Error refreshing data after AI transaction(s):', error);
-            });
-          }, 500);
+          // Fast path: refresh recent transactions + wallets without delay
+          refreshAfterTransaction()
+            .then(() => console.log('Dashboard data refreshed after AI transaction(s)'))
+            .catch((error) => console.error('Error refreshing data after AI transaction(s):', error));
         }
       } else {
         throw new Error(data.error || 'Failed to get response');

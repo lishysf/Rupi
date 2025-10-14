@@ -60,7 +60,7 @@ export default function AddTransactionModal({
   transactionType,
   onTransactionAdded 
 }: AddTransactionModalProps) {
-  const { state, fetchWallets, refreshAfterTransaction } = useFinancialData();
+  const { state, fetchWallets, fetchTransactions, fetchBudgets } = useFinancialData();
   const [wallets, setWallets] = useState<UserWallet[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,15 +129,17 @@ export default function AddTransactionModal({
       setLoading(true);
       setError(null);
 
-      const endpoint = transactionType === 'income' ? '/api/income' : '/api/expenses';
+      // Use unified transactions endpoint to minimize divergent logic
+      const endpoint = '/api/transactions';
       const payload = {
         description: formData.description.trim(),
         amount: amount,
-        [transactionType === 'income' ? 'source' : 'category']: formData.category,
-        walletId: parseInt(formData.walletId),
+        type: transactionType,
+        // API expects `source` for income and `category` for expense
+        ...(transactionType === 'income' ? { source: formData.category } : { category: formData.category }),
+        wallet_id: parseInt(formData.walletId),
         date: formData.date
       };
-
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -148,10 +150,13 @@ export default function AddTransactionModal({
       const data = await response.json();
       
       if (data.success) {
-        // Small delay to ensure database has updated
-        await new Promise(resolve => setTimeout(resolve, 500));
-        // Refresh all data including wallet balances
-        await refreshAfterTransaction();
+        // Targeted, fast refresh: transactions list, wallet balances, and budgets
+        await Promise.all([
+          fetchTransactions(false),
+          fetchWallets(),
+          // If it's an expense, immediately refresh budgets to update tracking
+          transactionType === 'expense' ? fetchBudgets(false) : Promise.resolve()
+        ]);
         onTransactionAdded();
         handleClose();
       } else {

@@ -5,7 +5,6 @@ import FinancialSummary from '@/app/components/FinancialSummary';
 import IncomeExpenseSummary from '@/app/components/IncomeExpenseSummary';
 import CategoryBreakdown from '@/app/components/CategoryBreakdown';
 import TrendsChart from '@/app/components/TrendsChart';
-import AIInsights from '@/app/components/AIInsights';
 import RecentTransactions from '@/app/components/RecentTransactions';
 import BudgetTracking from '@/app/components/BudgetTracking';
 import SavingsGoals from '@/app/components/SavingsGoals';
@@ -20,7 +19,6 @@ const DASHBOARD_COMPONENTS = {
   'income-expense': IncomeExpenseSummary,
   'category-breakdown': CategoryBreakdown,
   'trends-chart': TrendsChart,
-  'ai-insights': AIInsights,
   'recent-transactions': RecentTransactions,
   'budget-tracking': BudgetTracking,
   'savings-goals': SavingsGoals,
@@ -73,8 +71,6 @@ export default function DashboardEditor() {
       // Row 3: Recent Transactions (4 columns full width)
       case 'recent-transactions':
         return 'col-span-4 md:col-span-4'; // Recent Transactions - 4x1
-      case 'ai-insights':
-        return 'col-span-2 md:col-span-2'; // AI Insights - 2x1
       // Right side components
       case 'financial-health':
         return 'col-span-2 md:col-span-2'; // Financial Health - 2x1
@@ -112,8 +108,6 @@ export default function DashboardEditor() {
       // Bottom Row: Recent Transactions
       case 'recent-transactions':
         return 'h-80 sm:h-72 lg:h-80'; // Same height as analytics
-      case 'ai-insights':
-        return 'h-64 sm:h-72 lg:h-80'; // Same height as other cards
       default:
         return 'h-64 sm:h-72 lg:h-80';
     }
@@ -128,7 +122,7 @@ export default function DashboardEditor() {
           {/* Top Row: Responsive grid for different screen sizes */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {/* Balance Overview - responsive column span */}
-            <div className="sm:col-span-2 lg:col-span-2 hover-lift">
+            <div className="sm:col-span-2 lg:col-span-2 hover-lift" data-tutorial="balance-overview">
               <DashboardWidgetWrapper 
                 componentKey="balance-overview" 
                 getColSpanClass={getColSpanClass}
@@ -136,7 +130,7 @@ export default function DashboardEditor() {
               />
             </div>
             {/* Financial Summary - responsive column span */}
-            <div className="sm:col-span-1 lg:col-span-1 hover-lift">
+            <div className="sm:col-span-1 lg:col-span-1 hover-lift" data-tutorial="financial-summary">
               <DashboardWidgetWrapper 
                 componentKey="financial-summary" 
                 getColSpanClass={getColSpanClass}
@@ -144,7 +138,7 @@ export default function DashboardEditor() {
               />
             </div>
             {/* Income/Expense - responsive column span */}
-            <div className="sm:col-span-1 lg:col-span-1 hover-lift">
+            <div className="sm:col-span-1 lg:col-span-1 hover-lift" data-tutorial="income-expense">
               <DashboardWidgetWrapper 
                 componentKey="income-expense" 
                 getColSpanClass={getColSpanClass}
@@ -156,7 +150,7 @@ export default function DashboardEditor() {
           {/* Analytics Row: Responsive grid */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
             {/* Analytics - responsive column span */}
-            <div className="lg:col-span-3 hover-lift">
+            <div className="lg:col-span-3 hover-lift" data-tutorial="trends-chart">
               <DashboardWidgetWrapper 
                 componentKey="trends-chart" 
                 getColSpanClass={getColSpanClass}
@@ -164,7 +158,7 @@ export default function DashboardEditor() {
               />
             </div>
             {/* Category Breakdown - responsive column span */}
-            <div className="lg:col-span-1 hover-lift">
+            <div className="lg:col-span-1 hover-lift" data-tutorial="category-breakdown">
               <DashboardWidgetWrapper 
                 componentKey="category-breakdown" 
                 getColSpanClass={getColSpanClass}
@@ -174,19 +168,20 @@ export default function DashboardEditor() {
           </div>
           
           {/* Recent Transactions - full width on all screens */}
-          <div className="hover-lift">
+          <div className="hover-lift" data-tutorial="recent-transactions">
             <DashboardWidgetWrapper 
               componentKey="recent-transactions" 
               getColSpanClass={getColSpanClass}
               getHeightClass={getHeightClass}
             />
           </div>
+          
         </div>
         
         {/* Right Side - Responsive column span */}
         <div className="xl:col-span-2 space-y-4 sm:space-y-6">
           {/* Financial Health - full width on right side */}
-          <div className="hover-lift">
+          <div className="hover-lift" data-tutorial="financial-health">
             <DashboardWidgetWrapper 
               componentKey="financial-health" 
               getColSpanClass={getColSpanClass}
@@ -195,7 +190,7 @@ export default function DashboardEditor() {
           </div>
           
           {/* Savings Goals - full width on right side */}
-          <div className="hover-lift">
+          <div className="hover-lift" data-tutorial="savings-goals">
             <DashboardWidgetWrapper 
               componentKey="savings-goals" 
               getColSpanClass={getColSpanClass}
@@ -204,7 +199,7 @@ export default function DashboardEditor() {
           </div>
           
           {/* Budget Tracking - full width on right side */}
-          <div className="hover-lift">
+          <div className="hover-lift" data-tutorial="budget-tracking">
             <DashboardWidgetWrapper 
               componentKey="budget-tracking" 
               getColSpanClass={getColSpanClass}

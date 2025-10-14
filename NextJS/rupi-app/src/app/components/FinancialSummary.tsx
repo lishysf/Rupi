@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface FinancialTotal {
   currentMonthExpenses: number;
@@ -29,6 +30,8 @@ interface FinancialSummaryProps {
 
 export default function FinancialSummary({ widgetSize = 'square' }: FinancialSummaryProps) {
   const { state } = useFinancialData();
+  let t = (key: string) => key;
+  try { t = useLanguage().t; } catch {}
   const { expenses, income, savings, wallets } = state.data;
   const investments: any[] = (state.data as any).investments || [];
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
@@ -147,14 +150,14 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
             
             <div className="flex flex-col h-full justify-center relative z-10">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold text-white tracking-wide uppercase">Total Assets</span>
+                <span className="text-sm font-bold text-white tracking-wide uppercase">{t('totalAssets')}</span>
                 <div className="w-3 h-3 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full shadow-lg animate-pulse"></div>
               </div>
               <div className="text-2xl font-bold text-white tracking-tight mb-2 drop-shadow-sm">
                 {formatCurrency(totalAssets)}
               </div>
               <div className="text-xs text-emerald-100 font-medium opacity-90">
-                Combined value of all accounts
+                {t('combinedAccounts')}
               </div>
             </div>
           </div>
@@ -166,7 +169,7 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
               <div className="flex flex-col justify-center p-2 bg-neutral-50 dark:bg-neutral-800/30 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-all duration-200">
                 <div className="flex items-center mb-1">
                   <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></div>
-                  <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Savings</span>
+                  <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">{t('savings')}</span>
                 </div>
                 <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
                   {formatCurrency(financialData.totalSavings)}
@@ -177,7 +180,7 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
               <div className="flex flex-col justify-center p-2 bg-neutral-50 dark:bg-neutral-800/30 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-all duration-200">
                 <div className="flex items-center mb-1">
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></div>
-                  <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Investment</span>
+                  <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">{t('investment')}</span>
                 </div>
                 <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
                   {formatCurrency(financialData.totalInvestments || 0)}

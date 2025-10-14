@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { UserWalletDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
+import { UserWalletDatabase } from '@/lib/database';
 
-// GET - Get all wallets for user with calculated balances
+// GET - Get all wallets for user
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
+
     const wallets = await UserWalletDatabase.getAllWalletsWithBalances(user.id);
 
     return NextResponse.json({
@@ -32,9 +33,9 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     const body = await request.json();
+    
     const { name, type, balance = 0, color = '#10B981', icon = 'wallet' } = body;
 
-    // Validate required fields
     if (!name || !type) {
       return NextResponse.json(
         {
@@ -45,27 +46,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate balance
-    if (typeof balance !== 'number' || balance < 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Balance must be a non-negative number'
-        },
-        { status: 400 }
-      );
-    }
+    // Create the wallet
+    const wallet = await UserWalletDatabase.createWallet(user.id, name, type, color, icon);
 
-    // Create wallet (balance will be calculated from transactions)
-    const wallet = await UserWalletDatabase.createWallet(
-      user.id,
-      name,
-      type,
-      color,
-      icon
-    );
-
-    // If user provided a starting balance, create an initial income transaction
+    // If initial balance is provided and greater than 0, create an initial income transaction
     if (balance > 0) {
       const { TransactionDatabase } = await import('@/lib/database');
       
@@ -75,24 +59,19 @@ export async function POST(request: NextRequest) {
         balance,
         'income',
         wallet.id,
-        'Initial Balance',
-        'Wallet Creation',
         undefined,
-        undefined,
-        new Date()
+        'Initial Balance'
       );
-      
-      console.log(`Created initial balance transaction: ${balance} for wallet ${name} (ID: ${wallet.id})`);
     }
 
-    // Return wallet with calculated balance
-    const walletsWithBalances = await UserWalletDatabase.getAllWalletsWithBalances(user.id);
-    const createdWallet = walletsWithBalances.find(w => w.id === wallet.id);
+    // Get the wallet with calculated balance
+    const wallets = await UserWalletDatabase.getAllWalletsWithBalances(user.id);
+    const walletWithBalance = wallets.find(w => w.id === wallet.id);
 
     return NextResponse.json({
       success: true,
-      data: createdWallet || wallet,
-      message: balance > 0 ? `Wallet created successfully with initial balance of Rp${balance.toLocaleString()}` : 'Wallet created successfully'
+      data: walletWithBalance || wallet,
+      message: 'Wallet created successfully'
     }, { status: 201 });
 
   } catch (error) {

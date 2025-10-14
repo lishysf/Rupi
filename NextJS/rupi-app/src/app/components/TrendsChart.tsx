@@ -101,6 +101,25 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
     }
   };
 
+  // Format values for Y-axis with abbreviated format (RB, JT, M, T)
+  const formatYAxisValue = (amount: number) => {
+    if (amount >= 1000000000000) {
+      const value = (amount / 1000000000000).toFixed(1);
+      return `${value.endsWith('.0') ? value.slice(0, -2) : value}T`;
+    } else if (amount >= 1000000000) {
+      const value = (amount / 1000000000).toFixed(1);
+      return `${value.endsWith('.0') ? value.slice(0, -2) : value}M`;
+    } else if (amount >= 1000000) {
+      const value = (amount / 1000000).toFixed(1);
+      return `${value.endsWith('.0') ? value.slice(0, -2) : value}JT`;
+    } else if (amount >= 1000) {
+      const value = (amount / 1000).toFixed(1);
+      return `${value.endsWith('.0') ? value.slice(0, -2) : value}RB`;
+    } else {
+      return amount.toString();
+    }
+  };
+
   // Calculate analytics data from context (same as Financial Summary)
   const calculateAnalyticsData = React.useCallback(() => {
     try {
@@ -429,7 +448,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
               fontSize={8}
               domain={[yAxisMin, yAxisMax]}
               tickFormatter={(value) => {
-                return formatRupiahValue(value * 1000)
+                return formatYAxisValue(value * 1000)
               }}
             />
             <ChartTooltip
@@ -471,7 +490,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                       {data?.fullDate ? formatDate(data.fullDate) : label}
                     </div>
                     <div className="text-xs sm:text-sm font-medium mb-1 sm:mb-2">
-                      Rp {formatRupiahValue(Number(entry.value) * 1000)}
+                      {formatCurrency(Number(entry.value) * 1000)}
                     </div>
                     <div className="text-xs opacity-80 mb-1 sm:mb-2">
                       {dataType === 'total_assets' ? 'Assets' :
@@ -490,7 +509,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                               {category.category}
                             </span>
                             <span className="ml-1 sm:ml-2">
-                              Rp {formatRupiahValue(category.amount)}
+                              {formatCurrency(category.amount)}
                             </span>
                           </div>
                         ))}

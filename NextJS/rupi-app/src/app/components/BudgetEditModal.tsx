@@ -9,7 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 interface Budget {
   id?: number;
   category: string;
-  budget: number;
+  amount: number;
   spent: number;
   month: number;
   year: number;
@@ -25,16 +25,61 @@ interface BudgetEditModalProps {
   mode: 'add' | 'edit';
 }
 
-// Expense categories
+// Expense categories (expanded to match backend)
 const EXPENSE_CATEGORIES = [
-  'Housing & Utilities',
-  'Food & Groceries', 
-  'Transportation',
-  'Health & Personal',
-  'Entertainment & Shopping',
+  // Housing & Utilities
+  'Rent',
+  'Mortgage',
+  'Electricity',
+  'Water',
+  'Internet',
+  'Gas Utility',
+  'Home Maintenance',
+  'Household Supplies',
+
+  // Food & Dining
+  'Groceries',
+  'Dining Out',
+  'Coffee & Tea',
+  'Food Delivery',
+
+  // Transportation
+  'Fuel',
+  'Parking',
+  'Public Transport',
+  'Ride Hailing',
+  'Vehicle Maintenance',
+  'Toll',
+
+  // Health & Personal
+  'Medical & Pharmacy',
+  'Health Insurance',
+  'Fitness',
+  'Personal Care',
+
+  // Entertainment & Shopping
+  'Clothing',
+  'Electronics & Gadgets',
+  'Subscriptions & Streaming',
+  'Hobbies & Leisure',
+  'Gifts & Celebration',
+
+  // Financial Obligations
   'Debt Payments',
-  'Savings & Investments',
-  'Family & Others'
+  'Taxes & Fees',
+  'Bank Charges',
+
+  // Family & Education
+  'Childcare',
+  'Education',
+  'Pets',
+
+  // Miscellaneous
+  'Travel',
+  'Business Expenses',
+  'Charity & Donations',
+  'Emergency',
+  'Others'
 ] as const;
 
 export default function BudgetEditModal({ 
@@ -57,7 +102,7 @@ export default function BudgetEditModal({
     if (budget && mode === 'edit') {
       setFormData({
         category: budget.category || '',
-        amount: (budget.budget || 0).toString()
+        amount: (budget.amount || 0).toString()
       });
       setError(null);
     } else if (mode === 'add') {
@@ -235,19 +280,19 @@ export default function BudgetEditModal({
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-neutral-600 dark:text-neutral-400">Current budget:</span>
-                      <span className="font-medium">{formatCurrency(budget.budget || 0)}</span>
+                      <span className="font-medium">{formatCurrency(budget.amount || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-neutral-600 dark:text-neutral-400">Usage:</span>
                       <span className={`font-medium ${
-                        budget.budget && budget.budget > 0 && (budget.spent || 0) / budget.budget >= 1
+                        budget.amount && budget.amount > 0 && (budget.spent || 0) / budget.amount >= 1
                           ? 'text-red-600 dark:text-red-400'
-                          : budget.budget && budget.budget > 0 && (budget.spent || 0) / budget.budget >= 0.8
+                          : budget.amount && budget.amount > 0 && (budget.spent || 0) / budget.amount >= 0.8
                           ? 'text-amber-600 dark:text-amber-400'
                           : 'text-emerald-600 dark:text-emerald-400'
                       }`}>
-                        {budget.budget && budget.budget > 0 
-                          ? (((budget.spent || 0) / budget.budget) * 100).toFixed(1)
+                        {budget.amount && budget.amount > 0 
+                          ? (((budget.spent || 0) / budget.amount) * 100).toFixed(1)
                           : '0.0'
                         }%
                       </span>

@@ -2,15 +2,18 @@
 
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import DashboardEditor from '@/app/components/DashboardEditor';
 import FloatingChat from '@/app/components/FloatingChat';
 import Sidebar from '@/app/components/Sidebar';
 import GlobalLoader from '@/app/components/GlobalLoader';
+import TutorialBubble from '@/app/components/TutorialBubble';
 import { FinancialDataProvider, useFinancialData } from '@/contexts/FinancialDataContext';
 
 // Inner component that has access to the financial data context
 function DashboardContent() {
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+
   // Data is automatically loaded by the FinancialDataProvider
   // No need to manually refresh on mount
 
@@ -30,6 +33,13 @@ function DashboardContent() {
 
         {/* Floating Chat */}
         <FloatingChat />
+        
+        {/* Tutorial Bubble */}
+        <TutorialBubble 
+          isOpen={isTutorialOpen}
+          onClose={() => setIsTutorialOpen(false)}
+          onStart={() => setIsTutorialOpen(true)}
+        />
       </div>
     </GlobalLoader>
   );

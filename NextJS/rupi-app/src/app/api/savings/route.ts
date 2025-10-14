@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-import { initializeDatabase, UserWalletDatabase } from '@/lib/database';
+import { TransactionDatabase, UserWalletDatabase, initializeDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // Database connection
@@ -34,56 +34,29 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    let query = `
-      SELECT s.*, sg.goal_name as goal_name 
-      FROM savings s 
-      LEFT JOIN savings_goals sg ON s.goal_name = sg.goal_name
-      WHERE s.user_id = $1
-    `;
-    const queryParams: any[] = [user.id];
-    let paramCount = 1;
-
-    const conditions: string[] = [];
-
+    // Get savings from unified transactions table
+    const allTransactions = await TransactionDatabase.getUserTransactions(user.id, limit, offset);
+    let savings = allTransactions.filter(t => t.type === 'savings');
+    
+    // Apply filters
     if (goalId) {
-      paramCount++;
-      conditions.push(`s.goal_name = (SELECT goal_name FROM savings_goals WHERE id = $${paramCount})`);
-      queryParams.push(parseInt(goalId));
+      // Get goal name from goalId
+      const goalResult = await pool.query('SELECT goal_name FROM savings_goals WHERE id = $1 AND user_id = $2', [parseInt(goalId), user.id]);
+      if (goalResult.rows.length > 0) {
+        const goalName = goalResult.rows[0].goal_name;
+        savings = savings.filter(s => s.goal_name === goalName);
+      }
     }
-
+    
     if (startDate && endDate) {
-      paramCount++;
-      conditions.push(`s.date >= $${paramCount}`);
-      queryParams.push(new Date(startDate));
-      
-      paramCount++;
-      conditions.push(`s.date <= $${paramCount}`);
-      queryParams.push(new Date(endDate));
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      savings = savings.filter(s => s.date >= start && s.date <= end);
     }
-
-    if (conditions.length > 0) {
-      query += ` AND ${conditions.join(' AND ')}`;
-    }
-
-    query += ` ORDER BY s.date DESC, s.created_at DESC`;
-
-    if (limit > 0) {
-      paramCount++;
-      query += ` LIMIT $${paramCount}`;
-      queryParams.push(limit);
-    }
-
-    if (offset > 0) {
-      paramCount++;
-      query += ` OFFSET $${paramCount}`;
-      queryParams.push(offset);
-    }
-
-    const result = await pool.query(query, queryParams);
 
     return NextResponse.json({
       success: true,
-      data: result.rows,
+      data: savings,
       message: 'Savings retrieved successfully'
     });
 
@@ -184,8 +157,8 @@ export async function POST(request: NextRequest) {
     } else if (type === 'withdrawal') {
       // For withdrawals, check if savings balance is sufficient
       const allSavings = await pool.query(
-        'SELECT COALESCE(SUM(amount), 0) as total_savings FROM savings WHERE user_id = $1',
-        [user.id]
+        'SELECT COALESCE(SUM(amount), 0) as total_savings FROM transactions WHERE user_id = $1 AND type = $2',
+        [user.id, 'savings']
       );
       const totalSavings = parseFloat(allSavings.rows[0].total_savings);
       
@@ -205,33 +178,34 @@ export async function POST(request: NextRequest) {
     try {
       await client.query('BEGIN');
 
-      // Insert savings record (use negative amount for withdrawals)
-      const finalAmount = type === 'withdrawal' ? -amount : amount;
-      const savingsQuery = `
-        INSERT INTO savings (user_id, description, amount, goal_name, wallet_id, date)
-        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-        RETURNING *
-      `;
-      
-      const savingsResult = await client.query(savingsQuery, [
+      // Create savings transaction using unified system
+      const { TransactionDatabase } = await import('@/lib/database');
+      const savingsResult = await TransactionDatabase.createTransaction(
         user.id,
         description,
-        finalAmount,
-        goalName || null,
-        walletId || null
-      ]);
+        type === 'withdrawal' ? -amount : amount, // Negative for withdrawals
+        'savings',
+        type === 'deposit' ? walletId : undefined, // Only set wallet_id for deposits
+        undefined, // category
+        undefined, // subcategory
+        goalName,
+        undefined, // asset_name
+        new Date()
+      );
 
-      // Create wallet transfer record for deposits (NOT an expense - just money movement)
-      if (type === 'deposit' || type === 'transfer') {
-        const { WalletTransferDatabase } = await import('@/lib/database');
-        await WalletTransferDatabase.createTransfer(
+      // For withdrawals, create a corresponding transfer transaction to the wallet
+      if (type === 'withdrawal' && walletId) {
+        await TransactionDatabase.createTransaction(
           user.id,
-          walletId, // from wallet
-          undefined, // to wallet (none, going to savings)
-          true, // to savings
-          amount,
-          `Savings: ${description}`,
-          'wallet_to_savings'
+          `Transfer from savings: ${description}`,
+          amount, // Positive amount for the wallet
+          'transfer',
+          walletId,
+          'Transfer', // category
+          undefined, // subcategory
+          undefined, // goal_name
+          undefined, // asset_name
+          new Date()
         );
       }
 
@@ -250,7 +224,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        data: savingsResult.rows[0],
+        data: savingsResult,
         message: 'Savings recorded successfully'
       }, { status: 201 });
 

@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Pool } from 'pg';
-import { initializeDatabase } from '@/lib/database';
+import { TransactionDatabase, initializeDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
-
-// Database connection
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'rupi_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-});
 
 let dbInitialized = false;
 
@@ -21,7 +11,7 @@ async function ensureDbInitialized() {
   }
 }
 
-// DELETE - Remove a savings record by ID
+// DELETE - Remove a savings transaction by ID
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -39,62 +29,27 @@ export async function DELETE(
       );
     }
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    // Delete the savings transaction using the unified system
+    const deleted = await TransactionDatabase.deleteTransaction(user.id, id);
 
-      // Fetch the savings record to know amount/goal and verify ownership
-      const selectRes = await client.query(
-        'SELECT id, amount, goal_name FROM savings WHERE id = $1 AND user_id = $2',
-        [id, user.id]
+    if (!deleted) {
+      return NextResponse.json(
+        { success: false, error: 'Savings transaction not found or access denied' },
+        { status: 404 }
       );
-
-      if (selectRes.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return NextResponse.json(
-          { success: false, error: 'Savings not found' },
-          { status: 404 }
-        );
-      }
-
-      const saving = selectRes.rows[0] as {
-        id: number;
-        amount: string | number;
-        goal_name: string | null;
-      };
-
-      const numericAmount = typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount;
-
-      // If it was tied to a goal, reduce the goal's current_amount
-      if (saving.goal_name) {
-        await client.query(
-          'UPDATE savings_goals SET current_amount = GREATEST(current_amount - $1, 0), updated_at = CURRENT_TIMESTAMP WHERE goal_name = $2',
-          [numericAmount, saving.goal_name]
-        );
-      }
-
-      // Delete the savings row
-      const deleteRes = await client.query('DELETE FROM savings WHERE id = $1', [id]);
-
-      await client.query('COMMIT');
-
-      return NextResponse.json({
-        success: deleteRes.rowCount !== null && deleteRes.rowCount > 0,
-        message: 'Savings deleted successfully'
-      });
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
     }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Savings transaction deleted successfully'
+    });
+
   } catch (error) {
     console.error('DELETE /api/savings/[id] error:', error);
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to delete savings',
+        error: 'Failed to delete savings transaction',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
@@ -102,7 +57,7 @@ export async function DELETE(
   }
 }
 
-// PUT - Update a savings record by ID
+// PUT - Update a savings transaction by ID
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -130,83 +85,34 @@ export async function PUT(
       );
     }
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    // Update the savings transaction using the unified system
+    const updatedTransaction = await TransactionDatabase.updateTransaction(
+      user.id,
+      id,
+      description,
+      amount,
+      'savings',
+      undefined, // walletId - keep existing
+      undefined, // category
+      undefined, // source
+      goalName,
+      undefined, // assetName
+      undefined, // transferType
+      undefined  // date - keep existing
+    );
 
-      // Load existing saving for delta adjustments and verify ownership
-      const existingRes = await client.query(
-        'SELECT id, amount, goal_name FROM savings WHERE id = $1 AND user_id = $2',
-        [id, user.id]
-      );
+    return NextResponse.json({
+      success: true,
+      data: updatedTransaction,
+      message: 'Savings transaction updated successfully'
+    });
 
-      if (existingRes.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return NextResponse.json(
-          { success: false, error: 'Savings not found' },
-          { status: 404 }
-        );
-      }
-
-      const existing = existingRes.rows[0] as {
-        id: number;
-        amount: string | number;
-        goal_name: string | null;
-      };
-
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramIndex = 1;
-
-      if (description !== undefined) {
-        updates.push(`description = $${paramIndex++}`);
-        values.push(description);
-      }
-      if (amount !== undefined) {
-        updates.push(`amount = $${paramIndex++}`);
-        values.push(amount);
-      }
-      if (goalName !== undefined) {
-        updates.push(`goal_name = $${paramIndex++}`);
-        values.push(goalName);
-      }
-      updates.push(`updated_at = CURRENT_TIMESTAMP`);
-
-      if (updates.length === 1) { // only updated_at
-        await client.query('ROLLBACK');
-        return NextResponse.json({ success: true, data: existing, message: 'No changes' });
-      }
-
-      values.push(id);
-      const updateQuery = `UPDATE savings SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
-      const updateRes = await client.query(updateQuery, values);
-
-      // Adjust goal if needed when amount changed and is tied to a goal
-      if (amount !== undefined && existing.goal_name) {
-        const oldAmount = typeof existing.amount === 'string' ? parseFloat(existing.amount) : existing.amount;
-        const delta = (amount as number) - oldAmount;
-        if (delta !== 0) {
-          await client.query(
-            'UPDATE savings_goals SET current_amount = GREATEST(current_amount + $1, 0), updated_at = CURRENT_TIMESTAMP WHERE goal_name = $2',
-            [delta, existing.goal_name]
-          );
-        }
-      }
-
-      await client.query('COMMIT');
-      return NextResponse.json({ success: true, data: updateRes.rows[0], message: 'Savings updated successfully' });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
   } catch (error) {
     console.error('PUT /api/savings/[id] error:', error);
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to update savings',
+        error: 'Failed to update savings transaction',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import { TrendingUp, TrendingDown, Wallet, PiggyBank, BarChart3, CreditCard, Settings } from 'lucide-react';
 import WalletModal from './WalletModal';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface FinancialTotal {
   currentMonthExpenses: number;
@@ -31,6 +32,8 @@ interface BalanceOverviewProps {
 
 export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverviewProps) {
   const { state } = useFinancialData();
+  let t = (key: string) => key;
+  try { t = useLanguage().t; } catch {}
   const { expenses, income, savings, wallets } = state.data;
   const investments: any[] = (state.data as any).investments || [];
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
@@ -190,9 +193,9 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
                 <div className="absolute inset-0 w-3 h-3 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full animate-ping opacity-75"></div>
               </div>
               <div className="ml-3">
-                <h2 className="text-white font-bold text-base tracking-tight">My Wallets</h2>
+                <h2 className="text-white font-bold text-base tracking-tight">{t('myWallets')}</h2>
                 <p className="text-emerald-200 text-xs">
-                  {wallets.length > 0 ? `${wallets.length} wallet${wallets.length > 1 ? 's' : ''}` : 'No wallets added'}
+                  {wallets.length > 0 ? `${wallets.length} ${t('walletsCount')}` : t('noWallets')}
                 </p>
               </div>
             </div>
@@ -200,7 +203,7 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
               <button
                 onClick={() => setShowWalletModal(true)}
                 className="p-1.5 text-emerald-200 hover:text-white hover:bg-emerald-600/20 rounded-lg transition-colors"
-                title="Manage Wallets"
+                title={t('manageWallets')}
               >
                 <Settings className="w-4 h-4" />
               </button>
@@ -214,10 +217,10 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
           <div className="flex-1 flex flex-col justify-center">
             <div className="mb-4">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-emerald-200 text-sm font-medium">Total Wallet Balance</div>
+                <div className="text-emerald-200 text-sm font-medium">{t('totalWalletBalance')}</div>
                 <div className="flex items-center text-xs text-emerald-300">
                   <Wallet className="w-3 h-3 mr-1" />
-                  Available
+                  {t('available')}
                 </div>
               </div>
               <div className="text-3xl font-bold text-white tracking-tight mb-3">
@@ -229,7 +232,7 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
               </div>
               <div className="flex items-center text-emerald-200 text-sm">
                 <Wallet className="w-4 h-4 mr-2" />
-                {wallets.length > 0 ? `Across ${wallets.length} wallet${wallets.length > 1 ? 's' : ''}` : 'Add wallets to track balance'}
+                {wallets.length > 0 ? `${t('acrossWallets')} ${wallets.length} ${t('walletsCount')}` : t('addWalletsTrack')}
               </div>
             </div>
           </div>

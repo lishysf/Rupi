@@ -66,149 +66,36 @@ export async function GET(request: NextRequest) {
     
          // Query to get daily income, expense, and total assets
      const query = `
-       WITH        date_series AS (
-         SELECT generate_series(
-           $1::date,
-           $2::date,
-           '1 day'::interval
-         )::date as date
-       ),
-       daily_expenses AS (
-         SELECT 
-           expense_date,
-           SUM(total_expenses) as total_expenses
-         FROM (
-           SELECT 
-             DATE(e.date) as expense_date,
-             SUM(e.amount) as total_expenses
-           FROM expenses e
-           WHERE e.user_id = $3 AND e.date >= $1 AND e.date <= $2
-           GROUP BY DATE(e.date)
-           UNION ALL
-           SELECT 
-             DATE(t.date) as expense_date,
-             SUM(-t.amount) as total_expenses
-           FROM transactions t
-           WHERE t.user_id = $3 AND t.type = 'expense' AND t.date >= $1 AND t.date <= $2
-           GROUP BY DATE(t.date)
-         ) combined_expenses
-         GROUP BY expense_date
-       ),
-       daily_income AS (
-         SELECT 
-           income_date,
-           SUM(total_income) as total_income
-         FROM (
-           SELECT 
-             DATE(i.date) as income_date,
-             SUM(i.amount) as total_income
-           FROM income i
-           WHERE i.user_id = $3 AND i.date >= $1 AND i.date <= $2
-           GROUP BY DATE(i.date)
-           UNION ALL
-           SELECT 
-             DATE(t.date) as income_date,
-             SUM(t.amount) as total_income
-           FROM transactions t
-           WHERE t.user_id = $3 AND t.type = 'income' AND t.date >= $1 AND t.date <= $2
-           GROUP BY DATE(t.date)
-         ) combined_income
-         GROUP BY income_date
-       ),
-       daily_savings AS (
-         SELECT 
-           savings_date,
-           SUM(total_savings) as total_savings
-         FROM (
-           SELECT 
-             DATE(s.date) as savings_date,
-             SUM(s.amount) as total_savings
-           FROM savings s
-           WHERE s.user_id = $3 AND s.date >= $1 AND s.date <= $2
-           GROUP BY DATE(s.date)
-           UNION ALL
-           SELECT 
-             DATE(t.date) as savings_date,
-             SUM(t.amount) as total_savings
-           FROM transactions t
-           WHERE t.user_id = $3 AND t.type = 'transfer' AND t.category = 'Savings Transfer' AND t.date >= $1 AND t.date <= $2
-           GROUP BY DATE(t.date)
-         ) combined_savings
-         GROUP BY savings_date
-       ),
-       daily_investments AS (
-         SELECT 
-           DATE(inv.date) as investment_date,
-           SUM(inv.amount) as total_investments
-         FROM investments inv
-         WHERE inv.user_id = $3 AND inv.date >= $1 AND inv.date <= $2
-         GROUP BY DATE(inv.date)
-       ),
-       cumulative_wallet_balance AS (
-         SELECT 
-           ds.date,
-           COALESCE(SUM(
-             CASE 
-               WHEN t.type = 'income' OR t.type = 'transfer' THEN t.amount
-               WHEN t.type = 'expense' THEN -t.amount
-               ELSE 0
-             END
-           ), 0) as cumulative_wallet_balance
-         FROM date_series ds
-         LEFT JOIN transactions t ON DATE(t.date) <= ds.date AND DATE(t.date) <= CURRENT_DATE
-         LEFT JOIN user_wallets w ON t.wallet_id = w.id
-         WHERE (t.user_id = $3 OR t.user_id IS NULL) AND (w.user_id = $3 OR w.user_id IS NULL) AND (w.is_active = true OR w.is_active IS NULL)
-         GROUP BY ds.date
-       ),
-       cumulative_old_wallet_balance AS (
-         SELECT 
-           ds.date,
-           COALESCE(SUM(i.amount), 0) - COALESCE(SUM(e.amount), 0) as cumulative_old_balance
-         FROM date_series ds
-         LEFT JOIN income i ON DATE(i.date) <= ds.date AND DATE(i.date) <= CURRENT_DATE AND i.user_id = $3
-         LEFT JOIN expenses e ON DATE(e.date) <= ds.date AND DATE(e.date) <= CURRENT_DATE AND e.user_id = $3
-         LEFT JOIN user_wallets w ON (i.wallet_id = w.id OR e.wallet_id = w.id)
-         WHERE w.user_id = $3 AND w.is_active = true
-         GROUP BY ds.date
-       ),
-       cumulative_savings_balance AS (
-         SELECT 
-           ds.date,
-           COALESCE(SUM(s.amount), 0) as cumulative_savings
-         FROM date_series ds
-         LEFT JOIN savings s ON DATE(s.date) <= ds.date AND DATE(s.date) <= CURRENT_DATE
-         WHERE s.user_id = $3
-         GROUP BY ds.date
-       ),
-       cumulative_investments_balance AS (
-         SELECT 
-           ds.date,
-           COALESCE(SUM(inv.amount), 0) as cumulative_investments
-         FROM date_series ds
-         LEFT JOIN investments inv ON DATE(inv.date) <= ds.date AND DATE(inv.date) <= CURRENT_DATE
-         WHERE inv.user_id = $3
-         GROUP BY ds.date
-       )
-       SELECT 
-         ds.date,
-         COALESCE(SUM(de.total_expenses), 0) as expenses,
-         COALESCE(SUM(di.total_income), 0) as income,
-         COALESCE(ds_savings.total_savings, 0) as savings,
-         COALESCE(ds_inv.total_investments, 0) as investments,
-         COALESCE(SUM(di.total_income), 0) - COALESCE(SUM(de.total_expenses), 0) as net,
-         COALESCE(cwb.cumulative_wallet_balance, 0) + COALESCE(cowb.cumulative_old_balance, 0) + COALESCE(csb.cumulative_savings, 0) + COALESCE(cib.cumulative_investments, 0) as total_assets
-       FROM date_series ds
-       LEFT JOIN daily_expenses de ON ds.date = de.expense_date
-       LEFT JOIN daily_income di ON ds.date = di.income_date
-       LEFT JOIN daily_savings ds_savings ON ds.date = ds_savings.savings_date
-       LEFT JOIN daily_investments ds_inv ON ds.date = ds_inv.investment_date
-       LEFT JOIN cumulative_wallet_balance cwb ON ds.date = cwb.date
-       LEFT JOIN cumulative_old_wallet_balance cowb ON ds.date = cowb.date
-       LEFT JOIN cumulative_savings_balance csb ON ds.date = csb.date
-       LEFT JOIN cumulative_investments_balance cib ON ds.date = cib.date
-       GROUP BY ds.date, ds_savings.total_savings, ds_inv.total_investments, cwb.cumulative_wallet_balance, cowb.cumulative_old_balance, csb.cumulative_savings, cib.cumulative_investments
-       ORDER BY ds.date ASC
-     `;
+      WITH date_series AS (
+        SELECT generate_series(
+          $1::date,
+          $2::date,
+          '1 day'::interval
+        )::date as date
+      ),
+      daily_transactions AS (
+        SELECT 
+          DATE(t.date) as transaction_date,
+          SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END) as income,
+          SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END) as expenses,
+          SUM(CASE WHEN t.type = 'savings' THEN t.amount ELSE 0 END) as savings,
+          SUM(CASE WHEN t.type = 'investment' THEN t.amount ELSE 0 END) as investments
+        FROM transactions t
+        WHERE t.user_id = $3 AND t.date >= $1 AND t.date <= $2
+        GROUP BY DATE(t.date)
+      )
+      SELECT 
+        ds.date,
+        COALESCE(dt.income, 0) as income,
+        COALESCE(dt.expenses, 0) as expenses,
+        COALESCE(dt.savings, 0) as savings,
+        COALESCE(dt.investments, 0) as investments,
+        COALESCE(dt.income, 0) - COALESCE(dt.expenses, 0) as net,
+        COALESCE(dt.income, 0) - COALESCE(dt.expenses, 0) + COALESCE(dt.savings, 0) + COALESCE(dt.investments, 0) as total_assets
+      FROM date_series ds
+      LEFT JOIN daily_transactions dt ON ds.date = dt.transaction_date
+      ORDER BY ds.date ASC
+    `;
      
      const result = await pool.query(query, [startDate, endDate, user.id]);
      

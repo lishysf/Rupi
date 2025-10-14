@@ -3,6 +3,7 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import SessionProvider from "@/components/SessionProvider";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -41,11 +42,13 @@ export default function RootLayout({
       <body
         className={`${poppins.variable} antialiased bg-background text-foreground`}
       >
-        <ThemeProvider>
-          <SessionProvider>
-            {children}
-          </SessionProvider>
-        </ThemeProvider>
+        <LanguageProvider>
+          <ThemeProvider>
+            <SessionProvider>
+              {children}
+            </SessionProvider>
+          </ThemeProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

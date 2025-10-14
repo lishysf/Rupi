@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { IncomeDatabase, INCOME_SOURCES } from '@/lib/database';
+import { TransactionDatabase, INCOME_SOURCES } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // PUT - Update income
@@ -46,19 +46,33 @@ export async function PUT(
       );
     }
 
-    // Update income
-    const income = await IncomeDatabase.updateIncome(
+    // Update income transaction
+    const allTransactions = await TransactionDatabase.getUserTransactions(user.id, 1000, 0);
+    const existingIncome = allTransactions.find(t => t.id === id && t.type === 'income');
+    
+    if (!existingIncome) {
+      throw new Error('Income not found');
+    }
+
+    // Update the transaction
+    const updatedIncome = await TransactionDatabase.updateTransaction(
       user.id,
       id,
-      description,
-      amount,
-      source,
-      date ? new Date(date) : undefined
+      description || existingIncome.description,
+      amount || existingIncome.amount,
+      'income',
+      existingIncome.wallet_id,
+      existingIncome.category,
+      source || existingIncome.source,
+      existingIncome.goal_name,
+      existingIncome.asset_name,
+      existingIncome.transfer_type,
+      date ? new Date(date) : existingIncome.date
     );
 
     return NextResponse.json({
       success: true,
-      data: income,
+      data: updatedIncome,
       message: 'Income updated successfully'
     });
 
@@ -105,7 +119,7 @@ export async function DELETE(
       );
     }
 
-    const success = await IncomeDatabase.deleteIncome(user.id, id);
+    const success = await TransactionDatabase.deleteTransaction(user.id, id);
 
     if (!success) {
       return NextResponse.json(

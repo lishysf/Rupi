@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { UserWalletDatabase } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
+import { UserWalletDatabase } from '@/lib/database';
 
-// PUT - Update wallet
-export async function PUT(
+// GET - Get specific wallet
+export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -22,67 +22,85 @@ export async function PUT(
       );
     }
 
-    const body = await request.json();
-    const { name, type, balance, color, icon } = body;
+    const wallets = await UserWalletDatabase.getAllWalletsWithBalances(user.id);
+    const wallet = wallets.find(w => w.id === walletId);
 
-    // Validate balance if provided
-    if (balance !== undefined && (typeof balance !== 'number' || balance < 0)) {
+    if (!wallet) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Balance must be a non-negative number'
+          error: 'Wallet not found'
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: wallet,
+      message: 'Wallet retrieved successfully'
+    });
+
+  } catch (error) {
+    console.error('GET /api/wallets/[id] error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to retrieve wallet',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT - Update wallet
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await requireAuth(request);
+    const { id } = await params;
+    const walletId = parseInt(id);
+    const body = await request.json();
+
+    if (isNaN(walletId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid wallet ID'
         },
         { status: 400 }
       );
     }
 
-    // Prepare updates object (exclude balance as it's calculated from transactions)
+    const { name, type, color, icon } = body;
+
+    // Validate required fields
+    if (!name && !type && !color && !icon) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'At least one field must be provided for update'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Prepare updates object
     const updates: any = {};
     if (name !== undefined) updates.name = name;
     if (type !== undefined) updates.type = type;
     if (color !== undefined) updates.color = color;
     if (icon !== undefined) updates.icon = icon;
 
-    // Handle balance adjustment if provided
-    if (balance !== undefined) {
-      const currentBalance = await UserWalletDatabase.calculateWalletBalance(user.id, walletId);
-      const balanceDifference = balance - currentBalance;
-      
-      if (Math.abs(balanceDifference) > 0.01) { // Only create adjustment if there's a meaningful difference
-        const { WalletBalanceAdjustmentDatabase } = await import('@/lib/database');
-        
-        await WalletBalanceAdjustmentDatabase.createAdjustment(
-          user.id,
-          walletId,
-          balanceDifference,
-          `Manual balance adjustment for ${name || 'wallet'}`,
-          'manual_adjustment'
-        );
-        
-        console.log(`Added balance adjustment: ${balanceDifference > 0 ? '+' : ''}${balanceDifference} to wallet ${walletId}`);
-      }
-    }
-
-    if (Object.keys(updates).length === 0 && balance === undefined) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'No updates provided'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Update wallet (only non-balance fields)
-    const wallet = await UserWalletDatabase.updateWallet(user.id, walletId, updates);
-
-    // Return wallet with calculated balance
-    const walletsWithBalances = await UserWalletDatabase.getAllWalletsWithBalances(user.id);
-    const updatedWallet = walletsWithBalances.find(w => w.id === walletId);
+    // Update the wallet
+    const updatedWallet = await UserWalletDatabase.updateWallet(user.id, walletId, updates);
 
     return NextResponse.json({
       success: true,
-      data: updatedWallet || wallet,
+      data: updatedWallet,
       message: 'Wallet updated successfully'
     });
 
@@ -119,10 +137,10 @@ export async function DELETE(
       );
     }
 
-    // Delete wallet
-    const success = await UserWalletDatabase.deleteWallet(user.id, walletId);
+    // Delete the wallet (soft delete)
+    const deleted = await UserWalletDatabase.deleteWallet(user.id, walletId);
 
-    if (!success) {
+    if (!deleted) {
       return NextResponse.json(
         {
           success: false,

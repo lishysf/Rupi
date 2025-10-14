@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface FinancialData {
   weeklyExpenses: number;
@@ -17,6 +18,8 @@ interface IncomeExpenseSummaryProps {
 
 export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeExpenseSummaryProps) {
   const { state } = useFinancialData();
+  let t = (key: string) => key;
+  try { t = useLanguage().t; } catch {}
   const { expenses, income } = state.data;
   const loading = state.loading.initial && (expenses.length === 0 && income.length === 0);
 
@@ -98,7 +101,7 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
             widgetSize === 'square' ? 'text-sm' :
             widgetSize === 'half' ? 'text-base' : 'text-lg'
           } font-semibold text-neutral-900 dark:text-white`}>
-            Income & Expense Summary
+            {t('incomeExpenseSummary')}
           </h2>
         </div>
         <div className="flex-1 p-4 space-y-4">
@@ -140,7 +143,7 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
           widgetSize === 'square' ? 'text-xs' :
           widgetSize === 'half' ? 'text-xs' : 'text-sm'
         } font-bold text-neutral-900 dark:text-white`}>
-          Expense & Incomes
+          {t('expenseIncomes')}
         </h2>
       </div>
 
@@ -181,7 +184,7 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
               +{formatCurrency(financialData.monthlyIncome)}
             </div>
             <div className="text-xs text-neutral-600 dark:text-neutral-400">
-              Total incomes this month
+              {t('totalIncomesThisMonth')}
             </div>
           </div>
         </div>
@@ -222,7 +225,7 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
               -{formatCurrency(financialData.monthlyExpenses)}
             </div>
             <div className="text-xs text-neutral-600 dark:text-neutral-400">
-              Total outcomes this month
+              {t('totalOutcomesThisMonth')}
             </div>
           </div>
         </div>
@@ -236,10 +239,10 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
                   <span className="font-bold text-red-700 dark:text-red-400">
                     {Math.round((financialData.monthlyExpenses / financialData.monthlyIncome) * 100)}%
                   </span>
-                  <span> of income used for expenses</span>
+                  <span>{t('ofIncomeUsed')}</span>
                 </>
               )
-              : 'No income data available'
+              : t('noIncomeData')
             }
           </div>
         </div>

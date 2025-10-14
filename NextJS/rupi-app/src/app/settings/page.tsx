@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import Sidebar from '@/app/components/Sidebar';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Sun, Moon, Monitor, Check } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -21,6 +22,19 @@ export default function SettingsPage() {
     setTheme = themeContext.setTheme;
   } catch (error) {
     console.warn('Theme context not available:', error);
+  }
+
+  // Language context (optional fallback)
+  let language: 'en' | 'id' = 'en';
+  let setLanguage = (lang: 'en' | 'id') => {};
+  let t = (key: string) => key;
+  try {
+    const langCtx = useLanguage();
+    language = langCtx.language;
+    setLanguage = langCtx.setLanguage as (l: 'en' | 'id') => void;
+    t = langCtx.t;
+  } catch (error) {
+    console.warn('Language context not available:', error);
   }
 
   useEffect(() => {
@@ -71,8 +85,8 @@ export default function SettingsPage() {
           <div className="p-4 md:p-8">
             {/* Header */}
             <div className="mb-8">
-              <h1 className="text-2xl md:text-3xl font-bold text-neutral-900 dark:text-neutral-100">Settings</h1>
-              <p className="text-neutral-600 dark:text-neutral-400 mt-2">Customize your Fundy experience</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-neutral-900 dark:text-neutral-100">{t('settings')}</h1>
+              <p className="text-neutral-600 dark:text-neutral-400 mt-2">{t('customizeExperience')}</p>
             </div>
 
             {/* Theme Settings */}
@@ -83,8 +97,8 @@ export default function SettingsPage() {
                     <Monitor className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Appearance</h2>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">Choose your preferred theme</p>
+                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t('appearance')}</h2>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">{t('chooseTheme')}</p>
                   </div>
                 </div>
 
@@ -140,6 +154,55 @@ export default function SettingsPage() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            </div>
+
+            {/* Language Settings */}
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-transparent shadow-sm mt-8">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
+                    <span className="w-5 h-5 text-emerald-600 dark:text-emerald-400">🌐</span>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t('language')}</h2>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">{t('chooseLanguage')}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setLanguage('id')}
+                    className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
+                      language === 'id'
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                        : 'border-neutral-200 dark:border-transparent hover:border-neutral-300 dark:hover:border-transparent'
+                    }`}
+                  >
+                    {language === 'id' && (
+                      <div className="absolute top-3 right-3 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center">
+                        <Check className="w-3 h-3 text-white" />
+                      </div>
+                    )}
+                    <div className="font-medium text-neutral-900 dark:text-neutral-100">{t('indonesian')}</div>
+                  </button>
+
+                  <button
+                    onClick={() => setLanguage('en')}
+                    className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
+                      language === 'en'
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                        : 'border-neutral-200 dark:border-transparent hover:border-neutral-300 dark:hover:border-transparent'
+                    }`}
+                  >
+                    {language === 'en' && (
+                      <div className="absolute top-3 right-3 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center">
+                        <Check className="w-3 h-3 text-white" />
+                      </div>
+                    )}
+                    <div className="font-medium text-neutral-900 dark:text-neutral-100">{t('english')}</div>
+                  </button>
                 </div>
               </div>
             </div>

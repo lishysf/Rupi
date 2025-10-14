@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ExpenseDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
+import { TransactionDatabase, EXPENSE_CATEGORIES } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 // PUT - Update expense
@@ -46,19 +46,33 @@ export async function PUT(
       );
     }
 
-    // Update expense
-    const expense = await ExpenseDatabase.updateExpense(
+    // Update expense transaction
+    const allTransactions = await TransactionDatabase.getUserTransactions(user.id, 1000, 0);
+    const existingExpense = allTransactions.find(t => t.id === id && t.type === 'expense');
+    
+    if (!existingExpense) {
+      throw new Error('Expense not found');
+    }
+
+    // Update the transaction
+    const updatedExpense = await TransactionDatabase.updateTransaction(
       user.id,
       id,
-      description,
-      amount,
-      category,
-      date ? new Date(date) : undefined
+      description || existingExpense.description,
+      amount || existingExpense.amount,
+      'expense',
+      existingExpense.wallet_id,
+      category || existingExpense.category,
+      existingExpense.source,
+      existingExpense.goal_name,
+      existingExpense.asset_name,
+      existingExpense.transfer_type,
+      date ? new Date(date) : existingExpense.date
     );
 
     return NextResponse.json({
       success: true,
-      data: expense,
+      data: updatedExpense,
       message: 'Expense updated successfully'
     });
 
@@ -105,7 +119,7 @@ export async function DELETE(
       );
     }
 
-    const success = await ExpenseDatabase.deleteExpense(user.id, id);
+    const success = await TransactionDatabase.deleteTransaction(user.id, id);
 
     if (!success) {
       return NextResponse.json(
