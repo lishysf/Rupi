@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GroqAIService } from '@/lib/groq-ai';
 import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDatabase, initializeDatabase } from '@/lib/database';
-import pool from '@/lib/database';
+// import pool from '@/lib/database'; // Removed unused import
 import { requireAuth } from '@/lib/auth-utils';
 import { PerformanceMonitor } from '@/lib/performance-monitor';
 import { createDatabaseIndexes } from '@/lib/database-indexes';
@@ -353,7 +353,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     const body = await request.json();
-    const { message, action, conversationHistory } = body;
+    const { message, conversationHistory } = body;
 
     if (!message) {
       return NextResponse.json(
@@ -954,7 +954,7 @@ export async function POST(request: NextRequest) {
         const allTransactions = await TransactionDatabase.getUserTransactions(user.id, limit, 0);
         
         // Filter transactions by type and date in one pass for better performance
-        const filterTransactions = (transactions: any[], type: string) => {
+        const filterTransactions = (transactions: Array<{type: string, date: Date, amount: number | string, category?: string}>, type: string) => {
           return transactions.filter(transaction => {
             if (transaction.type !== type) return false;
             
@@ -972,7 +972,7 @@ export async function POST(request: NextRequest) {
         const filteredInvestments = filterTransactions(allTransactions, 'investment');
 
         // Compute totals for requested period
-        const sum = (arr: any[]) => arr.reduce((s, t) => s + (typeof t.amount === 'string' ? parseFloat(t.amount) : (t.amount || 0)), 0);
+        const sum = (arr: Array<{amount: number | string}>) => arr.reduce((s, t) => s + (typeof t.amount === 'string' ? parseFloat(t.amount) : (t.amount || 0)), 0);
         const totalExpenses = sum(filteredExpenses);
         const totalIncome = sum(filteredIncome);
         const totalSavings = sum(filteredSavings);

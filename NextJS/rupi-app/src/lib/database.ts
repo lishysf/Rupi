@@ -920,7 +920,7 @@ export class UserWalletDatabase {
       const cacheKey = `wallet_balance_${userId}_${walletId}`;
       const cachedBalance = getCachedData(cacheKey, WALLET_BALANCE_CACHE_TTL);
       if (cachedBalance !== null) {
-        return cachedBalance;
+        return cachedBalance as number;
       }
       
       // Optimized query with proper indexing
@@ -1048,7 +1048,7 @@ export class TransactionDatabase {
     // Check cache first
     const cachedData = getCachedData(cacheKey);
     if (cachedData) {
-      return cachedData;
+      return cachedData as Transaction[];
     }
     
     const query = `
@@ -1097,7 +1097,7 @@ export class TransactionDatabase {
       const cacheKey = `wallet_balance_${userId}_${walletId}`;
       const cachedBalance = getCachedData(cacheKey, WALLET_BALANCE_CACHE_TTL);
       if (cachedBalance !== null) {
-        return cachedBalance;
+        return cachedBalance as number;
       }
       
       // Optimized query with proper indexing

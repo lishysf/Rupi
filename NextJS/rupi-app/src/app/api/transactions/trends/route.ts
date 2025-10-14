@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Calculate date range
     const now = new Date();
     let startDate: Date;
-    let endDate: Date = now;
+    const endDate: Date = now;
 
     if (range === 'week') {
       startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Group by date and calculate daily totals
-    const dailyData: { [key: string]: any } = {};
+    const dailyData: { [key: string]: { date: string, income: number, expenses: number, savings: number, investments: number, transfers: number, total: number } } = {};
     
     rangeTransactions.forEach(transaction => {
       const date = new Date(transaction.date).toISOString().split('T')[0];
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Convert to array and sort by date
-    const trendsData = Object.values(dailyData).sort((a: any, b: any) => 
+    const trendsData = Object.values(dailyData).sort((a, b) => 
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 

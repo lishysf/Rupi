@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-utils';
-import { initializeDatabase, pool, TransactionDatabase } from '@/lib/database';
+import { initializeDatabase, pool } from '@/lib/database';
 
 let dbInitialized = false;
 

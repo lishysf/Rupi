@@ -34,7 +34,7 @@ export default function SignIn() {
           router.refresh();
         }
       }
-    } catch (error) {
+    } catch {
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -112,7 +112,7 @@ export default function SignIn() {
 
             <div className="text-center">
               <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Don't have an account?{' '}
+                Don&apos;t have an account?{' '}
                 <Link
                   href="/auth/signup"
                   className="font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300"

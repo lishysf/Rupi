@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     };
     
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let i = 1;
     
     if (description !== undefined) { 

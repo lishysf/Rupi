@@ -89,7 +89,7 @@ export async function PUT(
     }
 
     // Prepare updates object
-    const updates: any = {};
+    const updates: Record<string, string> = {};
     if (name !== undefined) updates.name = name;
     if (type !== undefined) updates.type = type;
     if (color !== undefined) updates.color = color;

@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     const body = await request.json();
-    const { description, amount, goalId, goalName, type = 'deposit', walletId } = body;
+    const { description, amount, goalName, type = 'deposit', walletId } = body;
 
     // Validate required fields
     if (!description || !amount) {
