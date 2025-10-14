@@ -368,7 +368,7 @@ export async function POST(request: NextRequest) {
     let response;
     let transactionCreated = null;
     let multipleTransactionsCreated = null;
-    let aiDebug: any = {};
+    const aiDebug: Record<string, unknown> = {};
 
     // Unified decision (intent + optional parsed transactions)
     PerformanceMonitor.startTimer('intent-analysis');
@@ -383,7 +383,7 @@ export async function POST(request: NextRequest) {
     if (intent === 'multiple_transaction') {
       try {
         // Use AI-supplied transactions if present; fallback to parser
-        let parsedMultipleTransactions = decision.transactions && decision.transactions.length > 0
+        const parsedMultipleTransactions = decision.transactions && decision.transactions.length > 0
           ? { transactions: decision.transactions, totalTransactions: decision.transactions.length, successCount: decision.transactions.length, failedCount: 0 }
           : await GroqAIService.parseMultipleTransactions(message, user.id);
         
@@ -733,7 +733,7 @@ export async function POST(request: NextRequest) {
                 shopeepay: ['shopeepay', 'shopee pay'],
                 cash: ['cash', 'tunai', 'uang tunai']
               };
-              let inferred = wallets.find(w => {
+              const inferred = wallets.find(w => {
                 const nameLower = w.name.toLowerCase();
                 const aliases = aliasMap[nameLower as keyof typeof aliasMap] || [];
                 return messageLower.includes(nameLower) || aliases.some(a => messageLower.includes(a));

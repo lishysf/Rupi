@@ -31,12 +31,12 @@ if (isSupabase) {
 }
 
 // Simple in-memory cache for frequently accessed data
-const cache = new Map<string, { data: any; timestamp: number }>();
+const cache = new Map<string, { data: unknown; timestamp: number }>();
 const CACHE_TTL = 30000; // 30 seconds cache TTL
 const WALLET_BALANCE_CACHE_TTL = 5000; // 5 seconds cache TTL for wallet balances
 
 // Cache helper functions
-function getCachedData(key: string, ttl: number = CACHE_TTL) {
+function getCachedData(key: string, ttl: number = CACHE_TTL): unknown {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.timestamp < ttl) {
     return cached.data;
@@ -45,7 +45,7 @@ function getCachedData(key: string, ttl: number = CACHE_TTL) {
   return null;
 }
 
-function setCachedData(key: string, data: any) {
+function setCachedData(key: string, data: unknown) {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
@@ -490,7 +490,7 @@ export class UserDatabase {
   // Update user
   static async updateUser(id: number, updates: { name?: string; email?: string }): Promise<User> {
     const updateFields: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramIndex = 1;
 
     if (updates.name !== undefined) {
@@ -610,7 +610,7 @@ export class SavingsGoalDatabase {
     targetDate?: Date
   ): Promise<SavingsGoal> {
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramIndex = 1;
 
     if (goalName !== undefined) {
@@ -1146,7 +1146,7 @@ export class TransactionDatabase {
     date?: Date
   ): Promise<Transaction> {
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramIndex = 1;
 
     if (description !== undefined) {

@@ -54,10 +54,8 @@ export default function Sidebar({ currentPage = 'Dashboard' }: SidebarProps) {
   const router = useRouter();
   
   // Language context with safe fallback
-  let t = (key: string) => key;
-  try {
-    t = useLanguage().t;
-  } catch {}
+  const language = useLanguage();
+  const t = language?.t || ((key: string) => key);
   
   const username = session?.user?.name || 'user';
   const navigationItems = getNavigationItems(username, t);

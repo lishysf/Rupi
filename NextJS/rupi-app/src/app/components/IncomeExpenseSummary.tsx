@@ -18,8 +18,8 @@ interface IncomeExpenseSummaryProps {
 
 export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeExpenseSummaryProps) {
   const { state } = useFinancialData();
-  let t = (key: string) => key;
-  try { t = useLanguage().t; } catch {}
+  const language = useLanguage();
+  const t = language?.t || ((key: string) => key);
   const { expenses, income } = state.data;
   const loading = state.loading.initial && (expenses.length === 0 && income.length === 0);
 

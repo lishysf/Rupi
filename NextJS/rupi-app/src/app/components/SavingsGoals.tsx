@@ -23,8 +23,8 @@ interface SavingsGoal {
 
 export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProps) {
   const { state, fetchSavings } = useFinancialData();
-  let t = (key: string) => key;
-  try { t = useLanguage().t; } catch {}
+  const language = useLanguage();
+  const t = language?.t || ((key: string) => key);
   const { savings } = state.data;
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);

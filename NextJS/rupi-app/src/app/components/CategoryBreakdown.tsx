@@ -34,8 +34,8 @@ interface CategoryBreakdownProps {
 
 export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBreakdownProps) {
   const { state } = useFinancialData();
-  let t = (key: string) => key;
-  try { t = useLanguage().t; } catch {}
+  const language = useLanguage();
+  const t = language?.t || ((key: string) => key);
   const { expenses } = state.data;
   const loading = state.loading.initial && expenses.length === 0;
 

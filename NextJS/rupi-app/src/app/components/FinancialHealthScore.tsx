@@ -33,8 +33,8 @@ interface FinancialHealthScoreProps {
 
 export default function FinancialHealthScore({ widgetSize = 'square' }: FinancialHealthScoreProps) {
   const { state } = useFinancialData();
-  let t = (key: string) => key;
-  try { t = useLanguage().t; } catch {}
+  const language = useLanguage();
+  const t = language?.t || ((key: string) => key);
   const { expenses, income, savings, investments, wallets } = state.data;
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
   

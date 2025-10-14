@@ -30,10 +30,10 @@ interface FinancialSummaryProps {
 
 export default function FinancialSummary({ widgetSize = 'square' }: FinancialSummaryProps) {
   const { state } = useFinancialData();
-  let t = (key: string) => key;
-  try { t = useLanguage().t; } catch {}
+  const language = useLanguage();
+  const t = language?.t || ((key: string) => key);
   const { expenses, income, savings, wallets } = state.data;
-  const investments: any[] = (state.data as any).investments || [];
+  const investments: unknown[] = (state.data as Record<string, unknown>).investments || [];
   const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
   
   // Wallet loading state from context - only show loading during initial load
