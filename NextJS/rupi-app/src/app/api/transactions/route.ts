@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       source,
       goal_name,
       asset_name,
+      undefined, // transfer_type
       date ? new Date(date) : new Date()
     );
 

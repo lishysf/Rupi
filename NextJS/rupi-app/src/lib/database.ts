@@ -1,14 +1,34 @@
 import { Pool } from 'pg';
 
-// Database configuration
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'rupi_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+// Database configuration - supports both direct PostgreSQL and Supabase PostgreSQL
+const isSupabase = process.env.SUPABASE_DB_PASSWORD;
+
+let pool: Pool;
+
+if (isSupabase) {
+  // Use Supabase PostgreSQL connection
+  const supabaseUrl = process.env.SUPABASE_DB_HOST || 'db.thkdrlozedfysuukvwmd.supabase.co';
+  const supabasePassword = process.env.SUPABASE_DB_PASSWORD!;
+  
+  pool = new Pool({
+    host: supabaseUrl,
+    port: 5432,
+    database: 'postgres',
+    user: 'postgres',
+    password: supabasePassword,
+    ssl: { rejectUnauthorized: false }
+  });
+} else {
+  // Use direct PostgreSQL connection
+  pool = new Pool({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    database: process.env.DB_NAME || 'rupi_db',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'password',
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  });
+}
 
 // Simple in-memory cache for frequently accessed data
 const cache = new Map<string, { data: any; timestamp: number }>();
@@ -394,6 +414,7 @@ export interface Transaction {
   wallet_id?: number;
   goal_name?: string;
   asset_name?: string;
+  transfer_type?: string;
   date: Date;
   created_at: Date;
   updated_at: Date;
@@ -979,11 +1000,12 @@ export class TransactionDatabase {
     source?: string,
     goalName?: string,
     assetName?: string,
+    transferType?: string,
     date?: Date
   ): Promise<Transaction> {
     const query = `
-      INSERT INTO transactions (user_id, description, amount, type, wallet_id, category, source, goal_name, asset_name, date)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO transactions (user_id, description, amount, type, wallet_id, category, source, goal_name, asset_name, transfer_type, date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
     const values = [
@@ -996,6 +1018,7 @@ export class TransactionDatabase {
       source || null,
       goalName || null,
       assetName || null,
+      transferType || null,
       date || new Date()
     ];
     

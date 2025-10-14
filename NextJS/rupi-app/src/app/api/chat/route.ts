@@ -52,6 +52,7 @@ async function handleExpenseCreation(userId: number, description: string, amount
     undefined,
     undefined,
     undefined,
+    undefined,
     new Date()
   );
 }
@@ -97,6 +98,7 @@ async function handleIncomeCreation(userId: number, description: string, amount:
     walletId,
     undefined,
     source,
+    undefined,
     undefined,
     undefined,
     new Date()
@@ -147,6 +149,7 @@ async function handleWalletTransfer(userId: number, description: string, amount:
     undefined,
     undefined,
     undefined,
+    'wallet_to_wallet',
     new Date()
   );
 
@@ -161,6 +164,7 @@ async function handleWalletTransfer(userId: number, description: string, amount:
     undefined,
     undefined,
     undefined,
+    'wallet_to_wallet',
     new Date()
   );
 
@@ -261,6 +265,7 @@ async function handleSavingsTransfer(userId: number, description: string, amount
       undefined,
       goalName,
       undefined,
+      'wallet_to_savings',
       new Date()
     );
     
@@ -291,6 +296,7 @@ async function handleSavingsTransfer(userId: number, description: string, amount
        undefined,
        goalName,
        undefined,
+       'savings_to_wallet',
        new Date()
      );
      
@@ -315,6 +321,7 @@ async function handleSavingsTransfer(userId: number, description: string, amount
          undefined,
          undefined,
          undefined,
+         'savings_to_wallet',
          new Date()
        );
      }
@@ -544,6 +551,7 @@ export async function POST(request: NextRequest) {
                       undefined,
                       undefined,
                       transaction.assetName,
+                      undefined,
                       new Date()
                     );
                   } catch (investmentError) {
@@ -880,6 +888,7 @@ export async function POST(request: NextRequest) {
                 undefined,
                 undefined,
                 parsedTransaction.assetName,
+                undefined,
                 new Date()
               );
               response = `Your investment portfolio value has been updated to Rp${parsedTransaction.amount.toLocaleString()}!`;

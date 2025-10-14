@@ -8,7 +8,7 @@ export default withAuth(
     // Check if user is trying to access someone else's dashboard
     if (pathname.startsWith('/[') || pathname.includes('/[')) {
       // This is a dynamic route, we'll handle the username check in the page component
-      return true;
+      return;
     }
   },
   {

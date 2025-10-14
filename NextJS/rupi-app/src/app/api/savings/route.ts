@@ -190,6 +190,7 @@ export async function POST(request: NextRequest) {
         undefined, // subcategory
         goalName,
         undefined, // asset_name
+        undefined, // transfer_type
         new Date()
       );
 
@@ -205,6 +206,7 @@ export async function POST(request: NextRequest) {
           undefined, // subcategory
           undefined, // goal_name
           undefined, // asset_name
+          undefined, // transfer_type
           new Date()
         );
       }

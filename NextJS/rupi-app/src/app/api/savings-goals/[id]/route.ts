@@ -82,7 +82,6 @@ export async function PUT(
       goalId,
       goal_name,
       target_amount,
-      undefined, // currentAmount - not used in optimized system
       target_date ? new Date(target_date) : undefined
     );
 

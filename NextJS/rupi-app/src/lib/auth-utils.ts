@@ -2,6 +2,17 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
 import { NextRequest } from 'next/server';
 
+// Extend the session type to include id
+declare module 'next-auth' {
+  interface Session {
+    user: {
+      id: string;
+      email: string;
+      name: string;
+    };
+  }
+}
+
 export async function getCurrentUser(request?: NextRequest) {
   try {
     const session = await getServerSession(authOptions);

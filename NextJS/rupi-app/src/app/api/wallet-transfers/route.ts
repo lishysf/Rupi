@@ -84,6 +84,7 @@ export async function POST(request: NextRequest) {
         undefined,
         undefined,
         undefined,
+        'wallet_to_wallet',
         new Date()
       );
 
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
         undefined,
         undefined,
         undefined,
+        'wallet_to_wallet',
         new Date()
       );
 
