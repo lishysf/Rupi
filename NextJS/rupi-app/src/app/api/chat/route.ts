@@ -381,7 +381,7 @@ export async function POST(request: NextRequest) {
     // Cache user wallets to avoid multiple database queries
     PerformanceMonitor.startTimer('fetch-wallets');
     const userWallets = await UserWalletDatabase.getAllWallets(user.id);
-    PerformanceMonitor.endTimer('fetch-wallets');
+    const walletsTime = PerformanceMonitor.endTimer('fetch-wallets');
     console.log(`Fetched ${userWallets.length} wallets for user ${user.id}`);
 
     if (!message) {
@@ -402,7 +402,7 @@ export async function POST(request: NextRequest) {
     // Unified decision (intent + optional parsed transactions)
     PerformanceMonitor.startTimer('ai-decide-and-parse');
     const decision = await GroqAIService.decideAndParse(message, user.id);
-    PerformanceMonitor.endTimer('ai-decide-and-parse');
+    const aiTime = PerformanceMonitor.endTimer('ai-decide-and-parse');
     const intent = decision.intent;
     console.log('🤖 AI Analysis: Intent=' + intent + ', Transactions=' + (decision.transactions?.length || 0) + ', Message:', message.substring(0, 50) + '...');
     aiDebug.intent = intent;
@@ -952,7 +952,7 @@ export async function POST(request: NextRequest) {
         PerformanceMonitor.startTimer('fetch-transactions-for-analysis');
         const limit = 100; // Optimized limit for better performance
         const allTransactions = await TransactionDatabase.getUserTransactions(user.id, limit, 0);
-        PerformanceMonitor.endTimer('fetch-transactions-for-analysis');
+        const fetchTransactionsTime = PerformanceMonitor.endTimer('fetch-transactions-for-analysis');
         
         // Filter transactions by type and date in one pass for better performance
         const filterTransactions = (transactions: Array<{type: string, date: Date, amount: number | string, category?: string}>, type: string) => {
@@ -1071,13 +1071,13 @@ export async function POST(request: NextRequest) {
       response = await GroqAIService.generateChatResponse(messageWithDateContext, context, conversationHistory);
     }
 
-    PerformanceMonitor.endTimer('chat-request-total');
+    const totalTime = PerformanceMonitor.endTimer('chat-request-total');
     
     // Log performance metrics
     console.log('⏱️ Performance Metrics:');
-    console.log('  - Total request time:', PerformanceMonitor.getTimer('chat-request-total')?.toFixed(2) + 'ms');
-    console.log('  - AI decide & parse:', PerformanceMonitor.getTimer('ai-decide-and-parse')?.toFixed(2) + 'ms');
-    console.log('  - Fetch wallets:', PerformanceMonitor.getTimer('fetch-wallets')?.toFixed(2) + 'ms');
+    console.log('  - Total request time:', totalTime.toFixed(2) + 'ms');
+    console.log('  - AI decide & parse:', aiTime.toFixed(2) + 'ms');
+    console.log('  - Fetch wallets:', walletsTime.toFixed(2) + 'ms');
     
     return NextResponse.json({
       success: true,
@@ -1088,8 +1088,9 @@ export async function POST(request: NextRequest) {
         ai: aiDebug,
         timestamp: new Date().toISOString(),
         performance: {
-          totalTime: PerformanceMonitor.getTimer('chat-request-total'),
-          aiTime: PerformanceMonitor.getTimer('ai-decide-and-parse')
+          totalTime: totalTime,
+          aiTime: aiTime,
+          walletsTime: walletsTime
         }
       }
     });
