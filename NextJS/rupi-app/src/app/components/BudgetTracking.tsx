@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Target, TrendingUp, AlertCircle, Plus, Edit2, Trash2 } from 'lucide-react';
+import { Target, TrendingUp, AlertCircle, Plus, Edit2, Trash2, ExternalLink } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import { useRouter } from 'next/navigation';
 import BudgetEditModal from './BudgetEditModal';
 
 // Expense categories - expanded to match backend categories
@@ -40,12 +41,12 @@ interface BudgetTrackingProps {
 }
 
 export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTrackingProps) {
+  const router = useRouter();
   const { state, saveBudget, deleteBudget } = useFinancialData();
   let t = (key: string) => key;
   let translateCategory = (c: string) => c;
   try { const lang = useLanguage(); t = lang.t; translateCategory = lang.translateCategory; } catch {}
   const { budgets } = state.data;
-  const loading = state.loading.initial && budgets.length === 0;
   
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -148,53 +149,6 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
 
   const visibleBudgets = budgets.slice(0, getItemLimit());
 
-  // Only show loading on initial load, not on updates
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center">
-            <Target className={`${widgetSize === 'half' ? 'w-4 h-4' : 'w-5 h-5'} text-emerald-600 dark:text-emerald-400 mr-2`} />
-            <h2 className={`${widgetSize === 'half' ? 'text-base' : 'text-lg'} font-semibold text-neutral-900 dark:text-neutral-100`}>
-              {t('budgetTracking')}
-            </h2>
-          </div>
-        </div>
-        
-        {/* Loading skeleton */}
-        <div className="flex-1 space-y-3">
-          {/* Overall budget skeleton */}
-          <div className="bg-gradient-to-r from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-700 rounded-lg p-3 animate-pulse">
-            <div className="flex justify-between items-center mb-2">
-              <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-24"></div>
-              <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-8"></div>
-            </div>
-            <div className="flex justify-between items-center mb-2">
-              <div className="h-5 bg-neutral-300 dark:bg-neutral-600 rounded w-20"></div>
-              <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-16"></div>
-            </div>
-            <div className="w-full bg-neutral-300 dark:bg-neutral-600 rounded-full h-1.5"></div>
-          </div>
-          
-          {/* Individual budget items skeleton */}
-          {Array.from({ length: getItemLimit() }).map((_, index) => (
-            <div key={index} className="bg-neutral-100 dark:bg-neutral-800 rounded-lg p-2 animate-pulse">
-              <div className="flex justify-between items-center mb-1">
-                <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-20"></div>
-                <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-6"></div>
-              </div>
-              <div className="flex justify-between items-center mb-1">
-                <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-16"></div>
-                <div className="h-3 bg-neutral-300 dark:bg-neutral-600 rounded w-12"></div>
-              </div>
-              <div className="w-full bg-neutral-300 dark:bg-neutral-600 rounded-full h-1"></div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -208,18 +162,13 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
             Budget Tracking
           </h2>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className="text-xs text-neutral-500 dark:text-neutral-400">
-            {new Date().toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
-          </div>
-          <button
-            onClick={startAdd}
-            className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs"
-            title={t('addBudget')}
-          >
-            <Plus className="w-3 h-3" />
-          </button>
-        </div>
+        <button 
+          onClick={() => router.push('/budgets')}
+          className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium flex items-center gap-1"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Manage
+        </button>
       </div>
 
       {error && (

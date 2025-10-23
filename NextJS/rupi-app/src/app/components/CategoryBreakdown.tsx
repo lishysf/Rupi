@@ -37,7 +37,6 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
   const { expenses } = state.data;
-  const loading = state.loading.initial && expenses.length === 0;
 
   // Calculate expense summary from context data
   const expenseSummary: ExpenseSummary[] = useMemo(() => {
@@ -138,29 +137,7 @@ export default function CategoryBreakdown({ widgetSize = 'square' }: CategoryBre
     }, {} as Record<string, { label: string; color: string }>),
   } satisfies ChartConfig;
 
-  if (loading) {
-    return (
-      <Card className="bg-white dark:bg-neutral-900 border-neutral-200 dark:border-transparent h-full flex flex-col">
-        <CardContent className="flex-1 flex items-center justify-center p-6">
-          <div className="animate-pulse space-y-4 w-full">
-            <div className="flex items-center justify-center">
-              <div className="w-32 h-32 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
-                  <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded flex-1"></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (chartData.length === 0 && !loading) {
+  if (chartData.length === 0) {
     return (
       <Card className="bg-white dark:bg-neutral-900 border-neutral-200 dark:border-transparent h-full flex flex-col">
         <CardContent className="flex-1 flex items-center justify-center p-6">

@@ -47,12 +47,10 @@ export default function SettingsPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
-            Fundy
-          </div>
-          <div className="text-muted-foreground">Loading...</div>
+      <div className="min-h-screen bg-background text-foreground flex">
+        <Sidebar currentPage="Settings" />
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full"></div>
         </div>
       </div>
     );

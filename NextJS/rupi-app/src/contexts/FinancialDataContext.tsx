@@ -61,18 +61,6 @@ interface Savings {
   wallet_id?: number;
 }
 
-interface Investment {
-  id: number;
-  user_id: number;
-  description: string;
-  amount: number;
-  asset_name: string;
-  date: string;
-  created_at?: string;
-  updated_at?: string;
-  wallet_id?: number;
-}
-
 interface Wallet {
   id: number;
   user_id: number;
@@ -92,7 +80,6 @@ interface FinancialData {
   expenses: Expense[];
   income: Income[];
   savings: Savings[];
-  investments: Investment[];
   wallets: Wallet[];
   lastUpdated: {
     transactions: number;
@@ -100,7 +87,6 @@ interface FinancialData {
     expenses: number;
     income: number;
     savings: number;
-    investments: number;
     wallets: number;
   };
 }
@@ -114,7 +100,6 @@ interface FinancialDataState {
     expenses: boolean;
     income: boolean;
     savings: boolean;
-    investments: boolean;
     wallets: boolean;
   };
   error: string | null;
@@ -129,7 +114,6 @@ type FinancialDataAction =
   | { type: 'SET_EXPENSES'; payload: Expense[] }
   | { type: 'SET_INCOME'; payload: Income[] }
   | { type: 'SET_SAVINGS'; payload: Savings[] }
-  | { type: 'SET_INVESTMENTS'; payload: Investment[] }
   | { type: 'SET_WALLETS'; payload: Wallet[] }
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
@@ -147,7 +131,6 @@ const initialState: FinancialDataState = {
     expenses: [],
     income: [],
     savings: [],
-    investments: [],
     wallets: [],
     lastUpdated: {
       transactions: 0,
@@ -155,7 +138,6 @@ const initialState: FinancialDataState = {
       expenses: 0,
       income: 0,
       savings: 0,
-      investments: 0,
       wallets: 0,
     },
   },
@@ -166,7 +148,6 @@ const initialState: FinancialDataState = {
     expenses: false,
     income: false,
     savings: false,
-    investments: false,
     wallets: false,
   },
   error: null,
@@ -251,19 +232,6 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
           lastUpdated: {
             ...state.data.lastUpdated,
             savings: Date.now(),
-          },
-        },
-      };
-
-    case 'SET_INVESTMENTS':
-      return {
-        ...state,
-        data: {
-          ...state.data,
-          investments: action.payload,
-          lastUpdated: {
-            ...state.data.lastUpdated,
-            investments: Date.now(),
           },
         },
       };
@@ -380,7 +348,6 @@ function financialDataReducer(state: FinancialDataState, action: FinancialDataAc
             expenses: Date.now(),
             income: Date.now(),
             savings: Date.now(),
-            investments: Date.now(),
             wallets: Date.now(),
           },
         },
@@ -401,7 +368,6 @@ interface FinancialDataContextType {
   fetchExpenses: () => Promise<void>;
   fetchIncome: () => Promise<void>;
   fetchSavings: () => Promise<void>;
-  fetchInvestments: () => Promise<void>;
   fetchWallets: () => Promise<void>;
   fetchTrends: (timeRange: string) => Promise<Record<string, unknown>>;
   // Transaction actions
@@ -410,9 +376,6 @@ interface FinancialDataContextType {
   // Savings actions
   deleteSavings: (id: number) => Promise<boolean>;
   updateSavings: (id: number, data: { description?: string; amount?: number; goalName?: string }) => Promise<boolean>;
-  // Investment actions
-  deleteInvestment: (id: number) => Promise<boolean>;
-  updateInvestment: (id: number, data: { description?: string; amount?: number; assetName?: string }) => Promise<boolean>;
   // Budget actions
   saveBudget: (category: string, amount: number) => Promise<boolean>;
   deleteBudget: (category: string) => Promise<boolean>;
@@ -605,30 +568,6 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     } finally {
       if (showLoading) {
         dispatch({ type: 'SET_LOADING', payload: { key: 'savings', value: false } });
-      }
-    }
-  }, [session]);
-
-  const fetchInvestments = useCallback(async (showLoading = false) => {
-    if (!session) return;
-    
-    try {
-      if (showLoading) {
-        dispatch({ type: 'SET_LOADING', payload: { key: 'investments', value: true } });
-      }
-      
-      const response = await fetchWithRetry('/api/investments?limit=100');
-      
-      const data = await response.json();
-      if (data.success) {
-        dispatch({ type: 'SET_INVESTMENTS', payload: data.data || [] });
-      }
-    } catch (error) {
-      console.error('Error fetching investments:', error);
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to load investments' });
-    } finally {
-      if (showLoading) {
-        dispatch({ type: 'SET_LOADING', payload: { key: 'investments', value: false } });
       }
     }
   }, [session]);
@@ -920,42 +859,6 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }
   }, [fetchSavings]);
 
-  const deleteInvestment = useCallback(async (id: number) => {
-    try {
-      const response = await fetch(`/api/investments/${id}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to delete investment');
-      const data = await response.json();
-      if (data.success) {
-        await fetchInvestments(false);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error deleting investment:', error);
-      return false;
-    }
-  }, [fetchInvestments]);
-
-  const updateInvestment = useCallback(async (id: number, data: { description?: string; amount?: number; assetName?: string }) => {
-    try {
-      const response = await fetch(`/api/investments/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to update investment');
-      const result = await response.json();
-      if (result.success) {
-        await fetchInvestments(false);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error updating investment:', error);
-      return false;
-    }
-  }, [fetchInvestments]);
-
   // Refresh system
   const refreshAll = useCallback(async () => {
     if (isRefreshing.current) return;
@@ -970,7 +873,6 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         fetchExpenses(false),
         fetchIncome(false),
         fetchSavings(false),
-        fetchInvestments(false),
         fetchWallets(false)
       ]);
       
@@ -999,7 +901,7 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Initial data load with progressive loading
+  // Initial data load with synchronized loading
   useEffect(() => {
     if (status === 'loading') return; // Still loading session
     
@@ -1011,31 +913,24 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
         dispatch({ type: 'SET_EXPENSES', payload: [] });
         dispatch({ type: 'SET_INCOME', payload: [] });
         dispatch({ type: 'SET_SAVINGS', payload: [] });
-        dispatch({ type: 'SET_INVESTMENTS', payload: [] });
         dispatch({ type: 'SET_WALLETS', payload: [] });
         dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: false } });
         return;
       }
       
-      // Always show dashboard immediately - no initial loading state
-      
       try {
-        // Prioritize budget data for faster loading
+        // Load ALL critical data simultaneously with loading states
+        // This ensures all components load at the same time
         await Promise.all([
-          fetchBudgets(true), // Load budgets first for immediate display
-          fetchWallets(true), // Load wallets for balance calculations
+          fetchBudgets(true),    // Budget tracking
+          fetchWallets(true),    // Balance overview, Financial summary
+          fetchTransactions(true), // Financial summary, Recent transactions
+          fetchExpenses(true),   // Financial summary, Category breakdown, Trends
+          fetchIncome(true),     // Financial summary, Income/Expense
+          fetchSavings(true)     // Savings goals, Financial summary
         ]);
         
-        // Load other data in background
-        await Promise.all([
-          fetchTransactions(false), // No loading state for background
-          fetchExpenses(false),
-          fetchIncome(false),
-          fetchSavings(false),
-          fetchInvestments(false)
-        ]);
-        
-        // Clear initial loading state after successful data load
+        // Clear initial loading state after ALL data is loaded
         dispatch({ type: 'SET_LOADING', payload: { key: 'initial', value: false } });
         
       } catch (error) {
@@ -1070,13 +965,10 @@ export function FinancialDataProvider({ children }: { children: React.ReactNode 
     fetchExpenses,
     fetchIncome,
     fetchSavings,
-    fetchInvestments,
     fetchWallets,
     fetchTrends,
     deleteTransaction,
     updateTransaction,
-    deleteInvestment,
-    updateInvestment,
     deleteSavings,
     updateSavings,
     saveBudget,

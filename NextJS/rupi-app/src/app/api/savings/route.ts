@@ -171,6 +171,38 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+
+      // Check for allocated money
+      const allocatedQuery = await pool.query(
+        'SELECT COALESCE(SUM(allocated_amount), 0) as total_allocated FROM savings_goals WHERE user_id = $1',
+        [user.id]
+      );
+      const totalAllocated = parseFloat(allocatedQuery.rows[0].total_allocated);
+      const availableToWithdraw = totalSavings - totalAllocated;
+
+      if (availableToWithdraw < amount) {
+        // Get details of allocated goals
+        const allocatedGoals = await pool.query(
+          'SELECT goal_name, allocated_amount FROM savings_goals WHERE user_id = $1 AND allocated_amount > 0 ORDER BY allocated_amount DESC',
+          [user.id]
+        );
+        
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'ALLOCATED_MONEY',
+            message: `Cannot withdraw allocated money. You have Rp${totalAllocated.toLocaleString()} allocated to goals. Available to withdraw: Rp${availableToWithdraw.toLocaleString()}`,
+            details: {
+              totalSavings,
+              totalAllocated,
+              availableToWithdraw,
+              requestedAmount: amount,
+              allocatedGoals: allocatedGoals.rows
+            }
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Start transaction

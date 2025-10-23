@@ -120,7 +120,7 @@ export async function initializeDatabase() {
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           description TEXT NOT NULL,
         amount DECIMAL(15, 2) NOT NULL,
-        type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense', 'transfer', 'savings', 'investment')),
+        type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense', 'transfer', 'savings')),
         category VARCHAR(50),
         source VARCHAR(50),
           wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
@@ -165,6 +165,22 @@ export async function initializeDatabase() {
       `);
 
 
+    // Create daily_assets table for tracking asset snapshots
+    console.log('📈 Creating daily_assets table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS daily_assets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        wallet_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        savings_total DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        total_assets DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, date)
+      )
+    `);
+
     // Create migration_log table
     console.log('📝 Creating migration_log table...');
     await pool.query(`
@@ -198,15 +214,23 @@ export async function initializeDatabase() {
     // Savings and budget indexes
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_savings_goals_user_id ON savings_goals(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id)`);
+    
+    // Daily assets indexes
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_daily_assets_user_id ON daily_assets(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_daily_assets_date ON daily_assets(date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_daily_assets_user_date ON daily_assets(user_id, date)`);
+
+    // Note: Daily assets are calculated on-demand, not pre-populated
 
     console.log('✅ Database initialization completed successfully!');
     console.log('');
-    console.log('📊 Optimized Database Structure (6 Tables Only):');
+    console.log('📊 Optimized Database Structure (7 Tables Only):');
     console.log('✅ users - User accounts');
     console.log('✅ user_wallets - User wallets (no redundant balance column)');
     console.log('✅ transactions - UNIFIED table for ALL financial operations');
     console.log('✅ savings_goals - Savings goals (no redundant current_amount column)');
     console.log('✅ budgets - Budgets (no redundant spent column)');
+    console.log('✅ daily_assets - Daily asset snapshots for trends');
     console.log('✅ migration_log - Migration tracking');
     console.log('');
     console.log('🚀 Benefits:');
@@ -294,7 +318,6 @@ export const INCOME_SOURCES = [
   'Salary',
   'Freelance',
   'Business Revenue',
-  'Investment Dividends',
   'Interest',
   'Capital Gains',
   'Rental Income',
@@ -336,19 +359,6 @@ export interface Income {
   description: string;
   amount: number;
   source: IncomeSource;
-  wallet_id?: number;
-  date: Date;
-  created_at: Date;
-  updated_at: Date;
-}
-
-// Investment interface
-export interface Investment {
-  id: number;
-  user_id: number;
-  description: string;
-  amount: number;
-  asset_name?: string;
   wallet_id?: number;
   date: Date;
   created_at: Date;
@@ -426,7 +436,7 @@ export interface Transaction {
   user_id: number;
   description: string;
   amount: number;
-  type: 'income' | 'expense' | 'transfer' | 'savings' | 'investment';
+  type: 'income' | 'expense' | 'transfer' | 'savings';
   category?: string;
   source?: string;
   wallet_id?: number;
@@ -559,9 +569,6 @@ export class UserDatabase {
 
 
 // Income database operations
-
-
-// Investment database operations
 
 
 // Savings database operations
@@ -949,7 +956,6 @@ export class UserWalletDatabase {
               WHEN type = 'income' OR type = 'transfer' THEN amount
               WHEN type = 'expense' THEN -amount
               WHEN type = 'savings' THEN -amount  -- Savings transfers REDUCE wallet balance (money goes to savings)
-              WHEN type = 'investment' THEN 0   -- Investments don't affect wallet balance
               ELSE 0
             END
           ), 0) as balance
@@ -1126,7 +1132,6 @@ export class TransactionDatabase {
               WHEN type = 'income' OR type = 'transfer' THEN amount
               WHEN type = 'expense' THEN -amount
               WHEN type = 'savings' THEN amount  -- Savings deposits/withdrawals affect wallet balance
-              WHEN type = 'investment' THEN 0   -- Investments don't affect wallet balance
               ELSE 0
             END
           ), 0) as balance
@@ -1263,6 +1268,129 @@ export class TransactionDatabase {
 
 // Note: EXPENSE_CATEGORIES and INCOME_SOURCES are already defined above
 
+// Function to populate daily assets data for existing users
+async function populateDailyAssetsData() {
+  try {
+    // Get all users
+    const usersResult = await pool.query('SELECT id FROM users');
+    const users = usersResult.rows;
+    
+    if (users.length === 0) {
+      console.log('📊 No users found, skipping daily assets population');
+      return;
+    }
+    
+    console.log(`📊 Found ${users.length} users, populating daily assets data...`);
+    
+    for (const user of users) {
+      const userId = user.id;
+      
+      // Get the date range for this user (from first transaction to today)
+      const dateRangeResult = await pool.query(`
+        SELECT 
+          MIN(DATE(date)) as start_date,
+          MAX(DATE(date)) as end_date
+        FROM transactions 
+        WHERE user_id = $1
+      `, [userId]);
+      
+      if (dateRangeResult.rows.length === 0 || !dateRangeResult.rows[0].start_date) {
+        console.log(`📊 No transactions found for user ${userId}, skipping`);
+        continue;
+      }
+      
+      const startDate = dateRangeResult.rows[0].start_date;
+      const endDate = dateRangeResult.rows[0].end_date || new Date().toISOString().split('T')[0];
+      
+      console.log(`📊 Populating daily assets for user ${userId} from ${startDate} to ${endDate}`);
+      
+      // Generate date range
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      
+      for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+        const dateString = date.toISOString().split('T')[0];
+        
+        // Calculate daily assets for this date
+        const dailyAssets = await calculateDailyAssetsForDate(userId, dateString);
+        
+        if (dailyAssets) {
+          // Insert or update daily asset snapshot
+          await pool.query(`
+            INSERT INTO daily_assets (user_id, date, wallet_balance, savings_total, total_assets)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (user_id, date)
+            DO UPDATE SET
+              wallet_balance = EXCLUDED.wallet_balance,
+              savings_total = EXCLUDED.savings_total,
+              total_assets = EXCLUDED.total_assets,
+              updated_at = CURRENT_TIMESTAMP
+          `, [userId, dateString, dailyAssets.wallet_balance, dailyAssets.savings_total, dailyAssets.total_assets]);
+        }
+      }
+    }
+    
+    console.log('✅ Daily assets data populated successfully!');
+  } catch (error) {
+    console.error('❌ Error populating daily assets data:', error);
+  }
+}
+
+// Helper function to calculate daily assets for a specific date
+async function calculateDailyAssetsForDate(userId: number, date: string) {
+  try {
+    // Get user wallets
+    const walletsResult = await pool.query(`
+      SELECT id
+      FROM user_wallets
+      WHERE user_id = $1 AND is_active = true
+    `, [userId]);
+    
+    const wallets = walletsResult.rows;
+    
+    // Calculate total wallet balance from transactions up to this date
+    let totalWalletBalance = 0;
+    for (const wallet of wallets) {
+      const walletBalanceResult = await pool.query(`
+        SELECT 
+          COALESCE(SUM(
+            CASE 
+              WHEN type = 'income' OR type = 'transfer' THEN amount
+              WHEN type = 'expense' THEN -amount
+              WHEN type = 'savings' THEN -amount  -- Savings transfers REDUCE wallet balance
+              ELSE 0
+            END
+          ), 0) as balance
+        FROM transactions
+        WHERE user_id = $1 AND wallet_id = $2 AND DATE(date) <= $3
+      `, [userId, wallet.id, date]);
+      
+      const walletBalance = parseFloat(walletBalanceResult.rows[0].balance) || 0;
+      totalWalletBalance += walletBalance;
+    }
+    
+    // Calculate total savings from transactions up to this date
+    const savingsResult = await pool.query(`
+      SELECT SUM(amount) as total_savings
+      FROM transactions
+      WHERE user_id = $1 AND type = 'savings' AND DATE(date) <= $2
+    `, [userId, date]);
+    
+    const totalSavings = parseFloat(savingsResult.rows[0]?.total_savings || '0');
+    
+    // Calculate total assets (wallet balance + savings)
+    const totalAssets = totalWalletBalance + totalSavings;
+    
+    return {
+      wallet_balance: totalWalletBalance,
+      savings_total: totalSavings,
+      total_assets: totalAssets
+    };
+  } catch (error) {
+    console.error('Error calculating daily assets for date:', error);
+    return null;
+  }
+}
 
 export { pool };
 export default pool;

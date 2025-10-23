@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Group by date and calculate daily totals
-    const dailyData: { [key: string]: { date: string, income: number, expenses: number, savings: number, investments: number, transfers: number, total: number } } = {};
+    const dailyData: { [key: string]: { date: string, income: number, expenses: number, savings: number, transfers: number, total: number } } = {};
     
     rangeTransactions.forEach(transaction => {
       const date = new Date(transaction.date).toISOString().split('T')[0];
@@ -50,7 +50,6 @@ export async function GET(request: NextRequest) {
           income: 0,
           expenses: 0,
           savings: 0,
-          investments: 0,
           transfers: 0,
           total: 0
         };
@@ -63,8 +62,6 @@ export async function GET(request: NextRequest) {
         dailyData[date].expenses += transaction.amount;
       } else if (transaction.type === 'savings') {
         dailyData[date].savings += transaction.amount;
-      } else if (transaction.type === 'investment') {
-        dailyData[date].investments += transaction.amount;
       } else if (transaction.type === 'transfer') {
         dailyData[date].transfers += transaction.amount;
       }
@@ -90,15 +87,11 @@ export async function GET(request: NextRequest) {
       .filter(t => t.type === 'savings')
       .reduce((sum, t) => sum + t.amount, 0);
     
-    const totalInvestments = rangeTransactions
-      .filter(t => t.type === 'investment')
-      .reduce((sum, t) => sum + t.amount, 0);
 
     const summary = {
       totalIncome,
       totalExpenses,
       totalSavings,
-      totalInvestments,
       netIncome: totalIncome - totalExpenses,
       transactionCount: rangeTransactions.length
     };

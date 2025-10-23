@@ -13,9 +13,37 @@ import { FinancialDataProvider, useFinancialData } from '@/contexts/FinancialDat
 // Inner component that has access to the financial data context
 function DashboardContent() {
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const { state } = useFinancialData();
 
-  // Data is automatically loaded by the FinancialDataProvider
-  // No need to manually refresh on mount
+  // Show loading spinner while initial data is loading
+  if (state.loading.initial) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex">
+        {/* Sidebar */}
+        <Sidebar currentPage="Dashboard" />
+
+        {/* Main content area */}
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if there's an error
+  if (state.error) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex">
+        {/* Sidebar */}
+        <Sidebar currentPage="Dashboard" />
+
+        {/* Main content area */}
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="text-red-500 dark:text-red-400">Error: {state.error}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <GlobalLoader>

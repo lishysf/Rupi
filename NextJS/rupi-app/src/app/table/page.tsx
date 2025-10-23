@@ -21,7 +21,6 @@ const INCOME_SOURCES = [
   'Salary',
   'Freelance',
   'Business',
-  'Investment',
   'Rental',
   'Gift',
   'Other'
@@ -39,7 +38,7 @@ function FinancialTable() {
   console.log('Loading states:', state.loading);
   const [selectedTx, setSelectedTx] = useState<Record<string, unknown> | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
-  const [editingType, setEditingType] = useState<'income' | 'expense' | 'savings' | 'investment' | null>(null);
+  const [editingType, setEditingType] = useState<'income' | 'expense' | 'savings' | null>(null);
   const [editDraft, setEditDraft] = useState<{ description: string; amount: number; category: string; date: string } | null>(null);
   const [globalEditMode, setGlobalEditMode] = useState<boolean>(false);
   const [globalEditData, setGlobalEditData] = useState<Record<string, { description: string; amount: number; category: string; date: string; type: string }>>({});
@@ -63,7 +62,7 @@ function FinancialTable() {
   const handleEdit = (tx: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => setSelectedTx(tx);
   const startInlineEdit = (tx: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number}) => {
     setEditingId(tx.id);
-    setEditingType(tx.type as 'income' | 'expense' | 'savings' | 'investment');
+    setEditingType(tx.type as 'income' | 'expense' | 'savings');
     // Normalize date to YYYY-MM-DD for input value
     const d = new Date(tx.date);
     const yyyy = d.getFullYear();
@@ -224,35 +223,7 @@ function FinancialTable() {
   
   
 
-  // Show loading state if data is being fetched
-  if (state.loading.transactions) {
-    return (
-      <div className="p-4 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-xl md:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Table</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading transactions...</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="text-neutral-500 dark:text-neutral-400">Loading...</div>
-        </div>
-      </div>
-    );
-  }
 
-  // Show error state if there's an error
-  if (state.error) {
-    return (
-      <div className="p-4 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-xl md:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Table</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Error loading data</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="text-red-500 dark:text-red-400">Error: {state.error}</div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="p-4 md:p-8">
@@ -289,7 +260,7 @@ function FinancialTable() {
           <label className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Type</label>
           <select
             value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value as 'all' | 'income' | 'expense' | 'savings' | 'investment')}
+            onChange={(e) => setSelectedType(e.target.value as 'all' | 'income' | 'expense' | 'savings')}
             className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           >
             <option value="all">All</option>
@@ -430,7 +401,6 @@ function FinancialTable() {
                         <option value="income">income</option>
                         <option value="expense">expense</option>
                         <option value="savings">savings</option>
-                        <option value="investment">investment</option>
                       </select>
                     </td>
                     <td className="px-4 py-2 text-center">
@@ -585,21 +555,60 @@ export default function TablePage() {
   }, [session, status, router]);
 
   if (status === 'loading') {
-    return null;
+    return (
+      <div className="min-h-screen bg-background text-foreground flex">
+        <Sidebar currentPage="Table" />
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full"></div>
+        </div>
+      </div>
+    );
   }
   if (!session) return null;
 
   return (
     <FinancialDataProvider>
+      <TablePageContent />
+    </FinancialDataProvider>
+  );
+}
+
+function TablePageContent() {
+  const { state } = useFinancialData();
+
+  // Show loading spinner while initial data is loading
+  if (state.loading.initial) {
+    return (
       <div className="min-h-screen bg-background text-foreground flex">
         <Sidebar currentPage="Table" />
-        <div className="flex-1 lg:ml-64">
-          <main className="px-4 sm:px-6 lg:px-8 py-8">
-            <FinancialTable />
-          </main>
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full"></div>
         </div>
       </div>
-    </FinancialDataProvider>
+    );
+  }
+
+  // Show error state if there's an error
+  if (state.error) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex">
+        <Sidebar currentPage="Table" />
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="text-red-500 dark:text-red-400">Error: {state.error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex">
+      <Sidebar currentPage="Table" />
+      <div className="flex-1 lg:ml-64">
+        <main className="px-4 sm:px-6 lg:px-8 py-8">
+          <FinancialTable />
+        </main>
+      </div>
+    </div>
   );
 }
 

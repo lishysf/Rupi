@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Target, Laptop, Car, Home, Plane, Plus, Trash2, X, Wallet, Edit3, Save, Sliders, AlertTriangle } from 'lucide-react';
+import { Target, Laptop, Car, Home, Plane, Plus, Trash2, X, Wallet, Edit3, Save, Sliders, AlertTriangle, MinusCircle } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import SavingsGoalModal from './SavingsGoalModal';
 
@@ -73,6 +73,20 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
     }
   }, [isOpen]);
 
+  // Listen for events to open this popup
+  useEffect(() => {
+    const handleOpenPopup = () => {
+      if (!isOpen && typeof onClose === 'function') {
+        // This is a bit hacky but works - the parent component controls isOpen
+        // We just trigger a refresh when the event fires
+        loadGoals();
+      }
+    };
+
+    window.addEventListener('openSavingsGoalsPopup', handleOpenPopup);
+    return () => window.removeEventListener('openSavingsGoalsPopup', handleOpenPopup);
+  }, [isOpen, onClose]);
+
   const loadGoals = async () => {
     try {
       setLoading(true);
@@ -93,7 +107,7 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
   };
 
   // Handle creating new savings goal
-  const handleCreateGoal = async (goalData: {name: string, target_amount: number, target_date: string, description?: string, icon?: string}) => {
+  const handleCreateGoal = async (goalData: {name: string, targetAmount: number, targetDate: string | null, icon?: string | null, color?: string | null}) => {
     try {
       setError(null);
       const response = await fetch('/api/savings-goals', {
@@ -101,7 +115,13 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(goalData),
+        body: JSON.stringify({
+          name: goalData.name,
+          targetAmount: goalData.targetAmount,
+          targetDate: goalData.targetDate,
+          icon: goalData.icon,
+          color: goalData.color
+        }),
       });
 
       if (response.ok) {
@@ -253,6 +273,14 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
     }
   };
 
+  // Get current allocation for a goal from a wallet (from database)
+  const getCurrentAllocation = (goalId: number, walletId: number): number => {
+    // This is fetched from the goal's already allocated amount
+    // We'll need to track per-wallet allocations
+    // For now, we return 0 and will improve this
+    return 0;
+  };
+
   // Handle allocation change
   const handleAllocationChange = (goalId: number, walletId: number, amount: number) => {
     const key = `${goalId}-${walletId}`;
@@ -279,11 +307,28 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
     const wallet = walletSavings[walletId];
     if (!goal || !wallet) return 0;
 
-    // Calculate remaining target amount (considering already allocated amount)
-    const currentAllocated = goal.allocated_amount || 0;
-    const remainingTarget = Math.max(0, goal.target_amount - currentAllocated);
+    // Calculate total already allocated to OTHER goals (not this one)
+    const allocatedToOtherGoals = goals
+      .filter(g => g.id !== goalId)
+      .reduce((sum, g) => sum + (parseFloat(String(g.allocated_amount)) || 0), 0);
+
+    // Calculate total unallocated savings across all wallets
+    const totalSavingsAllWallets = Object.values(walletSavings).reduce((sum, ws) => 
+      sum + (ws.totalSavings || 0), 0
+    );
     
-    return Math.min(remainingTarget, wallet.totalSavings);
+    const totalUnallocated = Math.max(0, totalSavingsAllWallets - allocatedToOtherGoals);
+
+    // For this wallet, calculate its share of available unallocated money
+    // Conservative approach: Available from this wallet = min(wallet savings, total unallocated)
+    const availableFromWallet = Math.min(wallet.totalSavings, totalUnallocated);
+
+    // Also consider the target amount remaining for this specific goal
+    const currentGoalAllocated = parseFloat(String(goal.allocated_amount)) || 0;
+    const remainingTargetForGoal = Math.max(0, goal.target_amount - currentGoalAllocated);
+
+    // Maximum is the minimum of: what's available and what's needed
+    return Math.min(availableFromWallet, remainingTargetForGoal);
   };
 
   // Get total allocated to a goal
@@ -334,50 +379,77 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
     return { hasWarning: false };
   };
 
-  // Save allocations
-  const handleSaveAllocations = async () => {
+  // Save allocations (sliders show ABSOLUTE values user wants)
+  const handleSaveAllocations = async (goalId: number) => {
     try {
       setAllocationLoading(true);
       setError(null);
 
-      const allocationArray = Object.entries(allocations)
-        .filter(([, amount]) => amount > 0)
-        .map(([key, amount]) => {
-          const [goalId, walletId] = key.split('-').map(Number);
-          return { goalId, walletId, amount };
-        });
+      // Get current goal's allocated amount
+      const goal = goals.find(g => g.id === goalId);
+      if (!goal) return false;
 
-      console.log('Sending allocation data:', { allocations: allocationArray });
+      const currentTotalAllocated = parseFloat(String(goal.allocated_amount)) || 0;
+      
+      // Calculate new total allocation from sliders (these are ABSOLUTE values)
+      const newTotalAllocation = getTotalAllocatedToGoal(goalId);
 
-      const response = await fetch('/api/savings-goals/allocate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ allocations: allocationArray }),
+      console.log('Setting allocation:', { 
+        goalId, 
+        currentTotalAllocated, 
+        newTotalAllocation
       });
 
-      const data = await response.json();
-      
-      console.log('Allocation response:', data);
-      
-      if (data.success) {
-        // Refresh goals and savings data
-        await fetchSavings();
-        await loadGoals();
-        setExpandedGoal(null);
-        setAllocations({});
-        
-        // Notify dashboard to refresh
-        window.dispatchEvent(new CustomEvent('savingsGoalAllocated'));
-        
-        return true;
-      } else {
-        const errorMessage = data.details || data.error || 'Failed to save allocations';
-        console.error('Allocation failed:', errorMessage);
-        setError(errorMessage);
-        return false;
+      // Step 1: Reset to 0 by deallocating all current allocation
+      if (currentTotalAllocated > 0) {
+        const response = await fetch('/api/savings-goals/deallocate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ goalId, amount: currentTotalAllocated }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          setError(data.error || 'Failed to reset allocation');
+          return false;
+        }
       }
+
+      // Step 2: Allocate the new amounts (ABSOLUTE values from sliders)
+      if (newTotalAllocation > 0) {
+        const allocationArray = Object.entries(allocations)
+          .filter(([key]) => key.startsWith(`${goalId}-`))
+          .filter(([, amount]) => amount > 0)
+          .map(([key, amount]) => {
+            const [, walletId] = key.split('-').map(Number);
+            return { goalId, walletId, amount };
+          });
+
+        if (allocationArray.length > 0) {
+          const response = await fetch('/api/savings-goals/allocate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ allocations: allocationArray }),
+          });
+
+          const data = await response.json();
+          if (!data.success) {
+            setError(data.details || data.error || 'Failed to save allocations');
+            return false;
+          }
+        }
+      }
+
+      // Refresh data
+      await fetchSavings();
+      await loadGoals();
+      setExpandedGoal(null);
+      setAllocations({});
+      
+      // Notify dashboard
+      window.dispatchEvent(new CustomEvent('savingsGoalAllocated'));
+      
+      return true;
     } catch (error) {
       console.error('Error saving allocations:', error);
       setError('Failed to save allocations');
@@ -552,6 +624,23 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
                         </div>
                       </div>
 
+                      {/* Current Allocated Amount Display */}
+                      {allocatedAmount > 0 && expandedGoal !== goal.id && (
+                        <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">Currently Allocated</div>
+                              <div className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                                {formatCurrency(allocatedAmount)}
+                              </div>
+                            </div>
+                            <div className="text-xs text-blue-600 dark:text-blue-400">
+                              Click "Allocate" to adjust
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Allocation Health Warning */}
                       {allocationHealth.hasWarning && (
                         <div className={`mb-3 p-3 rounded-lg border ${
@@ -585,23 +674,27 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
                         </div>
                       )}
 
-                      {/* Allocation Controls */}
-                      {remaining > 0 && (
+                      {/* Allocation Controls - Always show if goal is not 100% complete */}
+                      {percentage < 100 && (
                         <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-600">
                           <button
                             onClick={() => {
                               if (expandedGoal === goal.id) {
                                 setExpandedGoal(null);
+                                setAllocations({}); // Clear allocations when closing
                               } else {
                                 setExpandedGoal(goal.id);
-                                // Wallet data is already loaded when popup opened
+                                // Initialize sliders with current allocated amounts
+                                const initialAllocations: Record<string, number> = {};
+                                // For now, we'll let users start from 0 and adjust
+                                setAllocations(initialAllocations);
                               }
                             }}
                             className="w-full flex items-center justify-between p-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition-colors"
                           >
                             <div className="flex items-center gap-2">
                               <Sliders className="w-4 h-4" />
-                              Allocate from wallets
+                              {allocatedAmount > 0 ? 'Adjust allocation from wallets' : 'Allocate from wallets'}
                             </div>
                             <div className="text-xs">
                               {expandedGoal === goal.id ? 'Hide' : 'Show'}
@@ -622,6 +715,37 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
                                 </div>
                               ) : (
                                 <>
+                                  {/* Show total available to allocate */}
+                                  {(() => {
+                                    const totalSavings = Object.values(walletSavings).reduce((sum, ws) => 
+                                      sum + (ws.totalSavings || 0), 0
+                                    );
+                                    const allocatedToOtherGoals = goals
+                                      .filter(g => g.id !== goal.id)
+                                      .reduce((sum, g) => sum + (parseFloat(String(g.allocated_amount)) || 0), 0);
+                                    const availableToAllocate = Math.max(0, totalSavings - allocatedToOtherGoals);
+                                    
+                                    return availableToAllocate > 0 ? (
+                                      <div className="p-2 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                        <div className="flex justify-between items-center text-xs">
+                                          <span className="text-blue-700 dark:text-blue-300 font-medium">
+                                            💰 Total available to allocate:
+                                          </span>
+                                          <span className="text-blue-800 dark:text-blue-200 font-bold">
+                                            {formatCurrency(availableToAllocate)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                                        <div className="text-xs text-amber-800 dark:text-amber-200 text-center">
+                                          ⚠️ All savings are already allocated to other goals
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
+                                
                                   {wallets.map((wallet) => {
                                     const walletSavingsData = walletSavings[wallet.id];
                                     const maxAllocation = getMaxAllocation(goal.id, wallet.id);
@@ -631,12 +755,9 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
 
                                     return (
                                       <div key={`${goal.id}-${wallet.id}`} className="p-3 bg-neutral-50 dark:bg-neutral-700 rounded-lg">
-                                        <div className="flex items-center justify-between mb-2">
+                                        <div className="mb-2">
                                           <span className="text-sm font-medium text-neutral-900 dark:text-white">
                                             {wallet.name}
-                                          </span>
-                                          <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                            {formatCurrency(walletSavingsData.totalSavings)} available
                                           </span>
                                         </div>
                                         
@@ -673,25 +794,47 @@ export default function SavingsGoalsPopup({ isOpen, onClose }: SavingsGoalsPopup
                                     );
                                   })}
 
-                                  {/* Goal Allocation Summary */}
-                                  <div className="pt-2 border-t border-neutral-200 dark:border-neutral-600">
-                                    <div className="flex justify-between items-center text-sm">
-                                      <span className="text-neutral-600 dark:text-neutral-400">Total allocated:</span>
-                                      <span className="font-medium text-blue-600 dark:text-blue-400">
-                                        {formatCurrency(getTotalAllocatedToGoal(goal.id))}
+                                  {/* Allocation Summary - Show comparison */}
+                                  <div className="pt-3 mt-3 border-t border-neutral-200 dark:border-neutral-600 space-y-2">
+                                    <div className="flex justify-between items-center text-xs">
+                                      <span className="text-neutral-500 dark:text-neutral-400">Current allocation:</span>
+                                      <span className="text-neutral-700 dark:text-neutral-300 font-medium">
+                                        {formatCurrency(allocatedAmount)}
                                       </span>
                                     </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                      <span className="text-neutral-500 dark:text-neutral-400">Adjusting to:</span>
+                                      <span className={`font-bold ${
+                                        getTotalAllocatedToGoal(goal.id) > allocatedAmount 
+                                          ? 'text-emerald-600 dark:text-emerald-400' 
+                                          : getTotalAllocatedToGoal(goal.id) < allocatedAmount
+                                          ? 'text-red-600 dark:text-red-400'
+                                          : 'text-blue-600 dark:text-blue-400'
+                                      }`}>
+                                        {formatCurrency(getTotalAllocatedToGoal(goal.id))}
+                                        {getTotalAllocatedToGoal(goal.id) > allocatedAmount && ' ↑'}
+                                        {getTotalAllocatedToGoal(goal.id) < allocatedAmount && ' ↓'}
+                                      </span>
+                                    </div>
+                                    {getTotalAllocatedToGoal(goal.id) !== allocatedAmount && (
+                                      <div className="text-[10px] text-neutral-500 dark:text-neutral-400 text-center pt-1">
+                                        {getTotalAllocatedToGoal(goal.id) > allocatedAmount 
+                                          ? `+${formatCurrency(getTotalAllocatedToGoal(goal.id) - allocatedAmount)} increase`
+                                          : `${formatCurrency(allocatedAmount - getTotalAllocatedToGoal(goal.id))} decrease`
+                                        }
+                                      </div>
+                                    )}
                                   </div>
 
                                   {/* Save Button for this goal */}
                                   <div className="flex justify-end">
                                     <button
-                                      onClick={handleSaveAllocations}
-                                      disabled={allocationLoading || getTotalAllocatedToGoal(goal.id) === 0}
+                                      onClick={() => handleSaveAllocations(goal.id)}
+                                      disabled={allocationLoading || getTotalAllocatedToGoal(goal.id) === allocatedAmount}
                                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-400 disabled:cursor-not-allowed text-white text-xs rounded-lg transition-colors flex items-center gap-1"
                                     >
                                       <Save className="w-3 h-3" />
-                                      {allocationLoading ? 'Saving...' : 'Save'}
+                                      {allocationLoading ? 'Saving...' : 'Save Changes'}
                                     </button>
                                   </div>
                                 </>

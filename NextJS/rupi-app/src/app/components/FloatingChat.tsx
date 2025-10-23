@@ -10,7 +10,7 @@ interface ChatMessage {
   timestamp: Date;
   isUser: boolean;
   transactionCreated?: boolean;
-  transactionType?: 'income' | 'expense' | 'savings' | 'investment';
+  transactionType?: 'income' | 'expense' | 'savings';
   multipleTransactionsCreated?: boolean;
   transactionCount?: number;
   isLoading?: boolean;
@@ -279,8 +279,7 @@ export default function FloatingChat() {
                           <span className="text-xs text-green-600 dark:text-green-400">
                             {message.transactionType === 'income' ? 'Income added' : 
                              message.transactionType === 'expense' ? 'Expense recorded' :
-                             message.transactionType === 'savings' ? 'Transferred to savings' :
-                             message.transactionType === 'investment' ? 'Transferred to investment' : 'Transaction saved'}
+                             message.transactionType === 'savings' ? 'Transferred to savings' : 'Transaction saved'}
                           </span>
                         </div>
                       )}

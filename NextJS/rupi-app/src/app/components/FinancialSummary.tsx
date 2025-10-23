@@ -33,15 +33,13 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
   const { expenses, income, savings, wallets } = state.data;
-  const investments: Array<{amount: number | string}> = (state.data as unknown as Record<string, unknown>).investments as Array<{amount: number | string}> || [];
-  const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
   
   // Wallet loading state from context - only show loading during initial load
   const walletLoading = state.loading.wallets && state.loading.initial;
 
 
   // Calculate financial totals from context data
-  const financialData: FinancialTotal & { totalInvestments: number } = useMemo(() => {
+  const financialData: FinancialTotal = useMemo(() => {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -84,7 +82,6 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
     const totalExpenses = expenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
     const totalIncome = income.reduce((sum, incomeItem) => sum + (typeof incomeItem.amount === 'string' ? parseFloat(incomeItem.amount) : incomeItem.amount), 0);
     const totalSavings = savings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
-    const totalInvestments = investments.reduce((sum: number, inv: {amount: number | string}) => sum + parseFloat(inv.amount.toString()), 0);
 
     return {
       currentMonthExpenses,
@@ -93,10 +90,9 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
       currentMonthSavings,
       totalExpenses,
       totalIncome,
-      totalSavings,
-      totalInvestments
+      totalSavings
     };
-  }, [expenses, income, savings, investments]);
+  }, [expenses, income, savings]);
 
   // Calculate wallet total balance
   const walletBalance = wallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0);
@@ -104,8 +100,8 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
   // Calculate balances using wallet-first approach
   // Main/Spending Card = wallet balance (user's actual available money)
   const currentBalance = walletBalance;
-  // Total assets = wallet balance + savings + current investment portfolio value
-  const totalAssets = currentBalance + financialData.totalSavings + financialData.totalInvestments;
+  // Total assets = wallet balance + savings
+  const totalAssets = currentBalance + financialData.totalSavings;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -115,26 +111,6 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
       maximumFractionDigits: 0,
     }).format(amount);
   };
-
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-transparent">
-        <div className="p-3 h-full flex flex-col">
-          <div className="mb-2">
-            <div className="w-24 h-3 bg-neutral-300 dark:bg-neutral-600 rounded animate-pulse mb-1"></div>
-            <div className="w-32 h-2 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse"></div>
-          </div>
-          <div className="flex-1 space-y-2">
-            <div className="w-full h-12 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse"></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="w-full h-8 bg-neutral-200 dark:bg-neutral-700 rounded-md animate-pulse"></div>
-              <div className="w-full h-8 bg-neutral-200 dark:bg-neutral-700 rounded-md animate-pulse"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-transparent h-full flex flex-col group hover:shadow-2xl transition-all duration-300">
@@ -164,26 +140,15 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
 
           {/* Secondary Sections Container - Takes up remaining half */}
           <div className="flex-1 px-3 pb-3">
-            <div className="grid grid-cols-2 gap-2 h-full">
+            <div className="h-full">
               {/* Savings Row */}
-              <div className="flex flex-col justify-center p-2 bg-neutral-50 dark:bg-neutral-800/30 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-all duration-200">
+              <div className="flex flex-col justify-center p-2 bg-neutral-50 dark:bg-neutral-800/30 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-all duration-200 h-full">
                 <div className="flex items-center mb-1">
                   <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></div>
                   <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">{t('savings')}</span>
                 </div>
                 <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
                   {formatCurrency(financialData.totalSavings)}
-                </div>
-              </div>
-
-              {/* Investment Row */}
-              <div className="flex flex-col justify-center p-2 bg-neutral-50 dark:bg-neutral-800/30 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-all duration-200">
-                <div className="flex items-center mb-1">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></div>
-                  <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">{t('investment')}</span>
-                </div>
-                <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                  {formatCurrency(financialData.totalInvestments || 0)}
                 </div>
               </div>
             </div>

@@ -79,7 +79,6 @@ export async function GET(request: NextRequest) {
           SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END) as income,
           SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END) as expenses,
           SUM(CASE WHEN t.type = 'savings' THEN t.amount ELSE 0 END) as savings,
-          SUM(CASE WHEN t.type = 'investment' THEN t.amount ELSE 0 END) as investments
         FROM transactions t
         WHERE t.user_id = $3 AND t.date >= $1 AND t.date <= $2
         GROUP BY DATE(t.date)
@@ -89,9 +88,8 @@ export async function GET(request: NextRequest) {
         COALESCE(dt.income, 0) as income,
         COALESCE(dt.expenses, 0) as expenses,
         COALESCE(dt.savings, 0) as savings,
-        COALESCE(dt.investments, 0) as investments,
         COALESCE(dt.income, 0) - COALESCE(dt.expenses, 0) as net,
-        COALESCE(dt.income, 0) - COALESCE(dt.expenses, 0) + COALESCE(dt.savings, 0) + COALESCE(dt.investments, 0) as total_assets
+        COALESCE(dt.income, 0) - COALESCE(dt.expenses, 0) + COALESCE(dt.savings, 0) as total_assets
       FROM date_series ds
       LEFT JOIN daily_transactions dt ON ds.date = dt.transaction_date
       ORDER BY ds.date ASC

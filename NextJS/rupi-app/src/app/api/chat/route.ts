@@ -541,25 +541,6 @@ export async function POST(request: NextRequest) {
                       error: savingsError instanceof Error ? savingsError.message : 'Unknown error'
                     });
                   }
-                } else if (transaction.type === 'investment') {
-                  // Create investment transaction using unified system
-                  try {
-                    createdTransaction = await TransactionDatabase.createTransaction(
-                      user.id,
-                      transaction.description,
-                      transaction.amount,
-                      'investment',
-                      undefined, // No wallet for investments
-                      undefined,
-                      undefined,
-                      undefined,
-                      transaction.assetName,
-                      undefined,
-                      new Date()
-                    );
-                  } catch (investmentError) {
-                    console.error('Error updating investment portfolio:', investmentError);
-                  }
                 } else if (transaction.type === 'transfer') {
                   // Handle wallet-to-wallet transfer
                   try {
@@ -637,8 +618,6 @@ export async function POST(request: NextRequest) {
                 return `${transaction.description} (Rp${amount})`;
               } else if (transaction.type === 'savings') {
                 return `Transfer to savings: ${transaction.description} (Rp${amount})`;
-              } else if (transaction.type === 'investment') {
-                return `Investment portfolio updated to Rp${amount}`;
               } else if (transaction.type === 'transfer') {
                 return `Transfer: ${transaction.description} (Rp${amount})${adminFeeText}`;
               }
@@ -796,7 +775,7 @@ export async function POST(request: NextRequest) {
               console.log('Savings transaction already processed in main flow');
             }
             
-            // Handle other transaction types (income, expense, investment)
+            // Handle other transaction types (income, expense)
 
           if (parsedTransaction.type === 'expense') {
             // Handle expense creation with balance validation
@@ -864,27 +843,6 @@ export async function POST(request: NextRequest) {
               console.error('Error creating savings:', savingsError);
               response = savingsError instanceof Error ? savingsError.message : 'Unknown error';
             }
-          } else if (parsedTransaction.type === 'investment') {
-            // Create investment transaction using unified system
-            try {
-              transactionCreated = await TransactionDatabase.createTransaction(
-                user.id,
-                parsedTransaction.description,
-                parsedTransaction.amount,
-                'investment',
-                undefined, // No wallet for investments
-                undefined,
-                undefined,
-                undefined,
-                parsedTransaction.assetName,
-                undefined,
-                new Date()
-              );
-              response = `Your investment portfolio value has been updated to Rp${parsedTransaction.amount.toLocaleString()}!`;
-            } catch (investmentError) {
-              console.error('Error updating investment portfolio:', investmentError);
-              response = `I understood that you want to update your investment portfolio, but there was an error saving it. Please try again.`;
-            }
           }
         } else {
           if (parsedTransaction.type === 'expense') {
@@ -893,8 +851,6 @@ export async function POST(request: NextRequest) {
             response = `I understood that you want to record income, but I need more clarity. Please specify the amount, source, and which wallet to receive it. For example: "Gaji 8 juta ke BCA" or "Bonus 1.5 juta ke Gojek".`;
           } else if (parsedTransaction.type === 'savings') {
             response = `I understood that you want to transfer money to savings, but I need more clarity. Could you please specify the amount and what you're saving for? For example: "Transfer 1 million to laptop savings" or "Move 2 million to emergency fund".`;
-          } else if (parsedTransaction.type === 'investment') {
-            response = `I understood that you want to transfer money to investments, but I need more clarity. Could you please specify the amount and what you're investing in? For example: "Transfer 1 million to stock investment" or "Move 2 million to BBCA shares".`;
           }
         }
       } catch (error) {
@@ -960,20 +916,12 @@ export async function POST(request: NextRequest) {
         const filteredExpenses = filterTransactions(allTransactions, 'expense');
         const filteredIncome = filterTransactions(allTransactions, 'income');
         const filteredSavings = filterTransactions(allTransactions, 'savings');
-        const filteredInvestments = filterTransactions(allTransactions, 'investment');
 
         // Compute totals for requested period
         const sum = (arr: Array<{amount: number | string}>) => arr.reduce((s, t) => s + (typeof t.amount === 'string' ? parseFloat(t.amount) : (t.amount || 0)), 0);
         const totalExpenses = sum(filteredExpenses);
         const totalIncome = sum(filteredIncome);
         const totalSavings = sum(filteredSavings);
-        // Investment: use latest value if available, else sum
-        const latestInvestment = filteredInvestments
-          .slice()
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-        const totalInvestments = latestInvestment
-          ? (typeof latestInvestment.amount === 'string' ? parseFloat(latestInvestment.amount) : latestInvestment.amount || 0)
-          : sum(filteredInvestments);
 
         // Wallets with balances and total assets
         const walletsWithBalances = await UserWalletDatabase.getAllWalletsWithBalances(user.id);
@@ -981,7 +929,7 @@ export async function POST(request: NextRequest) {
           const balance = w.balance as number | string | undefined;
           return s + (typeof balance === 'string' ? parseFloat(balance) : (balance || 0));
         }, 0);
-        const totalAssets = totalWalletBalance + (totalInvestments || 0);
+        const totalAssets = totalWalletBalance;
 
         // Budgets for current month with spent
         const currentMonth = new Date().getMonth() + 1;
@@ -1004,7 +952,6 @@ export async function POST(request: NextRequest) {
           expenses: filteredExpenses,
           income: filteredIncome,
           savings: filteredSavings,
-          investments: filteredInvestments,
           wallets: walletsWithBalances,
           budgets,
           savingsGoals,
@@ -1012,7 +959,6 @@ export async function POST(request: NextRequest) {
             totalExpenses,
             totalIncome,
             totalSavings,
-            totalInvestments,
             totalAssets,
           },
           expensesByCategory
@@ -1022,8 +968,7 @@ export async function POST(request: NextRequest) {
           timePeriod,
           expensesCount: financialData.expenses.length,
           incomeCount: financialData.income.length,
-          savingsCount: financialData.savings.length,
-          investmentsCount: financialData.investments.length
+          savingsCount: financialData.savings.length
         });
 
         // Add current date context to the message for AI

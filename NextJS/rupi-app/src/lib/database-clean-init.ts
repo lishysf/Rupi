@@ -67,7 +67,7 @@ export async function initializeDatabase() {
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         description TEXT NOT NULL,
         amount DECIMAL(10, 2) NOT NULL,
-        type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense', 'transfer', 'savings', 'investment')),
+        type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense', 'transfer', 'savings')),
         category VARCHAR(50),
         source VARCHAR(50),
         wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
@@ -110,6 +110,22 @@ export async function initializeDatabase() {
       )
     `);
 
+    // Create daily_assets table for tracking asset snapshots
+    console.log('📈 Creating daily_assets table...');
+    await pool.query(`
+      CREATE TABLE daily_assets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        wallet_balance DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        savings_total DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        total_assets DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, date)
+      )
+    `);
+
     // Create migration_log table
     console.log('📝 Creating migration_log table...');
     await pool.query(`
@@ -143,15 +159,21 @@ export async function initializeDatabase() {
     // Savings and budget indexes
     await pool.query(`CREATE INDEX idx_savings_goals_user_id ON savings_goals(user_id)`);
     await pool.query(`CREATE INDEX idx_budgets_user_id ON budgets(user_id)`);
+    
+    // Daily assets indexes
+    await pool.query(`CREATE INDEX idx_daily_assets_user_id ON daily_assets(user_id)`);
+    await pool.query(`CREATE INDEX idx_daily_assets_date ON daily_assets(date)`);
+    await pool.query(`CREATE INDEX idx_daily_assets_user_date ON daily_assets(user_id, date)`);
 
     console.log('✅ Clean database initialization completed successfully!');
     console.log('');
-    console.log('📊 Optimized Database Structure (6 Tables Only):');
+    console.log('📊 Optimized Database Structure (7 Tables Only):');
     console.log('✅ users - User accounts');
     console.log('✅ user_wallets - User wallets (no redundant balance column)');
     console.log('✅ transactions - UNIFIED table for ALL financial operations');
     console.log('✅ savings_goals - Savings goals (no redundant current_amount column)');
     console.log('✅ budgets - Budgets (no redundant spent column)');
+    console.log('✅ daily_assets - Daily asset snapshots for trends');
     console.log('✅ migration_log - Migration tracking');
     console.log('');
     console.log('🚀 Benefits:');

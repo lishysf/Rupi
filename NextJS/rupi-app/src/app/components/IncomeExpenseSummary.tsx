@@ -21,7 +21,6 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
   const { expenses, income } = state.data;
-  const loading = state.loading.initial && (expenses.length === 0 && income.length === 0);
 
   // Calculate financial data from context
   const financialData = useMemo(() => {
@@ -89,38 +88,6 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
       maximumFractionDigits: 0,
     }).format(amount);
   };
-
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent h-full flex flex-col overflow-hidden">
-        <div className={`${
-          widgetSize === 'square' ? 'p-3' : 
-          widgetSize === 'half' ? 'p-4' : 'p-6'
-        } flex-shrink-0`}>
-          <h2 className={`${
-            widgetSize === 'square' ? 'text-sm' :
-            widgetSize === 'half' ? 'text-base' : 'text-lg'
-          } font-semibold text-neutral-900 dark:text-white`}>
-            {t('incomeExpenseSummary')}
-          </h2>
-        </div>
-        <div className="flex-1 p-4 space-y-4">
-          <div className="animate-pulse space-y-3">
-            <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-1/2"></div>
-            <div className="space-y-2">
-              <div className="h-6 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-              <div className="h-6 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-            </div>
-            <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-1/2"></div>
-            <div className="space-y-2">
-              <div className="h-6 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-              <div className="h-6 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Calculate progress percentages for circular indicators
   // Both circles: show remaining amount after expenses (same calculation)

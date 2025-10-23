@@ -75,7 +75,7 @@ export async function initializeDatabase() {
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         description TEXT NOT NULL,
         amount DECIMAL(10, 2) NOT NULL,
-        type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense', 'transfer', 'savings', 'investment')),
+        type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense', 'transfer', 'savings')),
         category VARCHAR(50),
         source VARCHAR(50),
         wallet_id INTEGER REFERENCES user_wallets(id) ON DELETE SET NULL,
@@ -165,7 +165,7 @@ export interface Transaction {
   user_id: number;
   description: string;
   amount: number;
-  type: 'income' | 'expense' | 'transfer' | 'savings' | 'investment';
+  type: 'income' | 'expense' | 'transfer' | 'savings';
   category?: string;
   source?: string;
   wallet_id?: number;
@@ -293,7 +293,6 @@ export class UserWalletDatabase {
               WHEN type = 'income' OR type = 'transfer' THEN amount
               WHEN type = 'expense' THEN -amount
               WHEN type = 'savings' THEN amount
-              WHEN type = 'investment' THEN 0
               ELSE 0
             END
           ), 0) as balance
@@ -395,7 +394,6 @@ export class TransactionDatabase {
               WHEN type = 'income' OR type = 'transfer' THEN amount
               WHEN type = 'expense' THEN -amount
               WHEN type = 'savings' THEN amount
-              WHEN type = 'investment' THEN 0
               ELSE 0
             END
           ), 0) as balance

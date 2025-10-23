@@ -4,7 +4,7 @@ import { Target, Laptop, Car, Home, Plane, Plus, Trash2, Wallet, ExternalLink } 
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useState, useEffect } from 'react';
-import SavingsGoalsPopup from './SavingsGoalsPopup';
+import { useRouter } from 'next/navigation';
 
 interface SavingsGoalsProps {
   widgetSize?: 'square' | 'half' | 'medium' | 'long';
@@ -22,13 +22,12 @@ interface SavingsGoal {
 }
 
 export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProps) {
+  const router = useRouter();
   const { state, fetchSavings } = useFinancialData();
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
   const { savings } = state.data;
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showPopup, setShowPopup] = useState(false);
 
   // Calculate total saved money from savings transactions
   const totalSaved = savings.reduce((sum: number, saving: {amount: number | string}) => {
@@ -59,8 +58,6 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
         }
       } catch (error) {
         console.error('Error fetching savings goals:', error);
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -199,29 +196,6 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
     return colors[color as keyof typeof colors] || colors.blue;
   };
 
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
-            {t('savingsGoals')}
-          </h2>
-          <div className="w-4 h-4 animate-spin border-2 border-emerald-400 border-t-transparent rounded-full"></div>
-        </div>
-        <div className="flex-1 space-y-3">
-          {Array.from({ length: 2 }, (_, i) => (
-            <div key={i} className="animate-pulse">
-              <div className="p-3 rounded-lg border bg-neutral-100 dark:bg-neutral-700">
-                <div className="h-4 bg-neutral-200 dark:bg-neutral-600 rounded w-3/4 mb-2"></div>
-                <div className="h-3 bg-neutral-200 dark:bg-neutral-600 rounded w-1/2"></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -232,7 +206,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           </h2>
         </div>
         <button 
-          onClick={() => setShowPopup(true)}
+          onClick={() => router.push('/savings-goals')}
           className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium flex items-center gap-1"
         >
           <ExternalLink className="w-3 h-3" />
@@ -270,7 +244,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
               {t('noSavingsGoalsYet')}
             </p>
             <button
-              onClick={() => setShowPopup(true)}
+              onClick={() => router.push('/savings-goals')}
               className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
             >
               {t('createFirstGoal')}
@@ -290,7 +264,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
               <div
                 key={goal.id}
                 className={`p-3 rounded-lg border ${colors.bg} ${colors.border} cursor-pointer hover:shadow-md transition-shadow`}
-                onClick={() => setShowPopup(true)}
+                onClick={() => router.push('/savings-goals')}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center">
@@ -339,7 +313,7 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
         {goals.length > 2 && (
           <div className="text-center py-2">
             <button
-              onClick={() => setShowPopup(true)}
+              onClick={() => router.push('/savings-goals')}
               className="text-xs text-neutral-500 dark:text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
             >
               {t('viewAllGoals')}
@@ -347,13 +321,6 @@ export default function SavingsGoals({ widgetSize = 'medium' }: SavingsGoalsProp
           </div>
         )}
       </div>
-
-
-      {/* Savings Goals Popup */}
-      <SavingsGoalsPopup
-        isOpen={showPopup}
-        onClose={() => setShowPopup(false)}
-      />
     </div>
   );
 }

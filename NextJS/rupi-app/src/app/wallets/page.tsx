@@ -88,31 +88,11 @@ function WalletsContent() {
   };
 
   if (state.loading.wallets && state.loading.initial) {
-    return (
-      <div className="p-4 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-xl md:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Wallets</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading wallets...</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full"></div>
-        </div>
-      </div>
-    );
+    return null; // Let the main page handle loading
   }
 
   if (state.error) {
-    return (
-      <div className="p-4 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-xl md:text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Wallets</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Error loading wallets</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="text-red-500 dark:text-red-400">Error: {state.error}</div>
-        </div>
-      </div>
-    );
+    return null; // Let the main page handle error
   }
 
   return (
@@ -378,21 +358,60 @@ export default function WalletsPage() {
   }, [session, status, router]);
 
   if (status === 'loading') {
-    return null;
+    return (
+      <div className="min-h-screen bg-background text-foreground flex">
+        <Sidebar currentPage="Wallets" />
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full"></div>
+        </div>
+      </div>
+    );
   }
   if (!session) return null;
 
   return (
     <FinancialDataProvider>
+      <WalletsPageContent />
+    </FinancialDataProvider>
+  );
+}
+
+function WalletsPageContent() {
+  const { state } = useFinancialData();
+
+  // Show loading spinner while initial data is loading
+  if (state.loading.initial) {
+    return (
       <div className="min-h-screen bg-background text-foreground flex">
         <Sidebar currentPage="Wallets" />
-        <div className="flex-1 lg:ml-64">
-          <main className="px-2 sm:px-4 lg:px-6 xl:px-8 py-4 sm:py-6 lg:py-8 pt-16 lg:pt-4 pb-20 lg:pb-8">
-            <WalletsContent />
-          </main>
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full"></div>
         </div>
       </div>
-    </FinancialDataProvider>
+    );
+  }
+
+  // Show error state if there's an error
+  if (state.error) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex">
+        <Sidebar currentPage="Wallets" />
+        <div className="flex-1 lg:ml-64 flex items-center justify-center">
+          <div className="text-red-500 dark:text-red-400">Error: {state.error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex">
+      <Sidebar currentPage="Wallets" />
+      <div className="flex-1 lg:ml-64">
+        <main className="px-2 sm:px-4 lg:px-6 xl:px-8 py-4 sm:py-6 lg:py-8 pt-16 lg:pt-4 pb-20 lg:pb-8">
+          <WalletsContent />
+        </main>
+      </div>
+    </div>
   );
 }
 

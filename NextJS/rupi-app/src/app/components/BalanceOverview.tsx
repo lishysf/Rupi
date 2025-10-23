@@ -35,14 +35,12 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
   const { expenses, income, savings, wallets } = state.data;
-  const investments: Array<{amount: number | string}> = (state.data as unknown as Record<string, unknown>).investments as Array<{amount: number | string}> || [];
-  const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
   
   // Wallet state
   const [showWalletModal, setShowWalletModal] = useState(false);
 
   // Calculate financial totals from context data
-  const financialData: FinancialTotal & { totalInvestments: number } = useMemo(() => {
+  const financialData: FinancialTotal = useMemo(() => {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -85,7 +83,6 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
     const totalExpenses = expenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
     const totalIncome = income.reduce((sum, incomeItem) => sum + (typeof incomeItem.amount === 'string' ? parseFloat(incomeItem.amount) : incomeItem.amount), 0);
     const totalSavings = savings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
-    const totalInvestments = investments.reduce((sum: number, inv: {amount: number | string}) => sum + parseFloat(inv.amount.toString()), 0);
 
     return {
       currentMonthExpenses,
@@ -94,10 +91,9 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
       currentMonthSavings,
       totalExpenses,
       totalIncome,
-      totalSavings,
-      totalInvestments
+      totalSavings
     };
-  }, [expenses, income, savings, investments]);
+  }, [expenses, income, savings]);
 
   // Wallet loading state from context - only show loading during initial load
   const walletLoading = state.loading.wallets && state.loading.initial;
@@ -108,8 +104,8 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
   // Calculate balances
   // Main/Spending Card = wallet balance (user's actual available money)
   const currentBalance = walletBalance;
-  // Total assets = wallet balance + savings + current investment portfolio value
-  const totalAssets = currentBalance + financialData.totalSavings + financialData.totalInvestments;
+  // Total assets = wallet balance + savings
+  const totalAssets = currentBalance + financialData.totalSavings;
   const monthChange = financialData.previousMonthExpenses - financialData.currentMonthExpenses; // Positive if spending less
   const isPositiveChange = monthChange > 0;
   
@@ -139,32 +135,6 @@ export default function BalanceOverview({ widgetSize = 'half' }: BalanceOverview
       maximumFractionDigits: 0,
     }).format(amount);
   };
-
-  if (loading) {
-    return (
-      <div className="relative h-full overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-800 via-emerald-700 to-green-800 shadow-xl border border-emerald-600/20">
-        <div className="p-6 h-full flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-emerald-400/30 rounded-full mr-3 animate-pulse"></div>
-              <div className="w-24 h-5 bg-emerald-400/30 rounded animate-pulse"></div>
-            </div>
-            <div className="w-20 h-6 bg-emerald-400/30 rounded-full animate-pulse"></div>
-          </div>
-          <div className="mb-8">
-            <div className="w-32 h-4 bg-emerald-400/30 rounded animate-pulse mb-2"></div>
-            <div className="w-48 h-10 bg-emerald-400/30 rounded animate-pulse mb-2"></div>
-            <div className="w-40 h-3 bg-emerald-400/30 rounded animate-pulse"></div>
-          </div>
-          <div className="flex-1 flex items-center justify-between">
-            <div className="w-20 h-16 bg-emerald-400/30 rounded-lg animate-pulse"></div>
-            <div className="w-20 h-16 bg-emerald-400/30 rounded-lg animate-pulse"></div>
-            <div className="w-20 h-16 bg-emerald-400/30 rounded-lg animate-pulse"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="relative h-full overflow-hidden rounded-3xl group hover:shadow-2xl transition-all duration-500 hover:scale-[1.02]">

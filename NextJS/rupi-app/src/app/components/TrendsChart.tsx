@@ -126,17 +126,16 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
       setError(null)
       
       // Get data from context (same as Financial Summary)
-      const { wallets, savings, income, expenses, investments } = state.data
+      const { wallets, savings, income, expenses } = state.data
       
       // Calculate total assets (same logic as Financial Summary)
-      const walletBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0)
-      const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount), 0)
-      const totalInvestments = (investments || []).reduce((sum: number, inv: {amount: number | string}) => sum + parseFloat(inv.amount.toString()), 0)
-      const totalAssets = walletBalance + totalSavings + totalInvestments
+      const walletBalance = wallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0)
+      const totalSavings = savings.reduce((sum, saving) => sum + parseFloat(saving.amount.toString()), 0)
+      const totalAssets = walletBalance + totalSavings
       
       // Calculate other totals
-      const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount), 0)
-      const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0)
+      const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount.toString()), 0)
+      const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount.toString()), 0)
       
       // Create data points for the selected time range
       const now = new Date()
@@ -153,14 +152,28 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
       }
       
       // Generate date series
-      const dateSeries = []
+      const dateSeries: Date[] = []
       const currentDate = new Date(startDate)
       while (currentDate <= endDate) {
         dateSeries.push(new Date(currentDate))
         currentDate.setDate(currentDate.getDate() + 1)
       }
       
-      // Transform to chart format
+      // Calculate wallet balance progressively for each date
+      // Start from 0 and add all transactions chronologically
+      console.log('🔍 Asset Calculation Debug:')
+      console.log('Current wallet balance:', walletBalance)
+      console.log('Start date:', dateSeries[0].toISOString().split('T')[0])
+      
+      // Get all income and expense transactions sorted by date
+      const allTransactions = [...income.map(i => ({ ...i, type: 'income' as const })), 
+                               ...expenses.map(e => ({ ...e, type: 'expense' as const }))]
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      
+      console.log('Total transactions:', allTransactions.length)
+      
+      // Transform to chart format - calculate progressively forward
+      let runningWalletBalance = 0
       const transformedData = dateSeries.map((date, index) => {
         const month = String(date.getMonth() + 1).padStart(2, '0')
         const day = String(date.getDate()).padStart(2, '0')
@@ -174,27 +187,42 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
         let dailySavings = 0
         
         if (dataType === 'total_assets') {
-          // For assets, use the same calculation as Financial Summary
-          // Total assets = wallet balance + savings + investments
-          // But for historical data, we need to calculate cumulative values
+          // Get all transactions up to and including this date
+          const transactionsUpToDate = allTransactions.filter(item => {
+            const itemDate = new Date(item.date).toISOString().split('T')[0]
+            return itemDate <= dateString
+          })
           
-          // Find the earliest transaction date
-          const allDates = [
-            ...income.map(item => new Date(item.date).toISOString().split('T')[0]),
-            ...expenses.map(item => new Date(item.date).toISOString().split('T')[0]),
-            ...savings.map(item => new Date(item.date).toISOString().split('T')[0]),
-            ...(investments || []).map(item => new Date(item.date).toISOString().split('T')[0])
-          ].filter(Boolean).sort()
+          // Calculate wallet balance from all transactions up to this date
+          runningWalletBalance = transactionsUpToDate.reduce((balance, item) => {
+            const amount = parseFloat(item.amount.toString())
+            if (item.type === 'income') {
+              return balance + amount
+            } else {
+              return balance - amount
+            }
+          }, 0)
           
-          const earliestDate = allDates.length > 0 ? allDates[0] : null
+          // Calculate savings total up to this date
+          const savingsAtDate = savings
+            .filter(item => {
+              const itemDate = new Date(item.date).toISOString().split('T')[0]
+              return itemDate <= dateString
+            })
+            .reduce((sum, item) => sum + parseFloat(item.amount.toString()), 0)
           
-          // If this date is before any transactions, show 0
-          if (earliestDate && dateString < earliestDate) {
-            dailyValue = 0
-          } else {
-            // For now, show current total assets for all dates
-            // This matches the Financial Summary calculation exactly
-            dailyValue = totalAssets
+          // Total assets = running wallet balance + savings at this date
+          dailyValue = runningWalletBalance + savingsAtDate
+          
+          if (dateString === '2024-10-23' || dateString === '2024-10-24' || dateString === '2025-10-23' || dateString === '2025-10-24') {
+            const todayTransactions = transactionsUpToDate.filter(t => 
+              new Date(t.date).toISOString().split('T')[0] === dateString
+            )
+            console.log(`📊 ${dateString}:`)
+            console.log(`  Transactions today:`, todayTransactions.map(t => `${t.type}: ${t.amount}`))
+            console.log(`  Running wallet balance: ${runningWalletBalance}`)
+            console.log(`  Savings at date: ${savingsAtDate}`)
+            console.log(`  Total assets: ${dailyValue}`)
           }
         } else {
           // For income, expenses, savings - calculate daily amounts
@@ -210,7 +238,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                 )
                 return itemDate === dateString && !isInitialBalance
               })
-              .reduce((sum, item) => sum + parseFloat(item.amount), 0)
+              .reduce((sum, item) => sum + parseFloat(item.amount.toString()), 0)
             dailyValue = dailyIncome
           } else if (dataType === 'expense') {
             dailyExpenses = expenses
@@ -218,7 +246,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                 const itemDate = new Date(item.date).toISOString().split('T')[0]
                 return itemDate === dateString
               })
-              .reduce((sum, item) => sum + parseFloat(item.amount), 0)
+              .reduce((sum, item) => sum + parseFloat(item.amount.toString()), 0)
             dailyValue = dailyExpenses
           } else if (dataType === 'savings') {
             dailySavings = savings
@@ -226,7 +254,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                 const itemDate = new Date(item.date).toISOString().split('T')[0]
                 return itemDate === dateString
               })
-              .reduce((sum, item) => sum + parseFloat(item.amount), 0)
+              .reduce((sum, item) => sum + parseFloat(item.amount.toString()), 0)
             dailyValue = dailySavings
           }
         }
@@ -234,11 +262,10 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
         return {
           date: displayDate,
           fullDate: dateString,
-          value: Math.max(0, dailyValue / 1000), // Convert to thousands
+          value: Math.max(0, dataType === 'total_assets' ? dailyValue : dailyValue / 1000), // Don't convert assets to thousands
           income: dailyIncome,
           expenses: dailyExpenses,
           savings: dailySavings,
-          investments: totalInvestments, // Keep total for investments
           net: dailyIncome - dailyExpenses,
           total_assets: totalAssets, // Keep total for assets
           top_expenses: []
@@ -252,7 +279,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
       console.error('Error calculating analytics data:', err)
       setLoading(false) // Ensure loading is set to false even on error
     }
-  }, [timeRange, dataType, state.data.wallets, state.data.savings, state.data.income, state.data.expenses, state.data.investments])
+  }, [timeRange, dataType, state.data.wallets, state.data.savings, state.data.income, state.data.expenses])
 
   // Calculate data when component mounts or when filters change
   React.useEffect(() => {
@@ -260,16 +287,16 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
       setLoading(true)
       calculateAnalyticsData()
     }
-  }, [timeRange, dataType, state.loading.initial])
+  }, [timeRange, dataType, state.loading.initial, calculateAnalyticsData])
 
   // Refresh data when context data changes (like other components)
   React.useEffect(() => {
     // Only refresh if we have data and it's not the initial load
-    if (!state.loading.initial && !loading && (state.data.wallets?.length > 0 || state.data.savings?.length > 0 || state.data.investments?.length > 0)) {
+    if (!state.loading.initial && !loading && (state.data.wallets?.length > 0 || state.data.savings?.length > 0)) {
       setIsUpdating(true)
       calculateAnalyticsData()
     }
-  }, [state.data.wallets, state.data.savings, state.data.investments, state.data.expenses, state.data.income, state.loading.initial, loading])
+  }, [state.data.wallets, state.data.savings, state.data.expenses, state.data.income, state.loading.initial, loading])
 
   // Calculate peak value for highlighting
   const peakValue = analyticsData.length > 0 ? Math.max(...analyticsData.map(d => d.value)) : 0
@@ -448,7 +475,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
               fontSize={8}
               domain={[yAxisMin, yAxisMax]}
               tickFormatter={(value) => {
-                return formatYAxisValue(value * 1000)
+                return formatYAxisValue(dataType === 'total_assets' ? value : value * 1000)
               }}
             />
             <ChartTooltip
@@ -462,7 +489,11 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                 // Format the full date for display
                 const formatDate = (dateString: string) => {
                   try {
-                    const date = new Date(dateString);
+                    // Parse date string as local date to avoid timezone issues
+                    const [year, month, day] = dateString.split('-').map(Number);
+                    const date = new Date(year, month - 1, day);
+                    // Add 1 day to match X-axis display
+                    date.setDate(date.getDate() + 1);
                     return date.toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
@@ -490,7 +521,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                       {data?.fullDate ? formatDate(data.fullDate) : label}
                     </div>
                     <div className="text-xs sm:text-sm font-medium mb-1 sm:mb-2">
-                      {formatCurrency(Number(entry.value) * 1000)}
+                      {formatCurrency(dataType === 'total_assets' ? Number(entry.value) : Number(entry.value) * 1000)}
                     </div>
                     <div className="text-xs opacity-80 mb-1 sm:mb-2">
                       {dataType === 'total_assets' ? 'Assets' :

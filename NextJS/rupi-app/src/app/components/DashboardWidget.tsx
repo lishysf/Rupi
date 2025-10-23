@@ -13,15 +13,15 @@ interface DashboardWidgetProps {
 
 // Define which data each widget depends on
 const DASHBOARD_DATA_KEYS = {
-  'balance-overview': ['transactions', 'expenses', 'income', 'wallets'],
-  'financial-summary': ['transactions', 'expenses', 'income', 'wallets'],
+  'balance-overview': ['wallets'], // Only needs wallets for balance calculation
+  'financial-summary': ['transactions', 'expenses', 'income', 'wallets', 'savings'], // Needs all for calculations
   'income-expense': ['expenses', 'income'],
   'category-breakdown': ['expenses'],
   'trends-chart': ['expenses'],
   'recent-transactions': ['transactions'],
-  'budget-tracking': ['budgets'], // Simplified - only needs budgets
+  'budget-tracking': ['budgets'],
   'savings-goals': ['savings'],
-  'financial-health': ['transactions', 'expenses', 'income'], // Simplified - removed savings dependency
+  'financial-health': ['transactions', 'expenses', 'income', 'savings'], // Include savings for complete health score
 } as const;
 
 export default function DashboardWidget({ 
@@ -44,11 +44,14 @@ export default function DashboardWidget({
     return state.loading[key as keyof typeof state.loading];
   });
   
-  // Show skeleton if data is loading and skeleton is enabled
-  if (showSkeleton && (isDataLoading || !isDataLoaded)) {
+  // Also check if initial loading is still happening
+  const isInitialLoading = state.loading.initial;
+  
+  // Show loading spinner if data is loading, initial loading, or data not loaded
+  if (showSkeleton && (isDataLoading || !isDataLoaded || isInitialLoading)) {
     return (
-      <div className={className}>
-        <LoadingSkeleton type={dataKey} />
+      <div className={`${className} flex items-center justify-center min-h-full`}>
+        <div className="animate-spin w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full"></div>
       </div>
     );
   }

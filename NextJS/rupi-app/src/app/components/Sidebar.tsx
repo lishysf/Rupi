@@ -11,7 +11,8 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   XMarkIcon,
-  WalletIcon
+  WalletIcon,
+  BanknotesIcon
 } from '@heroicons/react/24/outline';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -31,6 +32,18 @@ const getNavigationItems = (username: string, t: (k: string) => string) => [
     name: t('wallets'),
     href: `/wallets`,
     icon: WalletIcon,
+    current: false
+  },
+  {
+    name: 'Savings Goals',
+    href: `/savings-goals`,
+    icon: BanknotesIcon,
+    current: false
+  },
+  {
+    name: 'Budget Tracking',
+    href: `/budgets`,
+    icon: ChartBarIcon,
     current: false
   },
   {

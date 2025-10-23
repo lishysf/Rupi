@@ -15,7 +15,7 @@ interface Transaction {
   date: string;
   created_at: string;
   updated_at: string;
-  type: 'income' | 'expense' | 'savings' | 'investment' | 'transfer';
+  type: 'income' | 'expense' | 'savings' | 'transfer';
   wallet_id?: number;
   isTransfer?: boolean;
   transferAmount?: number;
@@ -48,12 +48,11 @@ interface RecentTransactionsProps {
 }
 
 export default function RecentTransactions({ widgetSize = 'long' }: RecentTransactionsProps) {
-  const { state, deleteTransaction, updateTransaction, deleteSavings, updateSavings, updateInvestment, deleteInvestment, fetchTransactions } = useFinancialData();
+  const { state, deleteTransaction, updateTransaction, deleteSavings, updateSavings, fetchTransactions } = useFinancialData();
   let t = (key: string) => key;
   let translateCategory = (c: string) => c;
   try { const lang = useLanguage(); t = lang.t; translateCategory = lang.translateCategory; } catch {}
   const { transactions, savings } = state.data as unknown as {transactions: Array<{id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}>, savings: Array<{id: number, type: string, description: string, amount: number | string, date: string, goal_name?: string}>};
-  const loading = state.loading.initial && transactions.length === 0;
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'txn' | 'savings'>('all');
   const [editingTransaction, setEditingTransaction] = useState<{
@@ -64,7 +63,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     date: string;
     created_at: string;
     updated_at: string;
-    type: 'income' | 'expense' | 'savings' | 'investment';
+    type: 'income' | 'expense' | 'savings';
   } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -118,17 +117,6 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         } else {
           // Optimistic update will be reflected on next context refresh
         }
-      } else if (transaction.type === 'investment') {
-        // Extract original ID from prefixed ID (e.g., "investment-1" -> 1)
-        const originalId = typeof transaction.id === 'string' 
-          ? parseInt((transaction.id as string).split('-')[1]) 
-          : transaction.id as number;
-        const success = await deleteInvestment(originalId);
-        if (!success) {
-          setError('Failed to delete investment transaction');
-        } else {
-          // Optimistic update will be reflected on next context refresh
-        }
       } else {
         const success = await deleteTransaction(transaction.id, transaction.type === 'transfer' ? 'expense' : transaction.type);
         if (!success) {
@@ -148,8 +136,8 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
     // Keep original type so modal can render correctly
     const editable = {
       ...transaction,
-      category: transaction.category || (transaction.type === 'savings' ? 'Savings' : transaction.type === 'investment' ? 'Investment' : ''),
-      type: (transaction.type as 'income' | 'expense' | 'savings' | 'investment')
+      category: transaction.category || (transaction.type === 'savings' ? 'Savings' : ''),
+      type: (transaction.type as 'income' | 'expense' | 'savings')
     };
     setEditingTransaction(editable);
   };
@@ -180,20 +168,6 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         if (success) {
           await fetchTransactions();
         }
-      } else if (original?.type === 'investment') {
-        // Extract original ID from prefixed ID
-        const originalId = typeof id === 'string' 
-          ? parseInt((id as string).split('-')[1]) 
-          : id as number;
-        const payload = {
-          description: data.description,
-          amount: data.amount,
-          assetName: data.category,
-        };
-        success = await updateInvestment(originalId, payload);
-        if (success) {
-          await fetchTransactions();
-        }
       } else {
         success = await updateTransaction(id, type, data);
       }
@@ -210,13 +184,12 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   };
 
   // Get icon and color for category
-  const getCategoryInfo = (category: string, type: 'income' | 'expense' | 'savings' | 'investment') => {
+  const getCategoryInfo = (category: string, type: 'income' | 'expense' | 'savings') => {
     if (type === 'income') {
       const incomeCategories: Record<string, { icon: React.ComponentType<{className?: string}>; color: string }> = {
         'Salary': { icon: Briefcase, color: 'text-blue-600 dark:text-blue-400' },
         'Freelance': { icon: TrendingUp, color: 'text-purple-600 dark:text-purple-400' },
         'Business': { icon: DollarSign, color: 'text-green-600 dark:text-green-400' },
-        'Investment': { icon: TrendingUp, color: 'text-emerald-600 dark:text-emerald-400' },
         'Bonus': { icon: Gift, color: 'text-yellow-600 dark:text-yellow-400' },
         'Gift': { icon: Gift, color: 'text-pink-600 dark:text-pink-400' },
         'Others': { icon: DollarSign, color: 'text-gray-600 dark:text-gray-400' },
@@ -224,8 +197,6 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       return incomeCategories[category] || { icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400' };
     } else if (type === 'savings') {
       return { icon: TrendingUp, color: 'text-blue-600 dark:text-blue-400' };
-    } else if (type === 'investment') {
-      return { icon: TrendingUp, color: 'text-purple-600 dark:text-purple-400' };
     } else {
       const expenseCategories: Record<string, { icon: React.ComponentType<{className?: string}>; color: string }> = {
         'Housing & Utilities': { icon: Home, color: 'text-orange-600 dark:text-orange-400' },
@@ -313,7 +284,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
   const allTransactions = transactions.map((txn: {id: number, type: string, description: string, amount: number | string, date: string, category?: string, source?: string, wallet_id?: number, created_at?: string, updated_at?: string}) => ({
     ...txn,
     uniqueKey: txn.id, // Use the already unique ID from context
-    type: txn.type as 'income' | 'expense' | 'savings' | 'investment' | 'transfer'
+    type: txn.type as 'income' | 'expense' | 'savings' | 'transfer'
   })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Group transfer transactions to avoid showing duplicates
@@ -382,33 +353,6 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
 
   const limitedTransactions = filtered.slice(0, getTransactionLimit());
 
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className={`${widgetSize === 'square' ? 'text-base' : 'text-lg'} font-semibold text-neutral-900 dark:text-neutral-100`}>
-            {t('recentTransactions')}
-          </h2>
-          <div className="w-4 h-4 animate-spin border-2 border-emerald-400 border-t-transparent rounded-full"></div>
-        </div>
-        <div className="flex-1 space-y-3">
-          {Array.from({ length: getTransactionLimit() }, (_, i) => (
-            <div key={i} className="animate-pulse">
-              <div className="flex items-center space-x-3 p-3">
-                <div className="w-8 h-8 bg-neutral-200 dark:bg-neutral-700 rounded-lg"></div>
-                <div className="flex-1">
-                  <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-3/4 mb-2"></div>
-                  <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded w-1/2"></div>
-                </div>
-                <div className="w-16 h-4 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-xl sm:rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-3 sm:p-4 lg:p-6 h-full flex flex-col">
               <div className="flex items-center justify-between mb-3 sm:mb-4 flex-shrink-0">
@@ -449,7 +393,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
       <div className={`flex-1 overflow-y-auto ${
         widgetSize === 'square' ? 'space-y-2' : 'space-y-3'
       }`}>
-        {limitedTransactions.length === 0 && !loading ? (
+        {limitedTransactions.length === 0 ? (
           <div className="text-center py-8">
             <Calendar className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
             <p className="text-neutral-500 dark:text-neutral-400 text-sm">
@@ -587,7 +531,6 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                   { key: 'expense', label: t('addExpense'), color: 'bg-red-600 hover:bg-red-700' },
                   { key: 'income', label: t('addIncome'), color: 'bg-emerald-600 hover:bg-emerald-700' },
                   { key: 'savings', label: t('addSavings'), color: 'bg-blue-600 hover:bg-blue-700' },
-                  { key: 'investment', label: t('addInvestment'), color: 'bg-purple-600 hover:bg-purple-700' },
                 ].map(opt => (
                   <button
                     key={opt.key}
@@ -597,7 +540,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
                         setAddModalType(opt.key);
                         setShowAddModal(true);
                       } else {
-                        // TODO: open the appropriate add modal/form for savings and investment
+                        // TODO: open the appropriate add modal/form for savings
                         alert(`Add ${opt.label} - coming soon`);
                       }
                     }}

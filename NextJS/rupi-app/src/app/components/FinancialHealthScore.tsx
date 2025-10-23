@@ -14,7 +14,6 @@ interface FinancialData {
   savingsRate: number;
   currentBalance: number;
   savings: Array<{ amount: number | string; date: string }>;
-  investments: Array<{ amount: number | string; date: string }>;
 }
 
 interface UserWallet {
@@ -35,8 +34,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
   const { state } = useFinancialData();
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
-  const { expenses, income, savings, investments, wallets } = state.data;
-  const loading = state.loading.initial && expenses.length === 0 && income.length === 0;
+  const { expenses, income, savings, wallets } = state.data;
   
   // Wallet loading state from context - only show loading during initial load
   const walletLoading = state.loading.wallets && state.loading.initial;
@@ -47,7 +45,6 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
     expenses,
     income,
     savings,
-    investments,
     rawData: state.data
   });
 
@@ -96,10 +93,9 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
       previousMonthExpenses,
       savingsRate,
       currentBalance: 0, // Will be calculated from wallets
-      savings,
-      investments
+      savings
     };
-  }, [expenses, income, savings, investments]);
+  }, [expenses, income, savings]);
 
   // Calculate health score based on monthly buffer and total assets
   const calculateHealthScore = () => {
@@ -124,11 +120,10 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
     // 0 points if no savings
     
     // Factor 2: Total Assets (50% of total score)
-    // Total aset (wallet balance + savings + investments)
+    // Total aset (wallet balance + savings)
     const walletBalance = wallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0);
     const totalSavings = financialData.savings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
-    const totalInvestments = financialData.investments.reduce((sum, investment) => sum + (typeof investment.amount === 'string' ? parseFloat(investment.amount) : investment.amount), 0);
-    const totalAssets = walletBalance + totalSavings + totalInvestments;
+    const totalAssets = walletBalance + totalSavings;
     
     // Score based on total assets (max 50 points)
     // More achievable targets for total assets
@@ -175,19 +170,16 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
       // Calculate wallet total balance (user's actual available money)
       const walletBalance = wallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0);
   
-      // Calculate total savings and investments
+      // Calculate total savings
       const totalSavings = financialData.savings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
-      const totalInvestments = financialData.investments.reduce((sum, investment) => sum + (typeof investment.amount === 'string' ? parseFloat(investment.amount) : investment.amount), 0);
   
-      // Total assets = wallet balance + savings + investments
-      const totalAssets = walletBalance + totalSavings + totalInvestments;
+      // Total assets = wallet balance + savings
+      const totalAssets = walletBalance + totalSavings;
     
     console.log('Assets Calculation:', {
       walletBalance,
       savings: financialData.savings,
-      investments: financialData.investments,
       totalSavings,
-      totalInvestments,
       totalAssets
     });
     
@@ -240,37 +232,6 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
       icon: PiggyBank 
     }
   ];
-
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-lg border border-neutral-200 dark:border-transparent p-6 h-full flex flex-col">
-        <div className="flex items-center mb-4 flex-shrink-0">
-          <Heart className="w-5 h-5 text-emerald-500 mr-2" />
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-            {t('financialHealth')}
-          </h2>
-        </div>
-        <div className="flex-1 animate-pulse space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="w-12 h-12 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
-            <div className="space-y-2">
-              <div className="w-16 h-6 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-              <div className="w-12 h-4 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center justify-between">
-                <div className="w-20 h-4 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-                <div className="w-16 h-2 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
 
   // Mascot expressions based on score
   const getMascotExpression = (score: number) => {

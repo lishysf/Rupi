@@ -24,7 +24,7 @@ export interface ParsedIncome {
 
 // Interface for parsed transaction data
 export interface ParsedTransaction {
-  type: 'income' | 'expense' | 'savings' | 'investment' | 'transfer';
+  type: 'income' | 'expense' | 'savings' | 'transfer';
   description: string;
   amount: number;
   category?: ExpenseCategory;
@@ -101,12 +101,11 @@ Available income sources:
 1. Salary (monthly salary, paycheck, wages, gaji bulanan)
 2. Freelance (freelance work, consulting, gig work, kerja lepas)
 3. Business (business income, sales, revenue, penghasilan bisnis, hasil jualan)
-4. Investment (dividends, interest, capital gains, dividen, bunga, hasil investasi)
-5. Bonus (performance bonus, commission, tips, komisi, bonus kinerja)
-6. Gift (gifts, allowance, money received, hadiah, uang dari orang tua, kiriman)
-7. Others (other income sources, miscellaneous income, pemasukan lainnya)
+4. Bonus (performance bonus, commission, tips, komisi, bonus kinerja)
+5. Gift (gifts, allowance, money received, hadiah, uang dari orang tua, kiriman)
+6. Others (other income sources, miscellaneous income, pemasukan lainnya)
 
-Your task is to determine if the input is income, expense, savings, investment, or transfer, then parse accordingly. Return ONLY a valid JSON object with this exact structure:
+Your task is to determine if the input is income, expense, savings, or transfer, then parse accordingly. Return ONLY a valid JSON object with this exact structure:
 
 For EXPENSES:
 {
@@ -141,15 +140,6 @@ For SAVINGS:
   "confidence": number between 0 and 1
 }
 
-For INVESTMENTS:
-{
-  "type": "investment",
-  "description": "cleaned and formatted description",
-  "amount": number (extracted amount),
-  "assetName": "asset name if mentioned (e.g., stock name, fund name), otherwise null",
-  "confidence": number between 0 and 1
-}
-
 For TRANSFERS (wallet-to-wallet transfers):
 {
   "type": "transfer",
@@ -162,15 +152,13 @@ For TRANSFERS (wallet-to-wallet transfers):
 }
 
 Rules:
-- Detect if input describes receiving money (income), spending money (expense), transferring to/from savings, updating investment portfolio, or wallet-to-wallet transfers
+- Detect if input describes receiving money (income), spending money (expense), transferring to/from savings, or wallet-to-wallet transfers
 - Income: money coming into your main account (salary, freelance, etc.)
 - Expenses: money spent from your main account (purchases, bills, etc.)
 - Savings: transferring money between main account and savings account
   * TO savings: "tabung", "simpan", "nabung", "transfer ke tabungan" (main → savings)
   * FROM savings: "ambil", "pakai", "tarik dari tabungan", "transfer from savings", "savings to" (savings → main)
-- Investments: updating total investment portfolio value (stocks, funds, crypto) - NOT a transfer, just updating the total value
 - Transfers: money moved between different wallets (transfer dari X ke Y, pindah dari X ke Y, kirim dari X ke Y) - NOT involving savings
-- Think of it like having 3 accounts: Main (spending), Savings, and Investment portfolio
 - Extract the amount as a positive number (remove currency symbols)
 - Choose the most appropriate category/source from the provided lists
 - Clean up the description but keep it informative
@@ -344,16 +332,6 @@ Output: {"type": "expense", "description": "Cash payment", "amount": 25000, "cat
 Input: "Tarik dari laptop savings 2 juta"
 Output: {"type": "savings", "description": "Transfer from laptop savings to main balance", "amount": 2000000, "goalName": "laptop", "confidence": 0.9}
 
-Investment Examples (Portfolio value updates):
-Input: "Investasi jadi 5 juta"
-Output: {"type": "investment", "description": "Update investment portfolio value", "amount": 5000000, "assetName": null, "confidence": 0.95}
-
-Input: "Portofolio saham BBCA sekarang 10 juta"
-Output: {"type": "investment", "description": "Update BBCA stock portfolio value", "amount": 10000000, "assetName": "BBCA", "confidence": 0.95}
-
-Input: "Total investasi reksadana 2 juta"
-Output: {"type": "investment", "description": "Update mutual fund portfolio value", "amount": 2000000, "assetName": "mutual fund", "confidence": 0.9}
-
 Transfer Examples (Wallet-to-wallet transfers):
 Input: "Transfer 1 juta dari BCA ke GoPay"
 Output: {"type": "transfer", "description": "Transfer from BCA to GoPay", "amount": 1000000, "walletName": "BCA", "walletType": "bank", "adminFee": 0, "confidence": 0.95}
@@ -427,10 +405,9 @@ Available income sources:
 1. Salary (monthly salary, paycheck, wages, gaji bulanan)
 2. Freelance (freelance work, consulting, gig work, kerja lepas)
 3. Business (business income, sales, revenue, penghasilan bisnis, hasil jualan)
-4. Investment (dividends, interest, capital gains, dividen, bunga, hasil investasi)
-5. Bonus (performance bonus, commission, tips, komisi, bonus kinerja)
-6. Gift (gifts, allowance, money received, hadiah, uang dari orang tua, kiriman)
-7. Others (other income sources, miscellaneous income, pemasukan lainnya)
+4. Bonus (performance bonus, commission, tips, komisi, bonus kinerja)
+5. Gift (gifts, allowance, money received, hadiah, uang dari orang tua, kiriman)
+6. Others (other income sources, miscellaneous income, pemasukan lainnya)
 
 Your task is to identify and parse ALL transactions mentioned in the input. Look for multiple transactions separated by commas, "terus", "lalu", "kemudian", or other connecting words.
 
@@ -439,7 +416,7 @@ Return ONLY a valid JSON object with this exact structure:
 {
   "transactions": [
     {
-      "type": "expense|income|savings|investment|transfer",
+      "type": "expense|income|savings|transfer",
       "description": "cleaned and formatted description",
       "amount": number (extracted amount),
       "category": "exact category name from expense categories" (for expenses only),
@@ -460,7 +437,6 @@ Rules:
 - Expenses: money spent from your main account (purchases, bills, etc.)
 - Savings: transferring money FROM main account TO savings account
 - Transfer: moving money between wallets (e.g., "transfer dari BCA ke GoPay")
-- Investments: updating total investment portfolio value (NOT a transfer, just updating the total value)
 - Extract amounts as positive numbers (remove currency symbols)
 - Choose the most appropriate category/source from the provided lists
 - Clean up descriptions but keep them informative
@@ -714,9 +690,6 @@ export class GroqAIService {
     if (type === 'savings') {
       return { type: 'savings', description, amount, goalName: obj.goalName ?? null, walletName, walletType, confidence } as ParsedTransaction;
     }
-    if (type === 'investment') {
-      return { type: 'investment', description, amount, assetName: obj.assetName ?? null, confidence } as ParsedTransaction;
-    }
     if (type === 'transfer') {
       return { type: 'transfer', description, amount, walletName, walletType, adminFee, confidence } as ParsedTransaction;
     }
@@ -752,14 +725,14 @@ Intent values:
 
 ${walletContext}
 
-If intent is transaction or multiple_transaction, parse using the SAME schema as before (types: expense|income|savings|investment|transfer). Apply STRICT WALLET RULES and Indonesian cues (pake/pakai/dari/ke/via). Normalize aliases (e.g., gojek->GoPay, shopee pay->ShopeePay, cash/tunai).
+If intent is transaction or multiple_transaction, parse using the SAME schema as before (types: expense|income|savings|transfer). Apply STRICT WALLET RULES and Indonesian cues (pake/pakai/dari/ke/via). Normalize aliases (e.g., gojek->GoPay, shopee pay->ShopeePay, cash/tunai).
 
 Return ONLY JSON in this structure:
 {
   "intent": "transaction|multiple_transaction|data_analysis|general_chat",
   "transactions": [
     {
-      "type": "expense|income|savings|investment|transfer",
+      "type": "expense|income|savings|transfer",
       "description": "...",
       "amount": number,
       "category": "..." (for expense),
@@ -984,7 +957,7 @@ Return ONLY JSON in this structure:
   private static isValidParsedTransaction(transaction: unknown): transaction is ParsedTransaction {
     if (!transaction || typeof transaction !== 'object') return false;
     const obj = transaction as Record<string, unknown>;
-    const hasValidType = obj.type === 'income' || obj.type === 'expense' || obj.type === 'savings' || obj.type === 'investment' || obj.type === 'transfer';
+    const hasValidType = obj.type === 'income' || obj.type === 'expense' || obj.type === 'savings' || obj.type === 'transfer';
     const hasValidBasics = (
       typeof obj.description === 'string' &&
       typeof obj.amount === 'number' &&
@@ -1012,12 +985,6 @@ Return ONLY JSON in this structure:
     if (obj.type === 'savings') {
       return (
         obj.goalName === null || typeof obj.goalName === 'string'
-      );
-    }
-
-    if (obj.type === 'investment') {
-      return (
-        obj.assetName === null || typeof obj.assetName === 'string'
       );
     }
 
@@ -1095,7 +1062,6 @@ Return ONLY JSON in this structure:
       'Salary': ['gaji', 'salary', 'paycheck', 'wages'],
       'Freelance': ['freelance', 'consulting', 'gig'],
       'Business': ['bisnis', 'business', 'sales', 'revenue'],
-      'Investment': ['dividen', 'dividend', 'interest', 'invest'],
       'Bonus': ['bonus', 'commission', 'tips'],
       'Gift': ['hadiah', 'gift', 'allowance', 'dapat', 'terima'],
       'Others': []
@@ -1305,13 +1271,13 @@ BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap 
 You are an AI intent classifier for a financial assistant. Analyze the user's message and determine the most appropriate response type.
 
 Response types:
-1. "transaction" - User wants to record a single financial transaction (income, expense, savings, investment)
+1. "transaction" - User wants to record a single financial transaction (income, expense, savings)
 2. "multiple_transaction" - User wants to record multiple transactions in one message
 3. "data_analysis" - User is asking questions about their financial data, wants analysis, or wants to see their financial information
 4. "general_chat" - General conversation, questions about the app, or unclear intent
 
 STRICT CLASSIFICATION RULES:
-- TRANSACTION: Contains amount + action (beli, bayar, gaji, tabung, invest, makan) + no analysis keywords + no multiple indicators
+- TRANSACTION: Contains amount + action (beli, bayar, gaji, tabung, makan) + no analysis keywords + no multiple indicators
 - MULTIPLE_TRANSACTION: Contains multiple amounts OR multiple actions OR connecting words (terus, lalu, kemudian, dan) OR comma-separated items
 - DATA_ANALYSIS: Contains analysis keywords (berapa, analisis, breakdown, ringkasan, tampilkan, lihat, cek, total, rata-rata, terbesar, terkecil, pola, trend, perbandingan, statistik, laporan, report, kategori, category, spending, budget, pengeluaran, pemasukan, tabungan, investasi, belanja, bulan ini, minggu ini, hari ini, sebulan, seminggu, sekarang, pagi ini, siang ini, malam ini) OR time period keywords
 - GENERAL_CHAT: Greetings, app questions, unclear intent, or no financial context
@@ -1322,7 +1288,6 @@ EXAMPLES:
 - "Beli kopi 25rb" → transaction (amount + action)
 - "Gajian 5 juta" → transaction (amount + income action)
 - "Tabung 1 juta" → transaction (amount + savings action)
-- "Invest 500rb" → transaction (amount + investment action)
 - "Makan nasi padang 50k pake BCA" → transaction (amount + action + wallet mention)
 - "Beli kopi 25rb pakai Gojek" → transaction (amount + action + wallet mention)
 - "Hari ini aku beli kopi 50k, makan di warteg 10k, terus dapat gaji 1 juta" → multiple_transaction (multiple amounts + connecting words)
@@ -1436,7 +1401,7 @@ Return ONLY one of these exact words: transaction, multiple_transaction, data_an
     
     const financialContextKeywords = [
       'pengeluaran', 'expenses', 'pemasukan', 'income', 'tabungan', 'savings',
-      'investasi', 'investment', 'belanja', 'spending', 'budget', 'anggaran',
+      'belanja', 'spending', 'budget', 'anggaran',
       'keuangan', 'financial', 'dompet', 'wallet', 'rekening', 'account'
     ];
     
@@ -1453,7 +1418,7 @@ Return ONLY one of these exact words: transaction, multiple_transaction, data_an
     const transactionActionKeywords = [
       'beli', 'bayar', 'buat', 'spend', 'spent', 'purchase', 'bought', 'buy',
       'gaji', 'salary', 'bonus', 'dapat', 'terima', 'income', 'freelance', 'bisnis',
-      'tabung', 'invest', 'saham', 'reksadana', 'deposito', 'saving', 'investment',
+      'tabung', 'saving',
       'makan', 'kopi', 'bensin', 'listrik', 'air', 'sewa', 'cicilan', 'kredit'
     ];
     
@@ -1544,7 +1509,7 @@ Return ONLY one of these exact words: transaction, multiple_transaction, data_an
     
     const financialContextKeywords = [
       'pengeluaran', 'expenses', 'pemasukan', 'income', 'tabungan', 'savings',
-      'investasi', 'investment', 'belanja', 'spending', 'budget', 'anggaran',
+      'belanja', 'spending', 'budget', 'anggaran',
       'keuangan', 'financial', 'dompet', 'wallet', 'rekening', 'account'
     ];
     
@@ -1562,7 +1527,7 @@ Return ONLY one of these exact words: transaction, multiple_transaction, data_an
     const transactionActionKeywords = [
       'beli', 'bayar', 'buat', 'spend', 'spent', 'purchase', 'bought', 'buy',
       'gaji', 'salary', 'bonus', 'dapat', 'terima', 'income', 'freelance', 'bisnis',
-      'tabung', 'invest', 'saham', 'reksadana', 'deposito', 'saving', 'investment',
+      'tabung', 'saving',
       'makan', 'kopi', 'bensin', 'listrik', 'air', 'sewa', 'cicilan', 'kredit'
     ];
     
@@ -1607,15 +1572,9 @@ You help users track their expenses, analyze their financial data, and provide i
 
 Your capabilities:
 1. Record transactions (income, expenses, savings)
-2. Update investment portfolio value
-3. Analyze financial data and provide insights
-4. Answer questions about spending patterns, budgets, and financial health
-5. Support specific category analysis (e.g., "analyze my food spending", "breakdown transportation costs")
-
-CRITICAL: For investment updates, do NOT mention transfers. Just confirm the new total value.
-Example: If user says "investasi 5 juta", respond with:
-"Your investment portfolio value has been updated to Rp 5,000,000!"
-NOT "Transferred Rp 5,000,000 to investments"
+2. Analyze financial data and provide insights
+3. Answer questions about spending patterns, budgets, and financial health
+4. Support specific category analysis (e.g., "analyze my food spending", "breakdown transportation costs")
 
 Response guidelines:
 - Keep responses friendly, helpful, and conversational
@@ -1878,7 +1837,6 @@ Data structure provided:
 - expenses: Individual transactions
 - income: Individual transactions  
 - savings: Individual transactions
-- investments: Individual transactions
 - totals: Pre-calculated totals (USE THESE EXACT NUMBERS)
 - expensesByCategory: Category totals (USE THESE EXACT NUMBERS)
 
@@ -1895,10 +1853,9 @@ Available income sources:
 1. Salary (monthly salary, paycheck, wages)
 2. Freelance (freelance work, consulting, gig work)
 3. Business (business income, sales, revenue)
-4. Investment (dividends, interest, capital gains)
-5. Bonus (performance bonus, commission, tips)
-6. Gift (gifts, allowance, money received)
-7. Others (other income sources, miscellaneous income)
+4. Bonus (performance bonus, commission, tips)
+5. Gift (gifts, allowance, money received)
+6. Others (other income sources, miscellaneous income)
 
 Example:
 If totals.totalExpenses = 120000, format as "Rp 120,000"
@@ -1949,7 +1906,6 @@ ${conversationHistory ? `Conversation History Context: ${conversationHistory}` :
       const expenses = (financialData.expenses || []) as Array<Record<string, unknown>>;
       const income = (financialData.income || []) as Array<Record<string, unknown>>;
       const savings = (financialData.savings || []) as Array<Record<string, unknown>>;
-      const investments = (financialData.investments || []) as Array<Record<string, unknown>>;
 
       console.log('Sample expense data:', expenses.slice(0, 2));
       console.log('Sample income data:', income.slice(0, 2));
@@ -1966,10 +1922,6 @@ ${conversationHistory ? `Conversation History Context: ${conversationHistory}` :
       }, 0);
       const totalSavings = savings.reduce((sum: number, s: Record<string, unknown>) => {
         const amount = typeof s.amount === 'string' ? parseFloat(s.amount) : (s.amount as number || 0);
-        return sum + amount;
-      }, 0);
-      const totalInvestments = investments.reduce((sum: number, inv: Record<string, unknown>) => {
-        const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount as number || 0);
         return sum + amount;
       }, 0);
 
@@ -2004,25 +1956,18 @@ ${conversationHistory ? `Conversation History Context: ${conversationHistory}` :
           description: s.description,
           date: s.date
         })),
-        investments: investments.map((inv: Record<string, unknown>) => ({
-          amount: typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount as number || 0),
-          asset_name: inv.asset_name,
-          description: inv.description,
-          date: inv.date
-        })),
         // Pre-calculated totals to help AI
         totals: {
           totalExpenses,
           totalIncome,
-          totalSavings,
-          totalInvestments
+          totalSavings
         },
         expensesByCategory
       };
 
       // Check if there's any data to analyze
       const hasData = dataSummary.expenses.length > 0 || dataSummary.income.length > 0 || 
-                     dataSummary.savings.length > 0 || dataSummary.investments.length > 0;
+                     dataSummary.savings.length > 0;
 
       if (!hasData) {
         return `📊 **No Financial Data Available**
@@ -2033,7 +1978,6 @@ I don't have any financial data to analyze yet. To get started:
 • "Beli kopi 25rb" (expense)
 • "Gajian 5 juta" (income)  
 • "Tabung 1 juta" (savings)
-• "Invest saham 500rb" (investment)
 
 **💡 Or Try Multiple at Once:**
 • "Hari ini aku beli kopi 25rb, makan siang 50rb, terus dapat gaji 5 juta"
