@@ -446,5 +446,10 @@ export async function GET() {
   }
 }
 
+// OPTIONS endpoint for CORS preflight requests
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 200 });
+}
+
 
 
