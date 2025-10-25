@@ -488,6 +488,11 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
+    console.log('📨 POST request received to webhook');
+    console.log('🔍 Request headers:', Object.fromEntries(request.headers.entries()));
+    console.log('🔍 Request method:', request.method);
+    console.log('🔍 Request URL:', request.url);
+    
     const body = await request.json();
     const update = body as TelegramUpdate;
 
@@ -545,26 +550,93 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET endpoint for webhook info
+// GET endpoint for webhook info and bot token validation
 export async function GET() {
   try {
+    // Check if bot token is available
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const hasToken = !!botToken;
+    
+    console.log('🔍 Checking bot configuration...');
+    console.log('🔑 Bot token available:', hasToken);
+    console.log('🔑 Token preview:', hasToken ? `${botToken.substring(0, 10)}...` : 'NOT SET');
+    
     const webhookInfo = await TelegramBotService.getWebhookInfo();
+    
     return NextResponse.json({ 
       success: true, 
-      webhookInfo 
+      webhookInfo,
+      botConfiguration: {
+        hasToken,
+        tokenPreview: hasToken ? `${botToken.substring(0, 10)}...` : 'NOT SET',
+        environment: process.env.NODE_ENV
+      }
     });
   } catch (error) {
     console.error('Error getting webhook info:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Failed to get webhook info' 
+      error: 'Failed to get webhook info',
+      botConfiguration: {
+        hasToken: !!process.env.TELEGRAM_BOT_TOKEN,
+        tokenPreview: process.env.TELEGRAM_BOT_TOKEN ? `${process.env.TELEGRAM_BOT_TOKEN.substring(0, 10)}...` : 'NOT SET',
+        environment: process.env.NODE_ENV
+      }
     }, { status: 500 });
   }
 }
 
 // OPTIONS endpoint for CORS preflight requests
 export async function OPTIONS() {
+  console.log('🔄 OPTIONS request received - CORS preflight');
+  return new NextResponse(null, { 
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    }
+  });
+}
+
+// Handle any other HTTP methods that Telegram might use
+export async function PUT() {
+  console.log('🔄 PUT request received - redirecting to POST');
+  return NextResponse.json({ 
+    ok: true, 
+    message: 'Use POST method for webhook' 
+  });
+}
+
+export async function PATCH() {
+  console.log('🔄 PATCH request received - redirecting to POST');
+  return NextResponse.json({ 
+    ok: true, 
+    message: 'Use POST method for webhook' 
+  });
+}
+
+export async function DELETE() {
+  console.log('🔄 DELETE request received - redirecting to POST');
+  return NextResponse.json({ 
+    ok: true, 
+    message: 'Use POST method for webhook' 
+  });
+}
+
+// Catch-all handler for any other HTTP methods
+export async function HEAD() {
+  console.log('🔄 HEAD request received');
   return new NextResponse(null, { status: 200 });
+}
+
+// Handle any other HTTP methods that might be sent
+export async function TRACE() {
+  console.log('🔄 TRACE request received');
+  return NextResponse.json({ 
+    ok: true, 
+    message: 'Use POST method for webhook' 
+  });
 }
 
 

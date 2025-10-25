@@ -40,8 +40,12 @@ export class TelegramBotService {
       
       if (!TELEGRAM_BOT_TOKEN) {
         console.error('❌ TELEGRAM_BOT_TOKEN is not set');
+        console.error('❌ Environment variables available:', Object.keys(process.env).filter(key => key.includes('TELEGRAM')));
         return false;
       }
+
+      console.log(`🔑 Using bot token: ${TELEGRAM_BOT_TOKEN.substring(0, 10)}...`);
+      console.log(`🌐 API URL: ${TELEGRAM_API_URL}`);
 
       const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {
         method: 'POST',
