@@ -113,6 +113,7 @@ async function handleMessage(update: TelegramUpdate) {
   try {
     console.log('🔥 Warming up database connection...');
     await TelegramDatabase.warmUpConnection();
+    console.log('✅ Database connection warmed up successfully');
   } catch (error) {
     console.error('❌ Database warm-up failed:', error);
     // Continue anyway - retry logic will handle connection issues
@@ -265,10 +266,12 @@ async function handleMessage(update: TelegramUpdate) {
 
   // Check if user is authenticated for regular chat
   if (!session.is_authenticated || !session.fundy_user_id) {
-    await TelegramBotService.sendMessage(
+    console.log('🔐 User not authenticated, sending login prompt');
+    const result = await TelegramBotService.sendMessage(
       chatId, 
       '🔐 Please login first using /login to chat with me.'
     );
+    console.log('📤 Login prompt sent:', result ? 'SUCCESS' : 'FAILED');
     return;
   }
 
@@ -453,8 +456,8 @@ export async function POST(request: NextRequest) {
     console.log('📨 Telegram webhook received:', JSON.stringify(update, null, 2));
     console.log('⏱️ Processing time started at:', new Date().toISOString());
 
-    // Process message in background with better error handling
-    handleMessage(update).catch(error => {
+    // Process message in background with better error handling and timeout
+    const processingPromise = handleMessage(update).catch(error => {
       console.error('❌ Error handling telegram message:', error);
       console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       
@@ -467,6 +470,18 @@ export async function POST(request: NextRequest) {
           console.error('❌ Failed to send error message to user:', sendError);
         });
       }
+    });
+
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Message processing timeout after 25 seconds'));
+      }, 25000);
+    });
+
+    // Race between processing and timeout
+    Promise.race([processingPromise, timeoutPromise]).catch(error => {
+      console.error('❌ Message processing failed or timed out:', error);
     });
 
     const processingTime = Date.now() - startTime;
