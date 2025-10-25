@@ -9,9 +9,13 @@ if (process.env.DATABASE_URL) {
     ssl: {
       rejectUnauthorized: false
     },
-    max: 1,
-    idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 10000,
+    // Optimize for serverless - more aggressive timeouts
+    max: 2, // Allow 2 connections for better reliability
+    min: 0, // Don't keep idle connections
+    idleTimeoutMillis: 5000, // Close idle connections quickly
+    connectionTimeoutMillis: 15000, // Longer connection timeout
+    statement_timeout: 10000, // Query timeout
+    query_timeout: 10000, // Query timeout
   });
 } else if (process.env.SUPABASE_DB_PASSWORD) {
   const supabaseUrl = process.env.SUPABASE_DB_HOST || 'db.thkdrlozedfysuukvwmd.supabase.co';
@@ -24,9 +28,12 @@ if (process.env.DATABASE_URL) {
     user: 'postgres',
     password: supabasePassword,
     ssl: { rejectUnauthorized: false },
-    max: 1,
-    idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 10000,
+    max: 2,
+    min: 0,
+    idleTimeoutMillis: 5000,
+    connectionTimeoutMillis: 15000,
+    statement_timeout: 10000,
+    query_timeout: 10000,
   });
 } else {
   pool = new Pool({
@@ -36,6 +43,12 @@ if (process.env.DATABASE_URL) {
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'password',
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 2,
+    min: 0,
+    idleTimeoutMillis: 5000,
+    connectionTimeoutMillis: 15000,
+    statement_timeout: 10000,
+    query_timeout: 10000,
   });
 }
 
@@ -53,31 +66,57 @@ export interface TelegramSession {
 }
 
 export class TelegramDatabase {
+  // Retry database operation with exponential backoff
+  private static async retryOperation<T>(
+    operation: () => Promise<T>, 
+    maxRetries: number = 3, 
+    baseDelay: number = 1000
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        console.error(`Database operation attempt ${attempt} failed:`, error);
+        
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    throw new Error('Max retries exceeded');
+  }
+
   // Initialize telegram sessions table
   static async initializeTables() {
     try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS telegram_sessions (
-          id SERIAL PRIMARY KEY,
-          telegram_user_id VARCHAR(255) UNIQUE NOT NULL,
-          fundy_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-          chat_id VARCHAR(255) NOT NULL,
-          username VARCHAR(255),
-          first_name VARCHAR(255),
-          last_name VARCHAR(255),
-          is_authenticated BOOLEAN DEFAULT FALSE,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
+      await this.retryOperation(async () => {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS telegram_sessions (
+            id SERIAL PRIMARY KEY,
+            telegram_user_id VARCHAR(255) UNIQUE NOT NULL,
+            fundy_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            chat_id VARCHAR(255) NOT NULL,
+            username VARCHAR(255),
+            first_name VARCHAR(255),
+            last_name VARCHAR(255),
+            is_authenticated BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
 
-      // Create index for faster lookups
-      await pool.query(`
-        CREATE INDEX IF NOT EXISTS idx_telegram_user_id ON telegram_sessions(telegram_user_id);
-      `);
-      await pool.query(`
-        CREATE INDEX IF NOT EXISTS idx_fundy_user_id ON telegram_sessions(fundy_user_id);
-      `);
+        // Create index for faster lookups
+        await pool.query(`
+          CREATE INDEX IF NOT EXISTS idx_telegram_user_id ON telegram_sessions(telegram_user_id);
+        `);
+        await pool.query(`
+          CREATE INDEX IF NOT EXISTS idx_fundy_user_id ON telegram_sessions(fundy_user_id);
+        `);
+      });
 
       console.log('✅ Telegram sessions table initialized');
     } catch (error) {
@@ -95,31 +134,33 @@ export class TelegramDatabase {
     lastName?: string
   ): Promise<TelegramSession> {
     try {
-      // Try to get existing session
-      const existingSession = await pool.query(
-        'SELECT * FROM telegram_sessions WHERE telegram_user_id = $1',
-        [telegramUserId]
-      );
-
-      if (existingSession.rows.length > 0) {
-        // Update last activity
-        await pool.query(
-          'UPDATE telegram_sessions SET last_activity = CURRENT_TIMESTAMP, chat_id = $1 WHERE telegram_user_id = $2',
-          [chatId, telegramUserId]
+      return await this.retryOperation(async () => {
+        // Try to get existing session
+        const existingSession = await pool.query(
+          'SELECT * FROM telegram_sessions WHERE telegram_user_id = $1',
+          [telegramUserId]
         );
-        return existingSession.rows[0] as TelegramSession;
-      }
 
-      // Create new session
-      const result = await pool.query(
-        `INSERT INTO telegram_sessions 
-        (telegram_user_id, chat_id, username, first_name, last_name, is_authenticated, fundy_user_id) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7) 
-        RETURNING *`,
-        [telegramUserId, chatId, username, firstName, lastName, false, null]
-      );
+        if (existingSession.rows.length > 0) {
+          // Update last activity
+          await pool.query(
+            'UPDATE telegram_sessions SET last_activity = CURRENT_TIMESTAMP, chat_id = $1 WHERE telegram_user_id = $2',
+            [chatId, telegramUserId]
+          );
+          return existingSession.rows[0] as TelegramSession;
+        }
 
-      return result.rows[0] as TelegramSession;
+        // Create new session
+        const result = await pool.query(
+          `INSERT INTO telegram_sessions 
+          (telegram_user_id, chat_id, username, first_name, last_name, is_authenticated, fundy_user_id) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7) 
+          RETURNING *`,
+          [telegramUserId, chatId, username, firstName, lastName, false, null]
+        );
+
+        return result.rows[0] as TelegramSession;
+      });
     } catch (error) {
       console.error('Error getting/creating telegram session:', error);
       throw error;
@@ -129,10 +170,12 @@ export class TelegramDatabase {
   // Authenticate telegram user with Fundy credentials
   static async authenticateUser(telegramUserId: string, fundyUserId: number): Promise<void> {
     try {
-      await pool.query(
-        'UPDATE telegram_sessions SET fundy_user_id = $1, is_authenticated = $2, last_activity = CURRENT_TIMESTAMP WHERE telegram_user_id = $3',
-        [fundyUserId, true, telegramUserId]
-      );
+      await this.retryOperation(async () => {
+        await pool.query(
+          'UPDATE telegram_sessions SET fundy_user_id = $1, is_authenticated = $2, last_activity = CURRENT_TIMESTAMP WHERE telegram_user_id = $3',
+          [fundyUserId, true, telegramUserId]
+        );
+      });
     } catch (error) {
       console.error('Error authenticating telegram user:', error);
       throw error;

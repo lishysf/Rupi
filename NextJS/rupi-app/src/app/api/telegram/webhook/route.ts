@@ -178,15 +178,21 @@ async function handleMessage(update: TelegramUpdate) {
   
   if (userState) {
     if (userState.state === 'awaiting_email') {
+      console.log(`📧 Processing email for user ${telegramUserId}: ${text}`);
+      
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(text)) {
+        console.log(`❌ Invalid email format for user ${telegramUserId}: ${text}`);
         await TelegramBotService.sendMessage(chatId, '❌ Invalid email format. Please enter a valid email:');
         return;
       }
 
+      console.log(`✅ Valid email received for user ${telegramUserId}, transitioning to password state`);
       userStates.set(telegramUserId, { state: 'awaiting_password', email: text });
-      await TelegramBotService.sendMessage(chatId, '🔒 Please enter your password:');
+      
+      const passwordPromptResult = await TelegramBotService.sendMessage(chatId, '🔒 Please enter your password:');
+      console.log(`🔒 Password prompt sent to user ${telegramUserId}: ${passwordPromptResult ? 'SUCCESS' : 'FAILED'}`);
       return;
     }
 
@@ -410,22 +416,51 @@ async function handleMessage(update: TelegramUpdate) {
 
 // Webhook endpoint - handle POST requests from Telegram
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     const body = await request.json();
     const update = body as TelegramUpdate;
 
     console.log('📨 Telegram webhook received:', JSON.stringify(update, null, 2));
+    console.log('⏱️ Processing time started at:', new Date().toISOString());
 
-    // Process message in background
+    // Process message in background with better error handling
     handleMessage(update).catch(error => {
-      console.error('Error handling telegram message:', error);
+      console.error('❌ Error handling telegram message:', error);
+      console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      // Try to send error message to user if possible
+      if (update.message?.chat?.id) {
+        TelegramBotService.sendMessage(
+          update.message.chat.id.toString(), 
+          '❌ Sorry, I encountered an error processing your message. Please try again.'
+        ).catch(sendError => {
+          console.error('❌ Failed to send error message to user:', sendError);
+        });
+      }
     });
 
+    const processingTime = Date.now() - startTime;
+    console.log('⚡ Webhook response time:', processingTime + 'ms');
+
     // Return 200 immediately to Telegram
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ 
+      ok: true, 
+      processing_time: processingTime,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
+    const processingTime = Date.now() - startTime;
     console.error('Webhook error:', error);
-    return NextResponse.json({ ok: false }, { status: 500 });
+    console.log('❌ Error processing time:', processingTime + 'ms');
+    
+    return NextResponse.json({ 
+      ok: false, 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      processing_time: processingTime,
+      timestamp: new Date().toISOString()
+    }, { status: 500 });
   }
 }
 

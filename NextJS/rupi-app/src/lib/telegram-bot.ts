@@ -36,6 +36,13 @@ export class TelegramBotService {
     reply_markup?: Record<string, unknown>;
   }): Promise<boolean> {
     try {
+      console.log(`📤 Sending message to ${chatId}: ${text.substring(0, 50)}...`);
+      
+      if (!TELEGRAM_BOT_TOKEN) {
+        console.error('❌ TELEGRAM_BOT_TOKEN is not set');
+        return false;
+      }
+
       const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {
         method: 'POST',
         headers: {
@@ -52,13 +59,17 @@ export class TelegramBotService {
       const data = await response.json();
       
       if (!data.ok) {
-        console.error('Telegram API error:', data);
+        console.error('❌ Telegram API error:', data);
+        console.error('❌ Response status:', response.status);
+        console.error('❌ Response headers:', Object.fromEntries(response.headers.entries()));
         return false;
       }
 
+      console.log(`✅ Message sent successfully to ${chatId}`);
       return true;
     } catch (error) {
-      console.error('Error sending telegram message:', error);
+      console.error('❌ Error sending telegram message:', error);
+      console.error('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
       return false;
     }
   }
