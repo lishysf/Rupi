@@ -203,16 +203,8 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
             }
           }, 0)
           
-          // Calculate savings total up to this date
-          const savingsAtDate = savings
-            .filter(item => {
-              const itemDate = new Date(item.date).toISOString().split('T')[0]
-              return itemDate <= dateString
-            })
-            .reduce((sum, item) => sum + parseFloat(item.amount.toString()), 0)
-          
-          // Total assets = running wallet balance + savings at this date
-          dailyValue = runningWalletBalance + savingsAtDate
+          // Total assets = wallet balance only (no savings)
+          dailyValue = runningWalletBalance
           
           if (dateString === '2024-10-23' || dateString === '2024-10-24' || dateString === '2025-10-23' || dateString === '2025-10-24') {
             const todayTransactions = transactionsUpToDate.filter(t => 
@@ -221,7 +213,6 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
             console.log(`📊 ${dateString}:`)
             console.log(`  Transactions today:`, todayTransactions.map(t => `${t.type}: ${t.amount}`))
             console.log(`  Running wallet balance: ${runningWalletBalance}`)
-            console.log(`  Savings at date: ${savingsAtDate}`)
             console.log(`  Total assets: ${dailyValue}`)
           }
         } else {
