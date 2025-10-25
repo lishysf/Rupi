@@ -26,6 +26,11 @@ export default withAuth(
           return true;
         }
         
+        // Allow access to Telegram webhook and setup endpoints
+        if (pathname.startsWith('/api/telegram/')) {
+          return true;
+        }
+        
         // Require token for all other routes
         return !!token;
       },
