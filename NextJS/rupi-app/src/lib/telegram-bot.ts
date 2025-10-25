@@ -168,10 +168,35 @@ export class TelegramBotService {
 
   // Convert AI response to Telegram-friendly format
   static formatAIResponse(text: string): string {
-    // Remove ** markdown for headers (Telegram doesn't support this in basic Markdown)
-    let formatted = text.replace(/\*\*([^*]+)\*\*/g, '*$1*');
-    
-    // Don't escape already formatted text, just clean it up
+    // Clean up the response and ensure proper Markdown formatting
+    let formatted = text
+      // Fix common Markdown issues
+      .replace(/\*\*(.*?)\*\*/g, '*$1*')  // Convert **bold** to *bold*
+      .replace(/__(.*?)__/g, '_$1_')      // Convert __italic__ to _italic_
+      .replace(/\n\s*\n/g, '\n\n')        // Clean up multiple newlines
+      .trim();
+
+    // Escape special characters that could break Markdown
+    formatted = formatted
+      .replace(/(?<!\\)\*/g, '\\*')        // Escape * not already escaped
+      .replace(/(?<!\\)_/g, '\\_')        // Escape _ not already escaped
+      .replace(/(?<!\\)\[/g, '\\[')       // Escape [ not already escaped
+      .replace(/(?<!\\)\]/g, '\\]')       // Escape ] not already escaped
+      .replace(/(?<!\\)\(/g, '\\(')       // Escape ( not already escaped
+      .replace(/(?<!\\)\)/g, '\\)')       // Escape ) not already escaped
+      .replace(/(?<!\\)~/g, '\\~')        // Escape ~ not already escaped
+      .replace(/(?<!\\)`/g, '\\`')        // Escape ` not already escaped
+      .replace(/(?<!\\)>/g, '\\>')        // Escape > not already escaped
+      .replace(/(?<!\\)#/g, '\\#')        // Escape # not already escaped
+      .replace(/(?<!\\)\+/g, '\\+')       // Escape + not already escaped
+      .replace(/(?<!\\)-/g, '\\-')        // Escape - not already escaped
+      .replace(/(?<!\\)=/g, '\\=')        // Escape = not already escaped
+      .replace(/(?<!\\)\|/g, '\\|')       // Escape | not already escaped
+      .replace(/(?<!\\)\{/g, '\\{')     // Escape { not already escaped
+      .replace(/(?<!\\)\}/g, '\\}')       // Escape } not already escaped
+      .replace(/(?<!\\)\./g, '\\.')       // Escape . not already escaped
+      .replace(/(?<!\\)!/g, '\\!');      // Escape ! not already escaped
+
     return formatted;
   }
 

@@ -88,6 +88,84 @@ async function handleIncomeCreation(userId: number, description: string, amount:
   );
 }
 
+// Helper function to handle transfer creation
+async function handleTransferCreation(
+  userId: number, 
+  description: string, 
+  amount: number, 
+  fromWalletId: number, 
+  toWalletId: number, 
+  adminFee?: number
+) {
+  const wallets = await UserWalletDatabase.getAllWallets(userId);
+  const fromWallet = wallets.find(w => w.id === fromWalletId);
+  const toWallet = wallets.find(w => w.id === toWalletId);
+  
+  if (!fromWallet) {
+    throw new Error('Source wallet not found');
+  }
+  
+  if (!toWallet) {
+    throw new Error('Destination wallet not found');
+  }
+
+  const totalAmount = amount + (adminFee || 0);
+  const currentBalance = await TransactionDatabase.calculateWalletBalance(userId, fromWalletId);
+  
+  if (currentBalance < totalAmount) {
+    throw new Error(`Insufficient balance in ${fromWallet.name}. Current: Rp${currentBalance.toLocaleString()}, Required: Rp${totalAmount.toLocaleString()}`);
+  }
+
+  // Create transfer transaction (outgoing)
+  await TransactionDatabase.createTransaction(
+    userId, 
+    `${description} (Transfer to ${toWallet.name})`, 
+    amount, 
+    'transfer',
+    fromWalletId,
+    'Transfer',
+    undefined,
+    undefined,
+    toWalletId.toString(),
+    undefined,
+    new Date()
+  );
+
+  // Create income transaction (incoming)
+  await TransactionDatabase.createTransaction(
+    userId, 
+    `${description} (Transfer from ${fromWallet.name})`, 
+    amount, 
+    'income',
+    toWalletId,
+    undefined,
+    'Transfer',
+    undefined,
+    fromWalletId.toString(),
+    undefined,
+    new Date()
+  );
+
+  // Create admin fee transaction if applicable
+  if (adminFee && adminFee > 0) {
+    await TransactionDatabase.createTransaction(
+      userId, 
+      `${description} (Admin Fee)`, 
+      adminFee, 
+      'expense',
+      fromWalletId,
+      'Fees',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new Date()
+    );
+  }
+
+  return { fromWallet, toWallet, amount, adminFee };
+}
+
 // Handle incoming Telegram messages
 async function handleMessage(update: TelegramUpdate) {
   console.log('🚀 Starting message processing...');
@@ -394,6 +472,34 @@ async function handleMessage(update: TelegramUpdate) {
           const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
           response = `✅ Income recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}.`;
           transactionCreated = true;
+        } else if (parsedTransaction.type === 'transfer') {
+          try {
+            // Find destination wallet
+            const toWalletId = findWalletByName(
+              userWallets, 
+              (parsedTransaction as any).walletNameDestination, 
+              (parsedTransaction as any).walletTypeDestination
+            );
+
+            if (!walletId || !toWalletId) {
+              throw new Error('Please specify both source and destination wallets. For example: "Transfer 100k dari BCA ke Gopay"');
+            }
+
+            const result = await handleTransferCreation(
+              userId,
+              parsedTransaction.description,
+              parsedTransaction.amount,
+              walletId,
+              toWalletId,
+              (parsedTransaction as any).adminFee
+            );
+
+            const adminFeeText = (parsedTransaction as any).adminFee ? ` (Admin fee: Rp${(parsedTransaction as any).adminFee.toLocaleString()})` : '';
+            response = `✅ Transfer recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${result.fromWallet.name} to ${result.toWallet.name}${adminFeeText}.`;
+            transactionCreated = true;
+          } catch (error) {
+            response = error instanceof Error ? error.message : 'Error recording transfer';
+          }
         }
       } else {
         response = 'I need more details to record this transaction. Please specify the amount, description, and wallet.';
