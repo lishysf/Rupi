@@ -49,9 +49,10 @@ export default function TelegramSetupPage() {
         throw new Error(initData.error || 'Database initialization failed');
       }
 
-      // Step 2: Set webhook with correct URL (using www.fundy.id)
+      // Step 2: Set webhook with correct URL (detect the right domain)
       updateStep('set_webhook', 'running');
-      const webhookUrl = 'https://www.fundy.id/api/telegram/webhook';
+      // Use the current domain (should be fundy.id without www)
+      const webhookUrl = `${window.location.origin}/api/telegram/webhook`;
       const webhookResponse = await fetch('/api/telegram/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -144,7 +145,7 @@ export default function TelegramSetupPage() {
                       <p className="text-red-800"><strong>Last Error:</strong> {webhookInfo.last_error_message}</p>
                       {webhookInfo.last_error_message.includes('307') && (
                         <p className="text-red-700 mt-1">
-                          <strong>Fix:</strong> The webhook URL needs to use www.fundy.id instead of fundy.id
+                          <strong>Fix:</strong> Your domain is redirecting. The webhook will use the correct URL automatically.
                         </p>
                       )}
                     </div>
@@ -223,7 +224,7 @@ export default function TelegramSetupPage() {
                     Setting up...
                   </>
                 ) : (
-                  'Run Setup (Fix Webhook URL)'
+                  'Run Setup'
                 )}
               </button>
               
@@ -242,7 +243,7 @@ export default function TelegramSetupPage() {
               </h3>
               <div className="text-sm text-blue-700 space-y-2">
                 <p>1. Make sure <code className="bg-blue-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code> is set in Vercel environment variables</p>
-                <p>2. Click "Run Setup" above to fix the webhook URL (will use www.fundy.id)</p>
+                <p>2. Click "Run Setup" above to configure the webhook with the correct URL</p>
                 <p>3. Open Telegram and search for <strong>@FundyIDbot</strong></p>
                 <p>4. Send <code className="bg-blue-100 px-1 rounded">/start</code> to begin</p>
               </div>
@@ -279,7 +280,7 @@ export default function TelegramSetupPage() {
             🔧 Troubleshooting
           </h2>
           <div className="space-y-3 text-sm text-gray-600">
-            <p><strong>307 Redirect Error?</strong> The webhook URL needs to use www.fundy.id. Click "Run Setup" to fix this.</p>
+            <p><strong>307 Redirect Error?</strong> Your domain might be redirecting. The setup will detect and use the correct URL automatically.</p>
             <p><strong>Bot not responding?</strong> Check that TELEGRAM_BOT_TOKEN is set in Vercel environment variables.</p>
             <p><strong>Setup fails?</strong> Make sure your app is deployed and accessible.</p>
             <p><strong>Can't login?</strong> Use your Fundy web account credentials.</p>
