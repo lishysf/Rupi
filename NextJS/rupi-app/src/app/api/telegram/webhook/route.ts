@@ -122,19 +122,24 @@ async function handleMessage(update: TelegramUpdate) {
     last_activity: new Date()
   };
 
-  // Send immediate response first (before any database operations)
-  console.log('📤 Sending immediate response to user...');
+  // Check for commands first before sending immediate response
   let immediateResponseSent = false;
   
-  try {
-    const result = await TelegramBotService.sendMessage(
-      chatId, 
-      '🔐 Please login first using /login to chat with me.'
-    );
-    console.log('📤 Immediate response sent:', result ? 'SUCCESS' : 'FAILED');
-    immediateResponseSent = result;
-  } catch (error) {
-    console.error('❌ Failed to send immediate response:', error);
+  // Only send immediate response for non-command messages
+  if (!text.startsWith('/')) {
+    console.log('📤 Sending immediate response to user...');
+    try {
+      const result = await TelegramBotService.sendMessage(
+        chatId, 
+        '🔐 Please login first using /login to chat with me.'
+      );
+      console.log('📤 Immediate response sent:', result ? 'SUCCESS' : 'FAILED');
+      immediateResponseSent = result;
+    } catch (error) {
+      console.error('❌ Failed to send immediate response:', error);
+    }
+  } else {
+    console.log('🔍 Command detected, processing normally:', text);
   }
   
   // Try database operations in background (non-blocking)
@@ -165,9 +170,9 @@ async function handleMessage(update: TelegramUpdate) {
     console.log('🔄 Using fallback session for user:', telegramUserId);
   }
   
-  // If we already sent a response, return early
+  // If we already sent a response for non-command messages, return early
   if (immediateResponseSent) {
-    console.log('✅ Response already sent, returning early');
+    console.log('✅ Response already sent for non-command message, returning early');
     return;
   }
 
