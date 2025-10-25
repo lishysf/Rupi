@@ -110,7 +110,14 @@ async function handleMessage(update: TelegramUpdate) {
   console.log(`🔍 Processing message: "${text}" for user ${telegramUserId}`);
 
   // Check authentication flow FIRST (before any database operations)
-  const userState = userStates.get(telegramUserId);
+  // Use database instead of in-memory state for serverless persistence
+  let userState = null;
+  try {
+    userState = await TelegramDatabase.getAuthState(telegramUserId);
+    console.log(`🔍 Database auth state for user ${telegramUserId}:`, userState);
+  } catch (error) {
+    console.error('❌ Error getting auth state from database:', error);
+  }
   
   if (userState) {
     console.log(`🔍 User is in authentication flow: ${userState.state}`);
@@ -127,7 +134,7 @@ async function handleMessage(update: TelegramUpdate) {
       }
 
       console.log(`✅ Valid email received for user ${telegramUserId}, transitioning to password state`);
-      userStates.set(telegramUserId, { state: 'awaiting_password', email: text });
+      await TelegramDatabase.setAuthState(telegramUserId, 'awaiting_password', text);
       
       const passwordPromptResult = await TelegramBotService.sendMessage(chatId, '🔒 Please enter your password:');
       console.log(`🔒 Password prompt sent to user ${telegramUserId}: ${passwordPromptResult ? 'SUCCESS' : 'FAILED'}`);
@@ -144,7 +151,7 @@ async function handleMessage(update: TelegramUpdate) {
         
         if (!user) {
           await TelegramBotService.sendMessage(chatId, '❌ Invalid email or password. Please try /login again.');
-          userStates.delete(telegramUserId);
+          await TelegramDatabase.clearAuthState(telegramUserId);
           return;
         }
 
@@ -152,13 +159,13 @@ async function handleMessage(update: TelegramUpdate) {
         
         if (!isPasswordValid) {
           await TelegramBotService.sendMessage(chatId, '❌ Invalid email or password. Please try /login again.');
-          userStates.delete(telegramUserId);
+          await TelegramDatabase.clearAuthState(telegramUserId);
           return;
         }
 
         // Authenticate session
         await TelegramDatabase.authenticateUser(telegramUserId, user.id);
-        userStates.delete(telegramUserId);
+        await TelegramDatabase.clearAuthState(telegramUserId);
 
         await TelegramBotService.sendMessage(
           chatId, 
@@ -167,7 +174,7 @@ async function handleMessage(update: TelegramUpdate) {
       } catch (error) {
         console.error('Authentication error:', error);
         await TelegramBotService.sendMessage(chatId, '❌ Authentication failed. Please try /login again.');
-        userStates.delete(telegramUserId);
+        await TelegramDatabase.clearAuthState(telegramUserId);
       }
       return;
     }
@@ -273,7 +280,7 @@ async function handleMessage(update: TelegramUpdate) {
     }
 
     console.log('📧 Starting login flow - requesting email');
-    userStates.set(telegramUserId, { state: 'awaiting_email' });
+    await TelegramDatabase.setAuthState(telegramUserId, 'awaiting_email');
     const result = await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
     console.log('📤 Login email prompt sent:', result ? 'SUCCESS' : 'FAILED');
     return;

@@ -154,6 +154,8 @@ export class TelegramDatabase {
             first_name VARCHAR(255),
             last_name VARCHAR(255),
             is_authenticated BOOLEAN DEFAULT FALSE,
+            auth_state VARCHAR(255),
+            auth_email VARCHAR(255),
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           )
@@ -276,6 +278,60 @@ export class TelegramDatabase {
       );
     } catch (error) {
       console.error('Error updating telegram user activity:', error);
+      throw error;
+    }
+  }
+
+  // Set authentication state in database
+  static async setAuthState(telegramUserId: string, state: string, email?: string): Promise<void> {
+    try {
+      await this.retryOperation(async () => {
+        await pool.query(
+          'UPDATE telegram_sessions SET auth_state = $1, auth_email = $2, last_activity = CURRENT_TIMESTAMP WHERE telegram_user_id = $3',
+          [state, email, telegramUserId]
+        );
+      });
+    } catch (error) {
+      console.error('Error setting auth state:', error);
+      throw error;
+    }
+  }
+
+  // Get authentication state from database
+  static async getAuthState(telegramUserId: string): Promise<{ state: string; email?: string } | null> {
+    try {
+      const result = await this.retryOperation(async () => {
+        return await pool.query(
+          'SELECT auth_state, auth_email FROM telegram_sessions WHERE telegram_user_id = $1',
+          [telegramUserId]
+        );
+      });
+
+      if (result.rows.length === 0 || !result.rows[0].auth_state) {
+        return null;
+      }
+
+      return {
+        state: result.rows[0].auth_state,
+        email: result.rows[0].auth_email
+      };
+    } catch (error) {
+      console.error('Error getting auth state:', error);
+      return null;
+    }
+  }
+
+  // Clear authentication state
+  static async clearAuthState(telegramUserId: string): Promise<void> {
+    try {
+      await this.retryOperation(async () => {
+        await pool.query(
+          'UPDATE telegram_sessions SET auth_state = NULL, auth_email = NULL WHERE telegram_user_id = $1',
+          [telegramUserId]
+        );
+      });
+    } catch (error) {
+      console.error('Error clearing auth state:', error);
       throw error;
     }
   }
