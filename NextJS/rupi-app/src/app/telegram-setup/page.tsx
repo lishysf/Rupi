@@ -49,9 +49,9 @@ export default function TelegramSetupPage() {
         throw new Error(initData.error || 'Database initialization failed');
       }
 
-      // Step 2: Set webhook
+      // Step 2: Set webhook with correct URL (using www.fundy.id)
       updateStep('set_webhook', 'running');
-      const webhookUrl = `${window.location.origin}/api/telegram/webhook`;
+      const webhookUrl = 'https://www.fundy.id/api/telegram/webhook';
       const webhookResponse = await fetch('/api/telegram/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,6 +130,29 @@ export default function TelegramSetupPage() {
               </p>
             </div>
 
+            {/* Current Status */}
+            {webhookInfo && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                <h3 className="text-sm font-medium text-yellow-800 mb-2">
+                  🔍 Current Webhook Status
+                </h3>
+                <div className="text-sm text-yellow-700 space-y-1">
+                  <p><strong>URL:</strong> {webhookInfo.url || 'Not set'}</p>
+                  <p><strong>Pending Updates:</strong> {webhookInfo.pending_update_count || 0}</p>
+                  {webhookInfo.last_error_message && (
+                    <div className="mt-2 p-2 bg-red-100 border border-red-200 rounded">
+                      <p className="text-red-800"><strong>Last Error:</strong> {webhookInfo.last_error_message}</p>
+                      {webhookInfo.last_error_message.includes('307') && (
+                        <p className="text-red-700 mt-1">
+                          <strong>Fix:</strong> The webhook URL needs to use www.fundy.id instead of fundy.id
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Setup Steps */}
             <div className="space-y-6 mb-8">
               {steps.map((step, index) => (
@@ -168,8 +191,8 @@ export default function TelegramSetupPage() {
               </div>
             )}
 
-            {/* Webhook Info */}
-            {webhookInfo && (
+            {/* Success Display */}
+            {webhookInfo && !error && steps.every(s => s.status === 'success') && (
               <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-6">
                 <h3 className="text-sm font-medium text-green-800 mb-2">
                   ✅ Setup Complete!
@@ -200,7 +223,7 @@ export default function TelegramSetupPage() {
                     Setting up...
                   </>
                 ) : (
-                  'Run Setup'
+                  'Run Setup (Fix Webhook URL)'
                 )}
               </button>
               
@@ -219,7 +242,7 @@ export default function TelegramSetupPage() {
               </h3>
               <div className="text-sm text-blue-700 space-y-2">
                 <p>1. Make sure <code className="bg-blue-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code> is set in Vercel environment variables</p>
-                <p>2. Click "Run Setup" above to configure the bot</p>
+                <p>2. Click "Run Setup" above to fix the webhook URL (will use www.fundy.id)</p>
                 <p>3. Open Telegram and search for <strong>@FundyIDbot</strong></p>
                 <p>4. Send <code className="bg-blue-100 px-1 rounded">/start</code> to begin</p>
               </div>
@@ -256,6 +279,7 @@ export default function TelegramSetupPage() {
             🔧 Troubleshooting
           </h2>
           <div className="space-y-3 text-sm text-gray-600">
+            <p><strong>307 Redirect Error?</strong> The webhook URL needs to use www.fundy.id. Click "Run Setup" to fix this.</p>
             <p><strong>Bot not responding?</strong> Check that TELEGRAM_BOT_TOKEN is set in Vercel environment variables.</p>
             <p><strong>Setup fails?</strong> Make sure your app is deployed and accessible.</p>
             <p><strong>Can't login?</strong> Use your Fundy web account credentials.</p>
