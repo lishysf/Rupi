@@ -64,8 +64,24 @@ export async function POST(request: NextRequest) {
       await TelegramDatabase.initializeTables();
       return NextResponse.json({
         success: true,
-        message: 'Database tables initialized'
+        message: 'Database tables initialized with auth state support'
       });
+    }
+
+    if (action === 'migrate_auth_state') {
+      try {
+        // Add auth state columns to existing tables
+        await TelegramDatabase.initializeTables();
+        return NextResponse.json({
+          success: true,
+          message: 'Auth state columns added to existing tables'
+        });
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          error: `Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        }, { status: 500 });
+      }
     }
 
     return NextResponse.json({

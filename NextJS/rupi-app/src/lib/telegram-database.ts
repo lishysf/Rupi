@@ -168,6 +168,16 @@ export class TelegramDatabase {
         await pool.query(`
           CREATE INDEX IF NOT EXISTS idx_fundy_user_id ON telegram_sessions(fundy_user_id);
         `);
+
+        // Add auth state columns if they don't exist (migration for existing tables)
+        await pool.query(`
+          ALTER TABLE telegram_sessions 
+          ADD COLUMN IF NOT EXISTS auth_state VARCHAR(255);
+        `);
+        await pool.query(`
+          ALTER TABLE telegram_sessions 
+          ADD COLUMN IF NOT EXISTS auth_email VARCHAR(255);
+        `);
       });
 
       console.log('✅ Telegram sessions table initialized');
