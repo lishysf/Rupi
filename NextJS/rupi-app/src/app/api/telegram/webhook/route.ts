@@ -130,27 +130,55 @@ async function handleMessage(update: TelegramUpdate) {
     // The tables might already exist
   }
 
-  // Get or create session
-  console.log('👤 Getting or creating session for user:', telegramUserId);
-  const session = await TelegramDatabase.getOrCreateSession(
-    telegramUserId,
-    chatId,
-    username,
-    firstName,
-    lastName
-  );
-  console.log('✅ Session retrieved:', { 
-    is_authenticated: session.is_authenticated, 
-    fundy_user_id: session.fundy_user_id 
-  });
+  // Get or create session with fallback
+  let session;
+  try {
+    console.log('👤 Getting or creating session for user:', telegramUserId);
+    session = await TelegramDatabase.getOrCreateSession(
+      telegramUserId,
+      chatId,
+      username,
+      firstName,
+      lastName
+    );
+    console.log('✅ Session retrieved:', { 
+      is_authenticated: session.is_authenticated, 
+      fundy_user_id: session.fundy_user_id 
+    });
+  } catch (error) {
+    console.error('❌ Error getting session, using fallback:', error);
+    // Create a fallback session object
+    session = {
+      is_authenticated: false,
+      fundy_user_id: null,
+      telegram_user_id: telegramUserId,
+      chat_id: chatId,
+      username,
+      first_name: firstName,
+      last_name: lastName,
+      created_at: new Date(),
+      last_activity: new Date()
+    };
+    console.log('🔄 Using fallback session for user:', telegramUserId);
+  }
 
   // Handle /start command
   if (text === '/start') {
     console.log('🚀 Handling /start command');
     const welcomeMessage = `👋 Welcome to *Fundy AI Assistant*!\n\nI can help you manage your finances through Telegram.\n\n🔐 *To get started, you need to login with your Fundy account.*\n\nUse /login to authenticate with your email and password.\n\nOnce logged in, you can:\n• Record expenses and income\n• Analyze your spending\n• Track your budgets\n• And much more!\n\nTry /help to see all available commands.`;
     
-    const result = await TelegramBotService.sendMessage(chatId, welcomeMessage);
-    console.log('📤 /start message sent:', result ? 'SUCCESS' : 'FAILED');
+    try {
+      const result = await TelegramBotService.sendMessage(chatId, welcomeMessage);
+      console.log('📤 /start message sent:', result ? 'SUCCESS' : 'FAILED');
+    } catch (error) {
+      console.error('❌ Failed to send /start message:', error);
+      // Try a simpler fallback message
+      try {
+        await TelegramBotService.sendMessage(chatId, 'Welcome! Use /login to start.');
+      } catch (fallbackError) {
+        console.error('❌ Fallback /start message also failed:', fallbackError);
+      }
+    }
     return;
   }
 
@@ -267,11 +295,21 @@ async function handleMessage(update: TelegramUpdate) {
   // Check if user is authenticated for regular chat
   if (!session.is_authenticated || !session.fundy_user_id) {
     console.log('🔐 User not authenticated, sending login prompt');
-    const result = await TelegramBotService.sendMessage(
-      chatId, 
-      '🔐 Please login first using /login to chat with me.'
-    );
-    console.log('📤 Login prompt sent:', result ? 'SUCCESS' : 'FAILED');
+    try {
+      const result = await TelegramBotService.sendMessage(
+        chatId, 
+        '🔐 Please login first using /login to chat with me.'
+      );
+      console.log('📤 Login prompt sent:', result ? 'SUCCESS' : 'FAILED');
+    } catch (error) {
+      console.error('❌ Failed to send login prompt:', error);
+      // Try a simpler message as fallback
+      try {
+        await TelegramBotService.sendMessage(chatId, 'Please use /login to start.');
+      } catch (fallbackError) {
+        console.error('❌ Fallback message also failed:', fallbackError);
+      }
+    }
     return;
   }
 

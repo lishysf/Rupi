@@ -74,7 +74,8 @@ export class TelegramDatabase {
       console.log('✅ Database connection warmed up successfully');
     } catch (error) {
       console.error('❌ Database warm-up failed:', error);
-      // Don't throw - let retry logic handle it
+      console.log('🔄 Will retry with individual operations...');
+      // Don't throw - let retry logic handle it in individual operations
     }
   }
 
