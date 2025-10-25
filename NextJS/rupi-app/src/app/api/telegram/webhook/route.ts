@@ -109,6 +109,70 @@ async function handleMessage(update: TelegramUpdate) {
   console.log(`📱 Telegram message from ${firstName} (${telegramUserId}): ${text}`);
   console.log(`🔍 Processing message: "${text}" for user ${telegramUserId}`);
 
+  // Check authentication flow FIRST (before any database operations)
+  const userState = userStates.get(telegramUserId);
+  
+  if (userState) {
+    console.log(`🔍 User is in authentication flow: ${userState.state}`);
+    
+    if (userState.state === 'awaiting_email') {
+      console.log(`📧 Processing email for user ${telegramUserId}: ${text}`);
+      
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(text)) {
+        console.log(`❌ Invalid email format for user ${telegramUserId}: ${text}`);
+        await TelegramBotService.sendMessage(chatId, '❌ Invalid email format. Please enter a valid email:');
+        return;
+      }
+
+      console.log(`✅ Valid email received for user ${telegramUserId}, transitioning to password state`);
+      userStates.set(telegramUserId, { state: 'awaiting_password', email: text });
+      
+      const passwordPromptResult = await TelegramBotService.sendMessage(chatId, '🔒 Please enter your password:');
+      console.log(`🔒 Password prompt sent to user ${telegramUserId}: ${passwordPromptResult ? 'SUCCESS' : 'FAILED'}`);
+      return;
+    }
+
+    if (userState.state === 'awaiting_password' && userState.email) {
+      const email = userState.email;
+      const password = text;
+
+      try {
+        // Authenticate user
+        const user = await UserDatabase.getUserByEmail(email);
+        
+        if (!user) {
+          await TelegramBotService.sendMessage(chatId, '❌ Invalid email or password. Please try /login again.');
+          userStates.delete(telegramUserId);
+          return;
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+        
+        if (!isPasswordValid) {
+          await TelegramBotService.sendMessage(chatId, '❌ Invalid email or password. Please try /login again.');
+          userStates.delete(telegramUserId);
+          return;
+        }
+
+        // Authenticate session
+        await TelegramDatabase.authenticateUser(telegramUserId, user.id);
+        userStates.delete(telegramUserId);
+
+        await TelegramBotService.sendMessage(
+          chatId, 
+          `✅ *Login successful!*\n\nWelcome back, ${user.name}!\n\nYou can now chat with me to manage your finances. Try:\n• "Beli kopi 30k pakai Gopay"\n• "Analisis pengeluaran bulan ini"`
+        );
+      } catch (error) {
+        console.error('Authentication error:', error);
+        await TelegramBotService.sendMessage(chatId, '❌ Authentication failed. Please try /login again.');
+        userStates.delete(telegramUserId);
+      }
+      return;
+    }
+  }
+
   // Create fallback session immediately (no database dependency)
   let session: any = {
     is_authenticated: false,
@@ -223,69 +287,7 @@ async function handleMessage(update: TelegramUpdate) {
     return;
   }
 
-  // Handle authentication flow FIRST (before checking database session)
-  const userState = userStates.get(telegramUserId);
-  
-  if (userState) {
-    console.log(`🔍 User is in authentication flow: ${userState.state}`);
-    
-    if (userState.state === 'awaiting_email') {
-      console.log(`📧 Processing email for user ${telegramUserId}: ${text}`);
-      
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(text)) {
-        console.log(`❌ Invalid email format for user ${telegramUserId}: ${text}`);
-        await TelegramBotService.sendMessage(chatId, '❌ Invalid email format. Please enter a valid email:');
-        return;
-      }
-
-      console.log(`✅ Valid email received for user ${telegramUserId}, transitioning to password state`);
-      userStates.set(telegramUserId, { state: 'awaiting_password', email: text });
-      
-      const passwordPromptResult = await TelegramBotService.sendMessage(chatId, '🔒 Please enter your password:');
-      console.log(`🔒 Password prompt sent to user ${telegramUserId}: ${passwordPromptResult ? 'SUCCESS' : 'FAILED'}`);
-      return;
-    }
-
-    if (userState.state === 'awaiting_password' && userState.email) {
-      const email = userState.email;
-      const password = text;
-
-      try {
-        // Authenticate user
-        const user = await UserDatabase.getUserByEmail(email);
-        
-        if (!user) {
-          await TelegramBotService.sendMessage(chatId, '❌ Invalid email or password. Please try /login again.');
-          userStates.delete(telegramUserId);
-          return;
-        }
-
-        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-        
-        if (!isPasswordValid) {
-          await TelegramBotService.sendMessage(chatId, '❌ Invalid email or password. Please try /login again.');
-          userStates.delete(telegramUserId);
-          return;
-        }
-
-        // Authenticate session
-        await TelegramDatabase.authenticateUser(telegramUserId, user.id);
-        userStates.delete(telegramUserId);
-
-        await TelegramBotService.sendMessage(
-          chatId, 
-          `✅ *Login successful!*\n\nWelcome back, ${user.name}!\n\nYou can now chat with me to manage your finances. Try:\n• "Beli kopi 30k pakai Gopay"\n• "Analisis pengeluaran bulan ini"`
-        );
-      } catch (error) {
-        console.error('Authentication error:', error);
-        await TelegramBotService.sendMessage(chatId, '❌ Authentication failed. Please try /login again.');
-        userStates.delete(telegramUserId);
-      }
-      return;
-    }
-  }
+  // Authentication flow is now handled at the beginning of the function
 
   // Check if user is authenticated for regular chat
   if (!session.is_authenticated || !session.fundy_user_id) {
