@@ -66,11 +66,21 @@ export interface TelegramSession {
 }
 
 export class TelegramDatabase {
-  // Warm up database connection for serverless environment
+  // Warm up database connection for serverless environment (with timeout)
   static async warmUpConnection(): Promise<void> {
     try {
       console.log('🔥 Warming up database connection...');
-      await pool.query('SELECT 1');
+      
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Database warm-up timeout after 2 seconds'));
+        }, 2000);
+      });
+      
+      const queryPromise = pool.query('SELECT 1');
+      
+      await Promise.race([queryPromise, timeoutPromise]);
       console.log('✅ Database connection warmed up successfully');
     } catch (error) {
       console.error('❌ Database warm-up failed:', error);

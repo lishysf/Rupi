@@ -122,6 +122,21 @@ async function handleMessage(update: TelegramUpdate) {
     last_activity: new Date()
   };
 
+  // Send immediate response first (before any database operations)
+  console.log('📤 Sending immediate response to user...');
+  let immediateResponseSent = false;
+  
+  try {
+    const result = await TelegramBotService.sendMessage(
+      chatId, 
+      '🔐 Please login first using /login to chat with me.'
+    );
+    console.log('📤 Immediate response sent:', result ? 'SUCCESS' : 'FAILED');
+    immediateResponseSent = result;
+  } catch (error) {
+    console.error('❌ Failed to send immediate response:', error);
+  }
+  
   // Try database operations in background (non-blocking)
   try {
     console.log('🔥 Warming up database connection...');
@@ -148,6 +163,12 @@ async function handleMessage(update: TelegramUpdate) {
   } catch (error) {
     console.error('❌ Database operations failed, using fallback session:', error);
     console.log('🔄 Using fallback session for user:', telegramUserId);
+  }
+  
+  // If we already sent a response, return early
+  if (immediateResponseSent) {
+    console.log('✅ Response already sent, returning early');
+    return;
   }
 
   // Handle /start command
@@ -524,33 +545,27 @@ export async function POST(request: NextRequest) {
     console.log('📨 Telegram webhook received:', JSON.stringify(update, null, 2));
     console.log('⏱️ Processing time started at:', new Date().toISOString());
 
-    // Process message in background with better error handling and timeout
-    const processingPromise = handleMessage(update).catch(error => {
+    // Process message IMMEDIATELY (not in background) to ensure response
+    try {
+      console.log('🚀 Processing message immediately...');
+      await handleMessage(update);
+      console.log('✅ Message processing completed');
+    } catch (error) {
       console.error('❌ Error handling telegram message:', error);
       console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       
       // Try to send error message to user if possible
       if (update.message?.chat?.id) {
-        TelegramBotService.sendMessage(
-          update.message.chat.id.toString(), 
-          '❌ Sorry, I encountered an error processing your message. Please try again.'
-        ).catch(sendError => {
+        try {
+          await TelegramBotService.sendMessage(
+            update.message.chat.id.toString(), 
+            '❌ Sorry, I encountered an error processing your message. Please try again.'
+          );
+        } catch (sendError) {
           console.error('❌ Failed to send error message to user:', sendError);
-        });
+        }
       }
-    });
-
-    // Add timeout to prevent hanging
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error('Message processing timeout after 25 seconds'));
-      }, 25000);
-    });
-
-    // Race between processing and timeout
-    Promise.race([processingPromise, timeoutPromise]).catch(error => {
-      console.error('❌ Message processing failed or timed out:', error);
-    });
+    }
 
     const processingTime = Date.now() - startTime;
     console.log('⚡ Webhook response time:', processingTime + 'ms');
