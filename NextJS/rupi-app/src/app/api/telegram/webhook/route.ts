@@ -109,56 +109,44 @@ async function handleMessage(update: TelegramUpdate) {
   console.log(`📱 Telegram message from ${firstName} (${telegramUserId}): ${text}`);
   console.log(`🔍 Processing message: "${text}" for user ${telegramUserId}`);
 
-  // Warm up database connection first (critical for serverless)
+  // Create fallback session immediately (no database dependency)
+  let session: any = {
+    is_authenticated: false,
+    fundy_user_id: null,
+    telegram_user_id: telegramUserId,
+    chat_id: chatId,
+    username,
+    first_name: firstName,
+    last_name: lastName,
+    created_at: new Date(),
+    last_activity: new Date()
+  };
+
+  // Try database operations in background (non-blocking)
   try {
     console.log('🔥 Warming up database connection...');
     await TelegramDatabase.warmUpConnection();
     console.log('✅ Database connection warmed up successfully');
-  } catch (error) {
-    console.error('❌ Database warm-up failed:', error);
-    // Continue anyway - retry logic will handle connection issues
-  }
-
-  // Initialize tables if needed
-  try {
+    
     console.log('📦 Initializing database tables...');
     await TelegramDatabase.initializeTables();
     console.log('✅ Database tables initialized successfully');
-  } catch (error) {
-    console.error('❌ Error initializing tables:', error);
-    // Don't throw here - continue with message processing even if table init fails
-    // The tables might already exist
-  }
-
-  // Get or create session with fallback
-  let session;
-  try {
+    
     console.log('👤 Getting or creating session for user:', telegramUserId);
-    session = await TelegramDatabase.getOrCreateSession(
+    const dbSession = await TelegramDatabase.getOrCreateSession(
       telegramUserId,
       chatId,
       username,
       firstName,
       lastName
     );
-    console.log('✅ Session retrieved:', { 
+    session = dbSession;
+    console.log('✅ Session retrieved from database:', { 
       is_authenticated: session.is_authenticated, 
       fundy_user_id: session.fundy_user_id 
     });
   } catch (error) {
-    console.error('❌ Error getting session, using fallback:', error);
-    // Create a fallback session object
-    session = {
-      is_authenticated: false,
-      fundy_user_id: null,
-      telegram_user_id: telegramUserId,
-      chat_id: chatId,
-      username,
-      first_name: firstName,
-      last_name: lastName,
-      created_at: new Date(),
-      last_activity: new Date()
-    };
+    console.error('❌ Database operations failed, using fallback session:', error);
     console.log('🔄 Using fallback session for user:', telegramUserId);
   }
 
@@ -295,21 +283,43 @@ async function handleMessage(update: TelegramUpdate) {
   // Check if user is authenticated for regular chat
   if (!session.is_authenticated || !session.fundy_user_id) {
     console.log('🔐 User not authenticated, sending login prompt');
+    
+    // ALWAYS send a response - multiple fallback attempts
+    let responseSent = false;
+    
     try {
       const result = await TelegramBotService.sendMessage(
         chatId, 
         '🔐 Please login first using /login to chat with me.'
       );
       console.log('📤 Login prompt sent:', result ? 'SUCCESS' : 'FAILED');
+      responseSent = result;
     } catch (error) {
       console.error('❌ Failed to send login prompt:', error);
+      
       // Try a simpler message as fallback
       try {
-        await TelegramBotService.sendMessage(chatId, 'Please use /login to start.');
+        const fallbackResult = await TelegramBotService.sendMessage(chatId, 'Please use /login to start.');
+        console.log('📤 Fallback message sent:', fallbackResult ? 'SUCCESS' : 'FAILED');
+        responseSent = fallbackResult;
       } catch (fallbackError) {
         console.error('❌ Fallback message also failed:', fallbackError);
+        
+        // Last resort - try the simplest possible message
+        try {
+          const lastResortResult = await TelegramBotService.sendMessage(chatId, 'Hi! Use /login');
+          console.log('📤 Last resort message sent:', lastResortResult ? 'SUCCESS' : 'FAILED');
+          responseSent = lastResortResult;
+        } catch (lastResortError) {
+          console.error('❌ All message attempts failed:', lastResortError);
+        }
       }
     }
+    
+    if (!responseSent) {
+      console.error('❌ CRITICAL: Could not send any response to user');
+    }
+    
     return;
   }
 
@@ -476,10 +486,30 @@ async function handleMessage(update: TelegramUpdate) {
 
   } catch (error) {
     console.error('Error processing message:', error);
-    await TelegramBotService.sendMessage(
-      chatId, 
-      '❌ Sorry, I had trouble processing your message. Please try again.'
-    );
+    
+    // Multiple fallback attempts to ensure response
+    let responseSent = false;
+    
+    try {
+      const result = await TelegramBotService.sendMessage(
+        chatId, 
+        '❌ Sorry, I had trouble processing your message. Please try again.'
+      );
+      responseSent = result;
+    } catch (sendError) {
+      console.error('❌ Failed to send error message:', sendError);
+      
+      try {
+        const fallbackResult = await TelegramBotService.sendMessage(chatId, 'Error. Try /login');
+        responseSent = fallbackResult;
+      } catch (fallbackError) {
+        console.error('❌ Fallback error message failed:', fallbackError);
+      }
+    }
+    
+    if (!responseSent) {
+      console.error('❌ CRITICAL: Could not send any error response to user');
+    }
   }
 }
 
@@ -488,11 +518,6 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    console.log('📨 POST request received to webhook');
-    console.log('🔍 Request headers:', Object.fromEntries(request.headers.entries()));
-    console.log('🔍 Request method:', request.method);
-    console.log('🔍 Request URL:', request.url);
-    
     const body = await request.json();
     const update = body as TelegramUpdate;
 
@@ -550,93 +575,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET endpoint for webhook info and bot token validation
+// GET endpoint for webhook info
 export async function GET() {
   try {
-    // Check if bot token is available
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const hasToken = !!botToken;
-    
-    console.log('🔍 Checking bot configuration...');
-    console.log('🔑 Bot token available:', hasToken);
-    console.log('🔑 Token preview:', hasToken ? `${botToken.substring(0, 10)}...` : 'NOT SET');
-    
     const webhookInfo = await TelegramBotService.getWebhookInfo();
-    
     return NextResponse.json({ 
       success: true, 
-      webhookInfo,
-      botConfiguration: {
-        hasToken,
-        tokenPreview: hasToken ? `${botToken.substring(0, 10)}...` : 'NOT SET',
-        environment: process.env.NODE_ENV
-      }
+      webhookInfo 
     });
   } catch (error) {
     console.error('Error getting webhook info:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Failed to get webhook info',
-      botConfiguration: {
-        hasToken: !!process.env.TELEGRAM_BOT_TOKEN,
-        tokenPreview: process.env.TELEGRAM_BOT_TOKEN ? `${process.env.TELEGRAM_BOT_TOKEN.substring(0, 10)}...` : 'NOT SET',
-        environment: process.env.NODE_ENV
-      }
+      error: 'Failed to get webhook info' 
     }, { status: 500 });
   }
 }
 
 // OPTIONS endpoint for CORS preflight requests
 export async function OPTIONS() {
-  console.log('🔄 OPTIONS request received - CORS preflight');
-  return new NextResponse(null, { 
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    }
-  });
-}
-
-// Handle any other HTTP methods that Telegram might use
-export async function PUT() {
-  console.log('🔄 PUT request received - redirecting to POST');
-  return NextResponse.json({ 
-    ok: true, 
-    message: 'Use POST method for webhook' 
-  });
-}
-
-export async function PATCH() {
-  console.log('🔄 PATCH request received - redirecting to POST');
-  return NextResponse.json({ 
-    ok: true, 
-    message: 'Use POST method for webhook' 
-  });
-}
-
-export async function DELETE() {
-  console.log('🔄 DELETE request received - redirecting to POST');
-  return NextResponse.json({ 
-    ok: true, 
-    message: 'Use POST method for webhook' 
-  });
-}
-
-// Catch-all handler for any other HTTP methods
-export async function HEAD() {
-  console.log('🔄 HEAD request received');
   return new NextResponse(null, { status: 200 });
-}
-
-// Handle any other HTTP methods that might be sent
-export async function TRACE() {
-  console.log('🔄 TRACE request received');
-  return NextResponse.json({ 
-    ok: true, 
-    message: 'Use POST method for webhook' 
-  });
 }
 
 
