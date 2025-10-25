@@ -50,13 +50,16 @@ vercel --prod
 
 ### Step 3: Initialize Database Tables
 
-Run the setup script:
+**Option A: Use Web Interface (Recommended)**
 
-```bash
-npm run setup-telegram
-```
+Visit: **https://fundy.id/telegram-setup**
 
-Or manually:
+Click "Run Setup" button to automatically:
+- Initialize database tables
+- Configure webhook
+- Verify setup
+
+**Option B: Manual Setup**
 
 ```bash
 curl -X POST https://fundy.id/api/telegram/setup \
@@ -77,7 +80,9 @@ Expected response:
 
 ### Step 4: Configure Webhook
 
-The setup script handles this automatically, or run manually:
+**If using web interface (Step 3A):** This is handled automatically.
+
+**If doing manual setup:**
 
 ```bash
 curl -X POST https://fundy.id/api/telegram/setup \

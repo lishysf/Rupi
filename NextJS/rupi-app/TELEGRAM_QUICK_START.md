@@ -15,13 +15,16 @@ Value: 7610542955:AAE8Q2cD1ysFC3VInZm94i5j6-PGmLv867E
 
 Then **redeploy** your app.
 
-### 2️⃣ Run Setup Script
+### 2️⃣ Run Setup via Web Interface
 
-After redeployment, run:
+After redeployment, visit the setup page:
 
-```bash
-npm run setup-telegram
-```
+**🌐 Open: https://fundy.id/telegram-setup**
+
+Click "Run Setup" button to:
+- Initialize database tables
+- Configure Telegram webhook
+- Verify the setup
 
 Or manually with curl:
 
