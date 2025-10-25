@@ -3,21 +3,23 @@ import { Pool } from 'pg';
 // Use the same pool configuration as the main database
 let pool: Pool;
 
+// Use the same reliable database configuration as the main database
 if (process.env.DATABASE_URL) {
+  // Use connection string (recommended for Vercel and Supabase connection pooling)
+  const connectionString = process.env.DATABASE_URL;
+  
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: connectionString,
     ssl: {
       rejectUnauthorized: false
     },
-    // Optimize for serverless - more aggressive timeouts
-    max: 2, // Allow 2 connections for better reliability
-    min: 0, // Don't keep idle connections
-    idleTimeoutMillis: 5000, // Close idle connections quickly
-    connectionTimeoutMillis: 15000, // Longer connection timeout
-    statement_timeout: 10000, // Query timeout
-    query_timeout: 10000, // Query timeout
+    // Optimize for serverless - same as main database
+    max: 1, // Reduce connection pool size for serverless
+    idleTimeoutMillis: 10000, // Close idle connections quickly
+    connectionTimeoutMillis: 10000, // Fail fast
   });
 } else if (process.env.SUPABASE_DB_PASSWORD) {
+  // Legacy: Use individual Supabase env vars (fallback)
   const supabaseUrl = process.env.SUPABASE_DB_HOST || 'db.thkdrlozedfysuukvwmd.supabase.co';
   const supabasePassword = process.env.SUPABASE_DB_PASSWORD;
   
@@ -28,14 +30,13 @@ if (process.env.DATABASE_URL) {
     user: 'postgres',
     password: supabasePassword,
     ssl: { rejectUnauthorized: false },
-    max: 2,
-    min: 0,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 15000,
-    statement_timeout: 10000,
-    query_timeout: 10000,
+    // Optimize for serverless
+    max: 1,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 10000,
   });
 } else {
+  // Use direct PostgreSQL connection (local development)
   pool = new Pool({
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
@@ -43,12 +44,6 @@ if (process.env.DATABASE_URL) {
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'password',
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    max: 2,
-    min: 0,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 15000,
-    statement_timeout: 10000,
-    query_timeout: 10000,
   });
 }
 
@@ -66,7 +61,7 @@ export interface TelegramSession {
 }
 
 export class TelegramDatabase {
-  // Warm up database connection for serverless environment
+  // Simple database connection check (same as main database)
   static async warmUpConnection(): Promise<void> {
     try {
       console.log('🔥 Warming up database connection...');
@@ -74,89 +69,36 @@ export class TelegramDatabase {
       console.log('✅ Database connection warmed up successfully');
     } catch (error) {
       console.error('❌ Database warm-up failed:', error);
-      console.log('🔄 Will retry with individual operations...');
-      // Don't throw - let retry logic handle it in individual operations
+      // Don't throw - continue with operations
     }
   }
 
-  // Check and ensure database connection is healthy
-  private static async ensureConnection(): Promise<void> {
-    try {
-      console.log('🔍 Checking database connection...');
-      await pool.query('SELECT 1');
-      console.log('✅ Database connection is healthy');
-    } catch (error) {
-      console.error('❌ Database connection failed:', error);
-      console.log('🔄 Attempting to reconnect...');
-      
-      // Force a new connection by ending the current pool
-      try {
-        await pool.end();
-      } catch (endError) {
-        console.log('Pool end error (expected):', endError);
-      }
-      
-      // The pool will automatically create new connections on next query
-      throw new Error('Database connection lost, will retry with new connection');
-    }
-  }
-
-  // Retry database operation with exponential backoff and connection health check
-  private static async retryOperation<T>(
-    operation: () => Promise<T>, 
-    maxRetries: number = 3, 
-    baseDelay: number = 1000
-  ): Promise<T> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        // Check connection health before each attempt
-        if (attempt > 1) {
-          await this.ensureConnection();
-        }
-        
-        return await operation();
-      } catch (error) {
-        console.error(`Database operation attempt ${attempt} failed:`, error);
-        
-        if (attempt === maxRetries) {
-          throw error;
-        }
-        
-        const delay = baseDelay * Math.pow(2, attempt - 1);
-        console.log(`Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    throw new Error('Max retries exceeded');
-  }
-
-  // Initialize telegram sessions table
+  // Initialize telegram sessions table (simple approach like main database)
   static async initializeTables() {
     try {
-      await this.retryOperation(async () => {
-        await pool.query(`
-          CREATE TABLE IF NOT EXISTS telegram_sessions (
-            id SERIAL PRIMARY KEY,
-            telegram_user_id VARCHAR(255) UNIQUE NOT NULL,
-            fundy_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            chat_id VARCHAR(255) NOT NULL,
-            username VARCHAR(255),
-            first_name VARCHAR(255),
-            last_name VARCHAR(255),
-            is_authenticated BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
+      console.log('📦 Creating telegram_sessions table...');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS telegram_sessions (
+          id SERIAL PRIMARY KEY,
+          telegram_user_id VARCHAR(255) UNIQUE NOT NULL,
+          fundy_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          chat_id VARCHAR(255) NOT NULL,
+          username VARCHAR(255),
+          first_name VARCHAR(255),
+          last_name VARCHAR(255),
+          is_authenticated BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-        // Create index for faster lookups
-        await pool.query(`
-          CREATE INDEX IF NOT EXISTS idx_telegram_user_id ON telegram_sessions(telegram_user_id);
-        `);
-        await pool.query(`
-          CREATE INDEX IF NOT EXISTS idx_fundy_user_id ON telegram_sessions(fundy_user_id);
-        `);
-      });
+      // Create index for faster lookups
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_telegram_user_id ON telegram_sessions(telegram_user_id);
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_fundy_user_id ON telegram_sessions(fundy_user_id);
+      `);
 
       console.log('✅ Telegram sessions table initialized');
     } catch (error) {
@@ -165,7 +107,7 @@ export class TelegramDatabase {
     }
   }
 
-  // Get or create telegram session
+  // Get or create telegram session (simple approach)
   static async getOrCreateSession(
     telegramUserId: string,
     chatId: string,
@@ -174,51 +116,50 @@ export class TelegramDatabase {
     lastName?: string
   ): Promise<TelegramSession> {
     try {
-      console.log('🔗 Getting/creating session with connection health check...');
-      return await this.retryOperation(async () => {
-        // Try to get existing session
-        const existingSession = await pool.query(
-          'SELECT * FROM telegram_sessions WHERE telegram_user_id = $1',
-          [telegramUserId]
+      console.log('👤 Getting/creating session for user:', telegramUserId);
+      
+      // Try to get existing session
+      const existingSession = await pool.query(
+        'SELECT * FROM telegram_sessions WHERE telegram_user_id = $1',
+        [telegramUserId]
+      );
+
+      if (existingSession.rows.length > 0) {
+        console.log('📝 Updating existing session for user:', telegramUserId);
+        // Update last activity
+        await pool.query(
+          'UPDATE telegram_sessions SET last_activity = CURRENT_TIMESTAMP, chat_id = $1 WHERE telegram_user_id = $2',
+          [chatId, telegramUserId]
         );
+        return existingSession.rows[0] as TelegramSession;
+      }
 
-        if (existingSession.rows.length > 0) {
-          console.log('📝 Updating existing session for user:', telegramUserId);
-          // Update last activity
-          await pool.query(
-            'UPDATE telegram_sessions SET last_activity = CURRENT_TIMESTAMP, chat_id = $1 WHERE telegram_user_id = $2',
-            [chatId, telegramUserId]
-          );
-          return existingSession.rows[0] as TelegramSession;
-        }
+      console.log('🆕 Creating new session for user:', telegramUserId);
+      // Create new session
+      const result = await pool.query(
+        `INSERT INTO telegram_sessions 
+        (telegram_user_id, chat_id, username, first_name, last_name, is_authenticated, fundy_user_id) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7) 
+        RETURNING *`,
+        [telegramUserId, chatId, username, firstName, lastName, false, null]
+      );
 
-        console.log('🆕 Creating new session for user:', telegramUserId);
-        // Create new session
-        const result = await pool.query(
-          `INSERT INTO telegram_sessions 
-          (telegram_user_id, chat_id, username, first_name, last_name, is_authenticated, fundy_user_id) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7) 
-          RETURNING *`,
-          [telegramUserId, chatId, username, firstName, lastName, false, null]
-        );
-
-        return result.rows[0] as TelegramSession;
-      });
+      return result.rows[0] as TelegramSession;
     } catch (error) {
       console.error('Error getting/creating telegram session:', error);
       throw error;
     }
   }
 
-  // Authenticate telegram user with Fundy credentials
+  // Authenticate telegram user with Fundy credentials (simple approach)
   static async authenticateUser(telegramUserId: string, fundyUserId: number): Promise<void> {
     try {
-      await this.retryOperation(async () => {
-        await pool.query(
-          'UPDATE telegram_sessions SET fundy_user_id = $1, is_authenticated = $2, last_activity = CURRENT_TIMESTAMP WHERE telegram_user_id = $3',
-          [fundyUserId, true, telegramUserId]
-        );
-      });
+      console.log('🔐 Authenticating user:', telegramUserId, 'with fundy user:', fundyUserId);
+      await pool.query(
+        'UPDATE telegram_sessions SET fundy_user_id = $1, is_authenticated = $2, last_activity = CURRENT_TIMESTAMP WHERE telegram_user_id = $3',
+        [fundyUserId, true, telegramUserId]
+      );
+      console.log('✅ User authenticated successfully');
     } catch (error) {
       console.error('Error authenticating telegram user:', error);
       throw error;
