@@ -90,9 +90,12 @@ async function handleIncomeCreation(userId: number, description: string, amount:
 
 // Handle incoming Telegram messages
 async function handleMessage(update: TelegramUpdate) {
+  console.log('🚀 Starting message processing...');
+  
   const message = update.message;
   
   if (!message || !message.text) {
+    console.log('❌ No message or text found, skipping');
     return;
   }
 
@@ -104,15 +107,30 @@ async function handleMessage(update: TelegramUpdate) {
   const lastName = message.from.last_name;
 
   console.log(`📱 Telegram message from ${firstName} (${telegramUserId}): ${text}`);
+  console.log(`🔍 Processing message: "${text}" for user ${telegramUserId}`);
+
+  // Warm up database connection first (critical for serverless)
+  try {
+    console.log('🔥 Warming up database connection...');
+    await TelegramDatabase.warmUpConnection();
+  } catch (error) {
+    console.error('❌ Database warm-up failed:', error);
+    // Continue anyway - retry logic will handle connection issues
+  }
 
   // Initialize tables if needed
   try {
+    console.log('📦 Initializing database tables...');
     await TelegramDatabase.initializeTables();
+    console.log('✅ Database tables initialized successfully');
   } catch (error) {
-    console.error('Error initializing tables:', error);
+    console.error('❌ Error initializing tables:', error);
+    // Don't throw here - continue with message processing even if table init fails
+    // The tables might already exist
   }
 
   // Get or create session
+  console.log('👤 Getting or creating session for user:', telegramUserId);
   const session = await TelegramDatabase.getOrCreateSession(
     telegramUserId,
     chatId,
@@ -120,12 +138,18 @@ async function handleMessage(update: TelegramUpdate) {
     firstName,
     lastName
   );
+  console.log('✅ Session retrieved:', { 
+    is_authenticated: session.is_authenticated, 
+    fundy_user_id: session.fundy_user_id 
+  });
 
   // Handle /start command
   if (text === '/start') {
+    console.log('🚀 Handling /start command');
     const welcomeMessage = `👋 Welcome to *Fundy AI Assistant*!\n\nI can help you manage your finances through Telegram.\n\n🔐 *To get started, you need to login with your Fundy account.*\n\nUse /login to authenticate with your email and password.\n\nOnce logged in, you can:\n• Record expenses and income\n• Analyze your spending\n• Track your budgets\n• And much more!\n\nTry /help to see all available commands.`;
     
-    await TelegramBotService.sendMessage(chatId, welcomeMessage);
+    const result = await TelegramBotService.sendMessage(chatId, welcomeMessage);
+    console.log('📤 /start message sent:', result ? 'SUCCESS' : 'FAILED');
     return;
   }
 
@@ -155,13 +179,17 @@ async function handleMessage(update: TelegramUpdate) {
 
   // Handle /login command
   if (text === '/login') {
+    console.log('🔐 Handling /login command');
     if (session.is_authenticated) {
+      console.log('⚠️ User already authenticated');
       await TelegramBotService.sendMessage(chatId, '✅ You are already logged in! Use /logout to logout first.');
       return;
     }
 
+    console.log('📧 Starting login flow - requesting email');
     userStates.set(telegramUserId, { state: 'awaiting_email' });
-    await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
+    const result = await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
+    console.log('📤 Login email prompt sent:', result ? 'SUCCESS' : 'FAILED');
     return;
   }
 

@@ -66,7 +66,41 @@ export interface TelegramSession {
 }
 
 export class TelegramDatabase {
-  // Retry database operation with exponential backoff
+  // Warm up database connection for serverless environment
+  static async warmUpConnection(): Promise<void> {
+    try {
+      console.log('🔥 Warming up database connection...');
+      await pool.query('SELECT 1');
+      console.log('✅ Database connection warmed up successfully');
+    } catch (error) {
+      console.error('❌ Database warm-up failed:', error);
+      // Don't throw - let retry logic handle it
+    }
+  }
+
+  // Check and ensure database connection is healthy
+  private static async ensureConnection(): Promise<void> {
+    try {
+      console.log('🔍 Checking database connection...');
+      await pool.query('SELECT 1');
+      console.log('✅ Database connection is healthy');
+    } catch (error) {
+      console.error('❌ Database connection failed:', error);
+      console.log('🔄 Attempting to reconnect...');
+      
+      // Force a new connection by ending the current pool
+      try {
+        await pool.end();
+      } catch (endError) {
+        console.log('Pool end error (expected):', endError);
+      }
+      
+      // The pool will automatically create new connections on next query
+      throw new Error('Database connection lost, will retry with new connection');
+    }
+  }
+
+  // Retry database operation with exponential backoff and connection health check
   private static async retryOperation<T>(
     operation: () => Promise<T>, 
     maxRetries: number = 3, 
@@ -74,6 +108,11 @@ export class TelegramDatabase {
   ): Promise<T> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        // Check connection health before each attempt
+        if (attempt > 1) {
+          await this.ensureConnection();
+        }
+        
         return await operation();
       } catch (error) {
         console.error(`Database operation attempt ${attempt} failed:`, error);
@@ -134,6 +173,7 @@ export class TelegramDatabase {
     lastName?: string
   ): Promise<TelegramSession> {
     try {
+      console.log('🔗 Getting/creating session with connection health check...');
       return await this.retryOperation(async () => {
         // Try to get existing session
         const existingSession = await pool.query(
@@ -142,6 +182,7 @@ export class TelegramDatabase {
         );
 
         if (existingSession.rows.length > 0) {
+          console.log('📝 Updating existing session for user:', telegramUserId);
           // Update last activity
           await pool.query(
             'UPDATE telegram_sessions SET last_activity = CURRENT_TIMESTAMP, chat_id = $1 WHERE telegram_user_id = $2',
@@ -150,6 +191,7 @@ export class TelegramDatabase {
           return existingSession.rows[0] as TelegramSession;
         }
 
+        console.log('🆕 Creating new session for user:', telegramUserId);
         // Create new session
         const result = await pool.query(
           `INSERT INTO telegram_sessions 
