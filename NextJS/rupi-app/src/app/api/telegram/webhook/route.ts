@@ -223,10 +223,12 @@ async function handleMessage(update: TelegramUpdate) {
     return;
   }
 
-  // Handle authentication flow
+  // Handle authentication flow FIRST (before checking database session)
   const userState = userStates.get(telegramUserId);
   
   if (userState) {
+    console.log(`🔍 User is in authentication flow: ${userState.state}`);
+    
     if (userState.state === 'awaiting_email') {
       console.log(`📧 Processing email for user ${telegramUserId}: ${text}`);
       
