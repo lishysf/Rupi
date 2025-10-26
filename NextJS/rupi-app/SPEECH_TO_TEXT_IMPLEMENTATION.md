@@ -86,6 +86,7 @@ Users can send voice messages in Indonesian like:
 **Multiple Transactions:**
 - "Beli makan 50 ribu dan bayar parkir 10 ribu"
 - "Terima gaji 2 juta dan transfer 500 ribu ke tabungan"
+- "Beli ayam goreng 20 ribu dan beli kopi 10 ribu pakai BCA"
 
 ### Expected Flow
 

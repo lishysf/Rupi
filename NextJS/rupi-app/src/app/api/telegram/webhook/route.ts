@@ -4,7 +4,7 @@ import { TelegramBotService, TelegramUpdate } from '@/lib/telegram-bot';
 import { UserDatabase } from '@/lib/database';
 import { GroqAIService } from '@/lib/groq-ai';
 import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDatabase, Transaction, EXPENSE_CATEGORIES, INCOME_SOURCES } from '@/lib/database';
-import { broadcastTransactionUpdate, broadcastWalletUpdate } from '@/app/api/events/route';
+import { addUserUpdate } from '@/app/api/polling-updates/route';
 import bcrypt from 'bcryptjs';
 
 // Store user states for authentication flow
@@ -719,7 +719,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
           intent = decision.intent;
           
           // If it's a transaction, process it; otherwise treat as general chat
-          if (!['expense', 'income', 'savings', 'transfer', 'multiple_transactions', 'transaction'].includes(intent)) {
+          if (!['expense', 'income', 'savings', 'transfer', 'multiple_transactions', 'multiple_transaction', 'transaction'].includes(intent)) {
             console.log('💬 Not a transaction, treating as general chat');
             intent = 'general_chat';
             decision = { intent: 'general_chat' };
@@ -738,9 +738,9 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
       let response = '';
       let transactionCreated = false;
 
-      // Handle special case where AI returns "transaction" intent with transactions array
-      if (intent === 'transaction' && decision.transactions && decision.transactions.length > 0) {
-        console.log('🔄 Converting "transaction" intent to specific transaction type');
+      // Handle special case where AI returns "transaction" or "multiple_transaction" intent with transactions array
+      if ((intent === 'transaction' || intent === 'multiple_transaction') && decision.transactions && decision.transactions.length > 0) {
+        console.log(`🔄 Converting "${intent}" intent to specific transaction type`);
         
         if (decision.transactions.length === 1) {
           // Single transaction - extract and process
@@ -818,7 +818,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
       }
 
       // In transaction mode, block non-transaction intents (but allow transactions in general chat mode)
-      if (chatMode === 'transaction' && intent !== 'general_chat' && !['expense', 'income', 'savings', 'transfer', 'multiple_transactions'].includes(intent)) {
+      if (chatMode === 'transaction' && intent !== 'general_chat' && !['expense', 'income', 'savings', 'transfer', 'multiple_transactions', 'multiple_transaction'].includes(intent)) {
         response = 'I\'m in transaction mode. Please send me a financial transaction to record (expense, income, savings, or transfer).';
       } else {
         // Process based on intent
@@ -956,6 +956,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
             }
             break;
           case 'multiple_transactions':
+          case 'multiple_transaction':
             // Handle multiple transactions - for now, just process the first one
             if (decision.transactions && decision.transactions.length > 0) {
               const firstTx = decision.transactions[0];
@@ -2067,27 +2068,27 @@ async function handleCallbackQuery(callbackQuery: any) {
         }
       }
 
-      // Broadcast transaction updates to web dashboard for successful transactions
+      // Add polling updates for web dashboard for successful transactions
       if (successCount > 0) {
         try {
           const userSession = await TelegramDatabase.getOrCreateSession(telegramUserId, '', '', '');
           if (userSession && userSession.fundy_user_id) {
-            broadcastTransactionUpdate(userSession.fundy_user_id.toString(), {
+            addUserUpdate(userSession.fundy_user_id.toString(), 'transaction_created', {
               type: 'bulk_transactions',
               count: successCount,
               timestamp: Date.now()
             });
             
-            // Also broadcast wallet update for balance changes
-            broadcastWalletUpdate(userSession.fundy_user_id.toString(), {
+            // Also add wallet update for balance changes
+            addUserUpdate(userSession.fundy_user_id.toString(), 'wallet_updated', {
               type: 'balance_updated',
               timestamp: Date.now()
             });
             
-            console.log(`📡 Broadcasted bulk transaction update to user ${userSession.fundy_user_id}`);
+            console.log(`📡 Added bulk transaction polling updates for user ${userSession.fundy_user_id}`);
           }
         } catch (error) {
-          console.error('Error broadcasting bulk transaction update:', error);
+          console.error('Error adding bulk transaction polling updates:', error);
         }
       }
 
@@ -2167,27 +2168,34 @@ async function handleCallbackQuery(callbackQuery: any) {
         // Remove from pending
         pendingTransactions.delete(pendingTxId);
 
-        // Broadcast transaction update to web dashboard
+        // Add polling update for web dashboard
         try {
           const userSession = await TelegramDatabase.getOrCreateSession(telegramUserId, '', '', '');
+          console.log(`📡 User session for telegram user ${telegramUserId}:`, userSession);
+          
           if (userSession && userSession.fundy_user_id) {
-            broadcastTransactionUpdate(userSession.fundy_user_id.toString(), {
+            const fundyUserId = userSession.fundy_user_id.toString();
+            console.log(`📡 Adding polling update for fundy user ID: ${fundyUserId}`);
+            
+            addUserUpdate(fundyUserId, 'transaction_created', {
               type: pendingTx.type,
               description: pendingTx.description,
               amount: pendingTx.amount,
               timestamp: Date.now()
             });
             
-            // Also broadcast wallet update for balance changes
-            broadcastWalletUpdate(userSession.fundy_user_id.toString(), {
+            // Also add wallet update for balance changes
+            addUserUpdate(fundyUserId, 'wallet_updated', {
               type: 'balance_updated',
               timestamp: Date.now()
             });
             
-            console.log(`📡 Broadcasted transaction update to user ${userSession.fundy_user_id}`);
+            console.log(`📡 Added polling updates for user ${fundyUserId}`);
+          } else {
+            console.log(`📡 No fundy_user_id found for telegram user ${telegramUserId}`);
           }
         } catch (error) {
-          console.error('Error broadcasting transaction update:', error);
+          console.error('Error adding polling update:', error);
         }
 
         // Update message

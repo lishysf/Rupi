@@ -9,15 +9,16 @@ import Sidebar from '@/app/components/Sidebar';
 import GlobalLoader from '@/app/components/GlobalLoader';
 import TutorialBubble from '@/app/components/TutorialBubble';
 import { FinancialDataProvider, useFinancialData } from '@/contexts/FinancialDataContext';
-import { useRealTimeUpdates } from '@/hooks/useRealTimeUpdates';
+import { usePollingUpdates } from '@/hooks/usePollingUpdates';
+import PollingDebug from '@/app/components/SSEDebug';
 
 // Inner component that has access to the financial data context
 function DashboardContent() {
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const { state } = useFinancialData();
   
-  // Enable real-time updates for Telegram transactions
-  useRealTimeUpdates();
+  // Enable polling updates for Telegram transactions (Vercel-compatible)
+  usePollingUpdates();
 
   // Show loading spinner while initial data is loading
   if (state.loading.initial) {
@@ -72,6 +73,9 @@ function DashboardContent() {
           onClose={() => setIsTutorialOpen(false)}
           onStart={() => setIsTutorialOpen(true)}
         />
+        
+        {/* Polling Debug Component (development only) */}
+        <PollingDebug />
       </div>
     </GlobalLoader>
   );

@@ -18,14 +18,23 @@ export function useRealTimeUpdates() {
   const maxReconnectAttempts = 5;
 
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id) {
+      console.log('🔌 No session user ID, skipping SSE connection');
+      return;
+    }
+
+    console.log(`🔌 Setting up SSE connection for user: ${session.user.id}`);
+    console.log(`🔌 Session user object:`, session.user);
 
     const connect = () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
 
-      const eventSource = new EventSource(`/api/events?userId=${session.user.id}`);
+      const url = `/api/events?userId=${session.user.id}`;
+      console.log(`🔌 Connecting to SSE endpoint: ${url}`);
+      
+      const eventSource = new EventSource(url);
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
@@ -64,6 +73,8 @@ export function useRealTimeUpdates() {
 
       eventSource.onerror = (error) => {
         console.error('SSE connection error:', error);
+        console.error('SSE readyState:', eventSource.readyState);
+        console.error('SSE url:', eventSource.url);
         eventSource.close();
         
         // Attempt to reconnect with exponential backoff
