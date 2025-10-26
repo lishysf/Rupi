@@ -574,6 +574,72 @@ async function handleTransferCreation(
   }
 }
 
+// Helper function to handle wallet-to-wallet transfers (same as web chat)
+async function handleWalletTransfer(userId: number, description: string, amount: number, fromWalletId?: number, toWalletId?: number) {
+  if (!fromWalletId || !toWalletId) {
+    throw new Error('Please specify both source and destination wallets. For example: "Transfer 1 juta dari BCA ke GoPay" or "Pindah 500rb dari Mandiri ke Dana".');
+  }
+
+  if (fromWalletId === toWalletId) {
+    throw new Error('Cannot transfer to the same wallet');
+  }
+
+  // Verify both wallets exist and belong to user
+  const wallets = await UserWalletDatabase.getAllWallets(userId);
+  const fromWallet = wallets.find(w => w.id === fromWalletId);
+  const toWallet = wallets.find(w => w.id === toWalletId);
+  
+  if (!fromWallet) {
+    throw new Error('Source wallet not found');
+  }
+  
+  if (!toWallet) {
+    throw new Error('Destination wallet not found');
+  }
+
+  // Check if source wallet has sufficient balance
+  const currentBalance = await UserWalletDatabase.calculateWalletBalance(userId, fromWalletId);
+  
+  if (currentBalance < amount) {
+    throw new Error(`Insufficient balance in ${fromWallet.name}. Current balance: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+  }
+
+  // Create paired transfer transactions using the unified transaction system
+  const { TransactionDatabase } = await import('@/lib/database');
+
+  // Outgoing transaction (source wallet)
+  const outgoing = await TransactionDatabase.createTransaction(
+    userId,
+    `Transfer to ${toWallet.name}${description ? `: ${description}` : ''}`,
+    -amount,
+    'transfer',
+    fromWalletId,
+    'Transfer',
+    undefined,
+    undefined,
+    undefined,
+    'wallet_to_wallet',
+    new Date()
+  );
+
+  // Incoming transaction (destination wallet)
+  const incoming = await TransactionDatabase.createTransaction(
+    userId,
+    `Transfer from ${fromWallet.name}${description ? `: ${description}` : ''}`,
+    amount,
+    'transfer',
+    toWalletId,
+    'Transfer',
+    undefined,
+    undefined,
+    undefined,
+    'wallet_to_wallet',
+    new Date()
+  );
+
+  return { success: true, outgoing, incoming };
+}
+
 // Helper function to handle savings creation
 async function handleSavingsCreation(
   userId: number, 
@@ -758,31 +824,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
             }
           }
           
-          // Handle transfer transactions with from/to wallet mapping
-          if (firstTx.type === 'transfer') {
-            // Map walletName to fromWalletName and walletName2 to toWalletName
-            if (firstTx.walletName && !firstTx.fromWalletName) {
-              firstTx.fromWalletName = firstTx.walletName;
-            }
-            if (firstTx.walletName2 && !firstTx.toWalletName) {
-              firstTx.toWalletName = firstTx.walletName2;
-            }
-            
-            if (firstTx.fromWalletName && !firstTx.fromWalletId) {
-              const fromWallet = userWallets.find(w => w.name.toLowerCase() === firstTx.fromWalletName.toLowerCase());
-              if (fromWallet) {
-                firstTx.fromWalletId = fromWallet.id;
-                console.log(`💳 Mapped from wallet "${firstTx.fromWalletName}" to ID: ${fromWallet.id}`);
-              }
-            }
-            if (firstTx.toWalletName && !firstTx.toWalletId) {
-              const toWallet = userWallets.find(w => w.name.toLowerCase() === firstTx.toWalletName.toLowerCase());
-              if (toWallet) {
-                firstTx.toWalletId = toWallet.id;
-                console.log(`💳 Mapped to wallet "${firstTx.toWalletName}" to ID: ${toWallet.id}`);
-              }
-            }
-          }
+          // Transfer transactions will be handled by parseWalletTransfer in the switch case
           
           decision = firstTx;
           console.log(`✅ Converted to ${intent} transaction:`, decision);
@@ -800,31 +842,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
               }
             }
             
-            // Handle transfer transactions
-            if (tx.type === 'transfer') {
-              // Map walletName to fromWalletName and walletName2 to toWalletName
-              if (tx.walletName && !tx.fromWalletName) {
-                tx.fromWalletName = tx.walletName;
-              }
-              if (tx.walletName2 && !tx.toWalletName) {
-                tx.toWalletName = tx.walletName2;
-              }
-              
-              if (tx.fromWalletName && !tx.fromWalletId) {
-                const fromWallet = userWallets.find(w => w.name.toLowerCase() === tx.fromWalletName.toLowerCase());
-                if (fromWallet) {
-                  tx.fromWalletId = fromWallet.id;
-                  console.log(`💳 Mapped from wallet "${tx.fromWalletName}" to ID: ${fromWallet.id}`);
-                }
-              }
-              if (tx.toWalletName && !tx.toWalletId) {
-                const toWallet = userWallets.find(w => w.name.toLowerCase() === tx.toWalletName.toLowerCase());
-                if (toWallet) {
-                  tx.toWalletId = toWallet.id;
-                  console.log(`💳 Mapped to wallet "${tx.toWalletName}" to ID: ${toWallet.id}`);
-                }
-              }
-            }
+            // Transfer transactions will be handled by parseWalletTransfer in the switch case
             
             return tx;
           });
@@ -940,35 +958,45 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
             break;
           case 'transfer':
             try {
-              // Generate unique transaction ID
-              const pendingTxId = `voice_${telegramUserId}_${Date.now()}`;
+              // Use the same logic as web chat - parse transfer details using parseWalletTransfer
+              console.log('AI detected wallet transfer, parsing transfer details...');
+              const transferDetails = await GroqAIService.parseWalletTransfer(transcribedText, userId);
+              console.log('Transfer details parsed:', transferDetails);
               
-              // Store pending transaction for confirmation
-              const pendingTx = {
-                userId,
-                description: decision.description,
-                amount: decision.amount,
-                fromWalletName: decision.fromWalletName,
-                toWalletName: decision.toWalletName,
-                fromWalletId: decision.fromWalletId,
-                toWalletId: decision.toWalletId,
-                adminFee: decision.adminFee,
-                type: 'transfer'
-              };
-              pendingTransactions.set(pendingTxId, pendingTx);
-              
-              response = `📝 *Transfer Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n💳 From: ${decision.fromWalletName}\n💳 To: ${decision.toWalletName}\n\nPlease confirm this transaction:`;
-              
-              // Send confirmation message with buttons
-              await TelegramBotService.sendMessage(
-                chatId,
-                response,
-                { 
-                  parse_mode: 'Markdown',
-                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
-                }
-              );
-              return; // Don't send another response
+              if (transferDetails.fromWalletId && transferDetails.toWalletId) {
+                // Generate unique transaction ID
+                const pendingTxId = `voice_${telegramUserId}_${Date.now()}`;
+                
+                // Store pending transaction for confirmation (same structure as web chat)
+                const pendingTx = {
+                  userId,
+                  description: decision.description,
+                  amount: decision.amount,
+                  fromWalletName: transferDetails.fromWalletName,
+                  toWalletName: transferDetails.toWalletName,
+                  fromWalletId: transferDetails.fromWalletId,
+                  toWalletId: transferDetails.toWalletId,
+                  adminFee: decision.adminFee || 0,
+                  type: 'transfer'
+                };
+                pendingTransactions.set(pendingTxId, pendingTx);
+                
+                const adminFeeMessage = pendingTx.adminFee > 0 ? ` (with Rp ${pendingTx.adminFee.toLocaleString()} admin fee)` : '';
+                response = `📝 *Transfer Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n💳 From: ${transferDetails.fromWalletName}\n💳 To: ${transferDetails.toWalletName}${adminFeeMessage}\n\nPlease confirm this transaction:`;
+                
+                // Send confirmation message with buttons
+                await TelegramBotService.sendMessage(
+                  chatId,
+                  response,
+                  { 
+                    parse_mode: 'Markdown',
+                    reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
+                  }
+                );
+                return; // Don't send another response
+              } else {
+                response = `❌ Error: Could not identify both source and destination wallets. Please specify both wallets clearly.`;
+              }
             } catch (error) {
               response = `❌ Error: ${error instanceof Error ? error.message : 'Failed to process transfer'}`;
             }
@@ -2059,13 +2087,12 @@ async function handleCallbackQuery(callbackQuery: any) {
               pendingTx.walletId
             );
           } else if (pendingTx.type === 'transfer') {
-            await handleTransferCreation(
+            await handleWalletTransfer(
               pendingTx.userId,
               pendingTx.description,
               pendingTx.amount,
               pendingTx.fromWalletId,
-              pendingTx.toWalletId,
-              pendingTx.adminFee
+              pendingTx.toWalletId
             );
           } else if (pendingTx.type === 'savings') {
             await handleSavingsCreation(
@@ -2165,13 +2192,12 @@ async function handleCallbackQuery(callbackQuery: any) {
             pendingTx.walletId
           );
         } else if (pendingTx.type === 'transfer') {
-          await handleTransferCreation(
+          await handleWalletTransfer(
             pendingTx.userId,
             pendingTx.description,
             pendingTx.amount,
             pendingTx.fromWalletId,
-            pendingTx.toWalletId,
-            pendingTx.adminFee
+            pendingTx.toWalletId
           );
         } else if (pendingTx.type === 'savings') {
           await handleSavingsCreation(
