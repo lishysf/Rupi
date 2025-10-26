@@ -422,18 +422,19 @@ async function handleMessage(update: TelegramUpdate) {
         const savingsGoals = await SavingsGoalDatabase.getAllSavingsGoals(session.fundy_user_id);
         
         if (savingsGoals.length === 0) {
-          await TelegramBotService.sendMessage(chatId, '📊 *Your Savings Goals*\n\nNo savings goals yet. Start saving by saying:\n• "Tabung 500k ke BCA untuk liburan"\n• "Simpan 1 juta ke Mandiri untuk emergency"');
+          await TelegramBotService.sendMessage(chatId, '📊 *Your Savings Goals*\n\nNo savings goals yet. Add savings goals on the main website: fundy.id');
         } else {
           let message = '📊 *Your Savings Goals*\n\n';
           
           for (const goal of savingsGoals) {
-            const progress = Math.round(((goal.current_amount || 0) / goal.target_amount) * 100);
-            const progressBar = '█'.repeat(Math.floor(progress / 10)) + '░'.repeat(10 - Math.floor(progress / 10));
+            // The current_amount is already calculated from transactions in getAllSavingsGoals
+            const currentAmount = Math.round(goal.current_amount || 0);
+            const targetAmount = Math.round(goal.target_amount);
             
             message += `🎯 *${goal.goal_name}*\n`;
-            message += `💰 Rp${(goal.current_amount || 0).toLocaleString()} / Rp${goal.target_amount.toLocaleString()}\n`;
-            message += `📈 ${progressBar} ${progress}%\n`;
-            message += `📅 Target: ${goal.target_date?.toLocaleDateString() || 'No date set'}\n\n`;
+            message += `💰 Current: Rp${currentAmount.toLocaleString()}\n`;
+            message += `🎯 Target: Rp${targetAmount.toLocaleString()}\n`;
+            message += `📅 Target Date: ${goal.target_date?.toLocaleDateString() || 'No date set'}\n\n`;
           }
           
           await TelegramBotService.sendMessage(chatId, message);
