@@ -93,55 +93,64 @@ async function handleTransferCreation(
   userId: number, 
   description: string, 
   amount: number, 
-  fromWalletId: number, 
-  toWalletId: number, 
+  sourceWalletId?: number, 
+  destinationWalletId?: number, 
   adminFee?: number
 ) {
-  const wallets = await UserWalletDatabase.getAllWallets(userId);
-  const fromWallet = wallets.find(w => w.id === fromWalletId);
-  const toWallet = wallets.find(w => w.id === toWalletId);
+  if (!sourceWalletId) {
+    throw new Error('Please specify source wallet. For example: "Transfer 100k dari BCA ke Gopay"');
+  }
   
-  if (!fromWallet) {
+  if (!destinationWalletId) {
+    throw new Error('Please specify destination wallet. For example: "Transfer 100k dari BCA ke Gopay"');
+  }
+
+  const wallets = await UserWalletDatabase.getAllWallets(userId);
+  const sourceWallet = wallets.find(w => w.id === sourceWalletId);
+  const destinationWallet = wallets.find(w => w.id === destinationWalletId);
+  
+  if (!sourceWallet) {
     throw new Error('Source wallet not found');
   }
   
-  if (!toWallet) {
+  if (!destinationWallet) {
     throw new Error('Destination wallet not found');
   }
 
+  // Check source wallet balance
+  const sourceBalance = await TransactionDatabase.calculateWalletBalance(userId, sourceWalletId);
   const totalAmount = amount + (adminFee || 0);
-  const currentBalance = await TransactionDatabase.calculateWalletBalance(userId, fromWalletId);
   
-  if (currentBalance < totalAmount) {
-    throw new Error(`Insufficient balance in ${fromWallet.name}. Current: Rp${currentBalance.toLocaleString()}, Required: Rp${totalAmount.toLocaleString()}`);
+  if (sourceBalance < totalAmount) {
+    throw new Error(`Insufficient balance in ${sourceWallet.name}. Current: Rp${sourceBalance.toLocaleString()}, Required: Rp${totalAmount.toLocaleString()}`);
   }
 
-  // Create transfer transaction (outgoing)
+  // Create transfer transaction (expense from source)
   await TransactionDatabase.createTransaction(
     userId, 
-    `${description} (Transfer to ${toWallet.name})`, 
+    description, 
     amount, 
     'transfer',
-    fromWalletId,
+    sourceWalletId,
     'Transfer',
     undefined,
+    destinationWalletId?.toString(),
     undefined,
-    toWalletId.toString(),
     undefined,
     new Date()
   );
 
-  // Create income transaction (incoming)
+  // Create income transaction (to destination)
   await TransactionDatabase.createTransaction(
     userId, 
-    `${description} (Transfer from ${fromWallet.name})`, 
+    description, 
     amount, 
     'income',
-    toWalletId,
+    destinationWalletId,
     undefined,
     'Transfer',
     undefined,
-    fromWalletId.toString(),
+    undefined,
     undefined,
     new Date()
   );
@@ -150,10 +159,10 @@ async function handleTransferCreation(
   if (adminFee && adminFee > 0) {
     await TransactionDatabase.createTransaction(
       userId, 
-      `${description} (Admin Fee)`, 
+      `Admin fee for ${description}`, 
       adminFee, 
       'expense',
-      fromWalletId,
+      sourceWalletId,
       'Fees',
       undefined,
       undefined,
@@ -162,8 +171,82 @@ async function handleTransferCreation(
       new Date()
     );
   }
+}
 
-  return { fromWallet, toWallet, amount, adminFee };
+// Helper function to handle savings creation
+async function handleSavingsCreation(
+  userId: number, 
+  description: string, 
+  amount: number, 
+  walletId?: number, 
+  savingsGoal?: string
+) {
+  if (!walletId) {
+    throw new Error('Please specify which wallet to use for savings. For example: "Tabung 500k ke BCA untuk liburan"');
+  }
+
+  const wallets = await UserWalletDatabase.getAllWallets(userId);
+  const wallet = wallets.find(w => w.id === walletId);
+  
+  if (!wallet) {
+    throw new Error('Specified wallet not found');
+  }
+
+  // Check wallet balance
+  const currentBalance = await TransactionDatabase.calculateWalletBalance(userId, walletId);
+  
+  if (currentBalance < amount) {
+    throw new Error(`Insufficient balance in ${wallet.name}. Current: Rp${currentBalance.toLocaleString()}, Required: Rp${amount.toLocaleString()}`);
+  }
+
+  // Create savings transaction
+  await TransactionDatabase.createTransaction(
+    userId, 
+    description, 
+    amount, 
+    'savings',
+    walletId,
+    'Savings',
+    undefined,
+    undefined,
+    undefined,
+    savingsGoal,
+    new Date()
+  );
+
+  // If savings goal is specified, update or create savings goal
+  if (savingsGoal) {
+    try {
+      // Try to get existing savings goal
+      const existingGoals = await SavingsGoalDatabase.getAllSavingsGoals(userId);
+      const existingGoal = existingGoals.find(goal => 
+        goal.goal_name.toLowerCase().includes(savingsGoal.toLowerCase()) ||
+        savingsGoal.toLowerCase().includes(goal.goal_name.toLowerCase())
+      );
+
+      if (existingGoal) {
+        // Update existing goal
+        await SavingsGoalDatabase.updateSavingsGoal(
+          userId,
+          existingGoal.id,
+          existingGoal.goal_name,
+          existingGoal.target_amount,
+          existingGoal.target_date
+        );
+      } else {
+        // Create new savings goal
+        await SavingsGoalDatabase.createSavingsGoal(
+          userId,
+          savingsGoal,
+          amount * 10, // Set target as 10x the current amount
+          new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year from now
+        );
+      }
+    } catch (error) {
+      console.error('Error updating savings goal:', error);
+      // Continue with transaction even if goal update fails
+    }
+  }
 }
 
 // Handle incoming Telegram messages
@@ -212,7 +295,7 @@ async function handleMessage(update: TelegramUpdate) {
       }
 
       console.log(`✅ Valid email received for user ${telegramUserId}, transitioning to password state`);
-      await TelegramDatabase.setAuthState(telegramUserId, 'awaiting_password', text);
+      await TelegramDatabase.setAuthState(telegramUserId.toString(), 'awaiting_password', text);
       
       const passwordPromptResult = await TelegramBotService.sendMessage(chatId, '🔒 Please enter your password:');
       console.log(`🔒 Password prompt sent to user ${telegramUserId}: ${passwordPromptResult ? 'SUCCESS' : 'FAILED'}`);
@@ -326,9 +409,41 @@ async function handleMessage(update: TelegramUpdate) {
 
   // Handle /help command
   if (text === '/help') {
-    const helpMessage = `📚 *Fundy Bot Commands*\n\n/start - Start the bot\n/login - Login with your Fundy account\n/logout - Logout from your account\n/status - Check your login status\n/help - Show this help message\n\n💬 *Once logged in, just chat with me naturally!*\n\nExamples:\n• "Beli kopi 30k pakai Gopay"\n• "Gaji 5 juta ke BCA"\n• "Analisis pengeluaran bulan ini"\n• "Berapa total pengeluaran?"`;
+    const helpMessage = `📚 *Fundy Bot Commands*\n\n/start - Start the bot\n/login - Login with your Fundy account\n/logout - Logout from your account\n/status - Check your login status\n/savings - View your savings goals\n/help - Show this help message\n\n💬 *Once logged in, just chat with me naturally!*\n\nExamples:\n• "Beli kopi 30k pakai Gopay"\n• "Gaji 5 juta ke BCA"\n• "Tabung 500k ke BCA untuk liburan"\n• "Analisis pengeluaran bulan ini"\n• "Berapa total pengeluaran?"`;
     
     await TelegramBotService.sendMessage(chatId, helpMessage);
+    return;
+  }
+
+  // Handle /savings command
+  if (text === '/savings') {
+    if (session.is_authenticated && session.fundy_user_id) {
+      try {
+        const savingsGoals = await SavingsGoalDatabase.getAllSavingsGoals(session.fundy_user_id);
+        
+        if (savingsGoals.length === 0) {
+          await TelegramBotService.sendMessage(chatId, '📊 *Your Savings Goals*\n\nNo savings goals yet. Start saving by saying:\n• "Tabung 500k ke BCA untuk liburan"\n• "Simpan 1 juta ke Mandiri untuk emergency"');
+        } else {
+          let message = '📊 *Your Savings Goals*\n\n';
+          
+          for (const goal of savingsGoals) {
+            const progress = Math.round(((goal.current_amount || 0) / goal.target_amount) * 100);
+            const progressBar = '█'.repeat(Math.floor(progress / 10)) + '░'.repeat(10 - Math.floor(progress / 10));
+            
+            message += `🎯 *${goal.goal_name}*\n`;
+            message += `💰 Rp${(goal.current_amount || 0).toLocaleString()} / Rp${goal.target_amount.toLocaleString()}\n`;
+            message += `📈 ${progressBar} ${progress}%\n`;
+            message += `📅 Target: ${goal.target_date?.toLocaleDateString() || 'No date set'}\n\n`;
+          }
+          
+          await TelegramBotService.sendMessage(chatId, message);
+        }
+      } catch (error) {
+        await TelegramBotService.sendMessage(chatId, '❌ Error fetching savings goals. Please try again.');
+      }
+    } else {
+      await TelegramBotService.sendMessage(chatId, '❌ You are not logged in. Use /login to authenticate.');
+    }
     return;
   }
 
@@ -358,7 +473,7 @@ async function handleMessage(update: TelegramUpdate) {
     }
 
     console.log('📧 Starting login flow - requesting email');
-    await TelegramDatabase.setAuthState(telegramUserId, 'awaiting_email');
+      await TelegramDatabase.setAuthState(telegramUserId.toString(), 'awaiting_email');
     const result = await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
     console.log('📤 Login email prompt sent:', result ? 'SUCCESS' : 'FAILED');
     return;
@@ -434,73 +549,98 @@ async function handleMessage(update: TelegramUpdate) {
     let transactionCreated = false;
 
     // Handle transaction intent
-    if (intent === 'transaction') {
-      const parsedTransaction = decision.transactions?.[0] || await GroqAIService.parseTransaction(text, userId);
-
-      if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
-        let walletId: number | undefined;
+    if (intent === 'transaction' || intent === 'multiple_transaction') {
+      const transactions = decision.transactions || [];
+      
+      if (transactions.length > 0) {
+        let responses = [];
         
-        if (parsedTransaction.walletName && parsedTransaction.walletType) {
-          walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
-        }
-
-        if (parsedTransaction.type === 'expense') {
-          try {
-            await handleExpenseCreation(
-              userId,
-              parsedTransaction.description,
-              parsedTransaction.amount,
-              parsedTransaction.category!,
-              walletId
-            );
+        for (const parsedTransaction of transactions) {
+          if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
+            let walletId: number | undefined;
+            let destinationWalletId: number | undefined;
             
-            const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
-            response = `✅ Expense recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in ${parsedTransaction.category} category${walletInfo}.`;
-            transactionCreated = true;
-          } catch (error) {
-            response = error instanceof Error ? error.message : 'Error recording expense';
-          }
-        } else if (parsedTransaction.type === 'income') {
-          await handleIncomeCreation(
-            userId,
-            parsedTransaction.description,
-            parsedTransaction.amount,
-            parsedTransaction.source!,
-            walletId
-          );
-
-          const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
-          response = `✅ Income recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}.`;
-          transactionCreated = true;
-        } else if (parsedTransaction.type === 'transfer') {
-          try {
-            // Find destination wallet
-            const toWalletId = findWalletByName(
-              userWallets, 
-              (parsedTransaction as any).walletNameDestination, 
-              (parsedTransaction as any).walletTypeDestination
-            );
-
-            if (!walletId || !toWalletId) {
-              throw new Error('Please specify both source and destination wallets. For example: "Transfer 100k dari BCA ke Gopay"');
+            if (parsedTransaction.walletName && parsedTransaction.walletType) {
+              walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
+            }
+            
+            if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
+              destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
             }
 
-            const result = await handleTransferCreation(
-              userId,
-              parsedTransaction.description,
-              parsedTransaction.amount,
-              walletId,
-              toWalletId,
-              (parsedTransaction as any).adminFee
-            );
+            if (parsedTransaction.type === 'expense') {
+              try {
+                await handleExpenseCreation(
+                  userId,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  parsedTransaction.category!,
+                  walletId
+                );
+                
+                const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
+                responses.push(`✅ Expense recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in ${parsedTransaction.category} category${walletInfo}.`);
+                transactionCreated = true;
+              } catch (error) {
+                responses.push(error instanceof Error ? error.message : 'Error recording expense');
+              }
+            } else if (parsedTransaction.type === 'income') {
+              try {
+                await handleIncomeCreation(
+                  userId,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  parsedTransaction.source!,
+                  walletId
+                );
 
-            const adminFeeText = (parsedTransaction as any).adminFee ? ` (Admin fee: Rp${(parsedTransaction as any).adminFee.toLocaleString()})` : '';
-            response = `✅ Transfer recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${result.fromWallet.name} to ${result.toWallet.name}${adminFeeText}.`;
-            transactionCreated = true;
-          } catch (error) {
-            response = error instanceof Error ? error.message : 'Error recording transfer';
+                const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
+                responses.push(`✅ Income recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}.`);
+                transactionCreated = true;
+              } catch (error) {
+                responses.push(error instanceof Error ? error.message : 'Error recording income');
+              }
+            } else if (parsedTransaction.type === 'transfer') {
+              try {
+                await handleTransferCreation(
+                  userId,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  walletId,
+                  destinationWalletId,
+                  (parsedTransaction as any).adminFee
+                );
+                
+                const sourceInfo = walletId ? ` from ${parsedTransaction.walletName}` : '';
+                const destInfo = destinationWalletId ? ` to ${(parsedTransaction as any).walletNameDestination}` : '';
+                const adminInfo = (parsedTransaction as any).adminFee ? ` (Admin fee: Rp${(parsedTransaction as any).adminFee.toLocaleString()})` : '';
+                responses.push(`✅ Transfer recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${sourceInfo}${destInfo}${adminInfo}.`);
+                transactionCreated = true;
+              } catch (error) {
+                responses.push(error instanceof Error ? error.message : 'Error recording transfer');
+              }
+            } else if (parsedTransaction.type === 'savings') {
+              try {
+                await handleSavingsCreation(
+                  userId,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  walletId,
+                  (parsedTransaction as any).savingsGoal
+                );
+                
+                const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
+                const goalInfo = (parsedTransaction as any).savingsGoal ? ` for ${(parsedTransaction as any).savingsGoal}` : '';
+                responses.push(`✅ Savings recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${walletInfo}${goalInfo}.`);
+                transactionCreated = true;
+              } catch (error) {
+                responses.push(error instanceof Error ? error.message : 'Error recording savings');
+              }
+            }
           }
         }
+        
+        response = responses.join('\n\n');
       } else {
         response = 'I need more details to record this transaction. Please specify the amount, description, and wallet.';
       }
@@ -599,9 +739,29 @@ async function handleMessage(update: TelegramUpdate) {
       response = await GroqAIService.generateChatResponse(messageWithDateContext, context, '');
     }
 
-    // Format and send response
+    // Format and send response (escape special characters for Telegram)
     const formattedResponse = TelegramBotService.formatAIResponse(response);
-    await TelegramBotService.sendMessage(chatId, formattedResponse);
+    const safeResponse = formattedResponse
+      .replace(/\*/g, '\\*')  // Escape asterisks
+      .replace(/_/g, '\\_')   // Escape underscores
+      .replace(/\[/g, '\\[')  // Escape brackets
+      .replace(/\]/g, '\\]') // Escape brackets
+      .replace(/\(/g, '\\(') // Escape parentheses
+      .replace(/\)/g, '\\)') // Escape parentheses
+      .replace(/~/g, '\\~')  // Escape tildes
+      .replace(/`/g, '\\`')   // Escape backticks
+      .replace(/>/g, '\\>')   // Escape greater than
+      .replace(/#/g, '\\#')   // Escape hash
+      .replace(/\+/g, '\\+')  // Escape plus
+      .replace(/-/g, '\\-')   // Escape minus
+      .replace(/=/g, '\\=')   // Escape equals
+      .replace(/\|/g, '\\|')  // Escape pipe
+      .replace(/\{/g, '\\{')  // Escape braces
+      .replace(/\}/g, '\\}')  // Escape braces
+      .replace(/\./g, '\\.')  // Escape dots
+      .replace(/!/g, '\\!');  // Escape exclamation
+    
+    await TelegramBotService.sendMessage(chatId, safeResponse);
 
     // Update activity
     await TelegramDatabase.updateActivity(telegramUserId);
