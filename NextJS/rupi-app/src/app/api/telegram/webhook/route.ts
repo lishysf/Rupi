@@ -562,10 +562,16 @@ async function handleMessage(update: TelegramUpdate) {
             
             if (parsedTransaction.walletName && parsedTransaction.walletType) {
               walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
+              console.log(`🔍 Source wallet found: ${parsedTransaction.walletName} (${parsedTransaction.walletType}) -> ID: ${walletId}`);
             }
             
+            // Check for destination wallet with different field names
             if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
               destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
+              console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletNameDestination} (${(parsedTransaction as any).walletTypeDestination}) -> ID: ${destinationWalletId}`);
+            } else if ((parsedTransaction as any).walletName2 && (parsedTransaction as any).walletType2) {
+              destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletName2, (parsedTransaction as any).walletType2);
+              console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletName2} (${(parsedTransaction as any).walletType2}) -> ID: ${destinationWalletId}`);
             }
 
             if (parsedTransaction.type === 'expense') {
@@ -612,7 +618,8 @@ async function handleMessage(update: TelegramUpdate) {
                 );
                 
                 const sourceInfo = walletId ? ` from ${parsedTransaction.walletName}` : '';
-                const destInfo = destinationWalletId ? ` to ${(parsedTransaction as any).walletNameDestination}` : '';
+                const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
+                const destInfo = destinationWalletId ? ` to ${destWalletName}` : '';
                 const adminInfo = (parsedTransaction as any).adminFee ? ` (Admin fee: Rp${(parsedTransaction as any).adminFee.toLocaleString()})` : '';
                 responses.push(`✅ Transfer recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${sourceInfo}${destInfo}${adminInfo}.`);
                 transactionCreated = true;
