@@ -49,20 +49,24 @@ async function prepareFinancialContext(userId: number) {
   const totalIncome = sum(income);
   const totalSavings = sum(savings);
 
-  // Get total assets from wallets
+  // Get total wallet balance
   const wallets = await UserWalletDatabase.getAllWalletsWithBalances(userId);
-  const totalAssets = (wallets as any[]).reduce((s, w) => {
+  const totalWalletBalance = (wallets as any[]).reduce((s, w) => {
     const balance = typeof w.balance === 'string' ? parseFloat(w.balance) : (w.balance || 0);
     return s + balance;
   }, 0);
 
-  // Get savings goals
+  // Get savings goals and calculate total savings
   const savingsGoals = await SavingsGoalDatabase.getAllSavingsGoals(userId);
+  const totalSavingsAmount = savingsGoals.reduce((sum, g) => sum + (g.current_amount || 0), 0);
   const goalsData = savingsGoals.map(g => ({
     name: g.goal_name,
     target: g.target_amount,
     current: g.current_amount
   }));
+
+  // Calculate total assets (wallet balance + savings)
+  const totalAssets = totalWalletBalance + totalSavingsAmount;
 
   // Calculate expense breakdown by category (all categories with totals)
   const expensesByCategory: Record<string, number> = {};
@@ -76,6 +80,31 @@ async function prepareFinancialContext(userId: number) {
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3)
     .map(([cat, total]) => ({ category: cat, total }));
+
+  // Get today's transactions (for "today" queries)
+  const todayExpenses = expenses.filter(e => {
+    const txDate = new Date(e.created_at);
+    const txIndonesiaTime = new Date(txDate.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+    return txIndonesiaTime.getDate() === indonesiaTime.getDate() &&
+           txIndonesiaTime.getMonth() === currentMonth &&
+           txIndonesiaTime.getFullYear() === currentYear;
+  }).map(e => ({ 
+    desc: e.description, 
+    amt: typeof e.amount === 'string' ? parseFloat(e.amount) : e.amount, 
+    cat: e.category 
+  }));
+
+  const todayIncome = income.filter(i => {
+    const txDate = new Date(i.created_at);
+    const txIndonesiaTime = new Date(txDate.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+    return txIndonesiaTime.getDate() === indonesiaTime.getDate() &&
+           txIndonesiaTime.getMonth() === currentMonth &&
+           txIndonesiaTime.getFullYear() === currentYear;
+  }).map(i => ({ 
+    desc: i.description, 
+    amt: typeof i.amount === 'string' ? parseFloat(i.amount) : i.amount, 
+    source: i.source 
+  }));
 
   // Get 3 most recent expenses (summary only)
   const recentExpenses = expenses
@@ -100,20 +129,24 @@ async function prepareFinancialContext(userId: number) {
     hour12: false 
   });
 
-  // Build compact context string
+  // Calculate today's totals
+  const todayExpenseTotal = todayExpenses.reduce((sum, e) => sum + e.amt, 0);
+  const todayIncomeTotal = todayIncome.reduce((sum, i) => sum + i.amt, 0);
+
+  // Build simple context string
   const context = {
-    current_date: dateString,
-    current_time: `${timeString} WIB`,
-    period: 'This Month',
-    totals: {
-      assets: totalAssets,
-      expense: totalExpense,
-      income: totalIncome,
-      savings: totalSavings
-    },
-    top_3_expense_categories: top3Categories.length > 0 ? top3Categories : null,
-    recent_3_expenses: recentExpenses.length > 0 ? recentExpenses : null,
-    savings_goals: goalsData.length > 0 ? goalsData : null
+    date: dateString,
+    time: `${timeString} WIB`,
+    assets: totalAssets,
+    wallet: totalWalletBalance,
+    savings: totalSavingsAmount,
+    month_expense: totalExpense,
+    month_income: totalIncome,
+    today_expense: todayExpenseTotal,
+    today_income: todayIncomeTotal,
+    top_categories: top3Categories.slice(0, 3),
+    today_list: todayExpenses.slice(0, 5),
+    goals: goalsData.slice(0, 3)
   };
 
   return JSON.stringify(context, null, 0); // Compact JSON
@@ -1200,25 +1233,22 @@ async function handleMessage(update: TelegramUpdate) {
       );
     }
 
-    // Format and send response with proper Telegram markdown
-    const formattedResponse = TelegramBotService.formatAIResponse(response);
-    
-    // Split long messages into chunks (Telegram has 4096 character limit)
+    // Send response as plain text (no markdown to avoid parsing errors)
     const MAX_MESSAGE_LENGTH = 4000; // Leave some buffer
     
-    if (formattedResponse.length <= MAX_MESSAGE_LENGTH) {
-      // Send as single message with markdown parsing
-      await TelegramBotService.sendMessage(chatId, formattedResponse, { parse_mode: 'Markdown' });
+    if (response.length <= MAX_MESSAGE_LENGTH) {
+      // Send as single message (plain text, no markdown parsing)
+      await TelegramBotService.sendMessage(chatId, response);
     } else {
       // Split by paragraphs (double newlines) to keep context together
-      const paragraphs = formattedResponse.split('\n\n');
+      const paragraphs = response.split('\n\n');
       let currentChunk = '';
       
       for (const paragraph of paragraphs) {
         // If adding this paragraph exceeds limit, send current chunk first
         if (currentChunk.length + paragraph.length + 2 > MAX_MESSAGE_LENGTH) {
           if (currentChunk) {
-            await TelegramBotService.sendMessage(chatId, currentChunk.trim(), { parse_mode: 'Markdown' });
+            await TelegramBotService.sendMessage(chatId, currentChunk.trim());
             // Small delay between messages
             await new Promise(resolve => setTimeout(resolve, 100));
           }
@@ -1230,7 +1260,7 @@ async function handleMessage(update: TelegramUpdate) {
       
       // Send remaining chunk
       if (currentChunk) {
-        await TelegramBotService.sendMessage(chatId, currentChunk.trim(), { parse_mode: 'Markdown' });
+        await TelegramBotService.sendMessage(chatId, currentChunk.trim());
       }
     }
 
