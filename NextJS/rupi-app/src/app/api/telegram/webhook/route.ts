@@ -760,6 +760,14 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
           
           // Handle transfer transactions with from/to wallet mapping
           if (firstTx.type === 'transfer') {
+            // Map walletName to fromWalletName and walletName2 to toWalletName
+            if (firstTx.walletName && !firstTx.fromWalletName) {
+              firstTx.fromWalletName = firstTx.walletName;
+            }
+            if (firstTx.walletName2 && !firstTx.toWalletName) {
+              firstTx.toWalletName = firstTx.walletName2;
+            }
+            
             if (firstTx.fromWalletName && !firstTx.fromWalletId) {
               const fromWallet = userWallets.find(w => w.name.toLowerCase() === firstTx.fromWalletName.toLowerCase());
               if (fromWallet) {
@@ -794,6 +802,14 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
             
             // Handle transfer transactions
             if (tx.type === 'transfer') {
+              // Map walletName to fromWalletName and walletName2 to toWalletName
+              if (tx.walletName && !tx.fromWalletName) {
+                tx.fromWalletName = tx.walletName;
+              }
+              if (tx.walletName2 && !tx.toWalletName) {
+                tx.toWalletName = tx.walletName2;
+              }
+              
               if (tx.fromWalletName && !tx.fromWalletId) {
                 const fromWallet = userWallets.find(w => w.name.toLowerCase() === tx.fromWalletName.toLowerCase());
                 if (fromWallet) {
