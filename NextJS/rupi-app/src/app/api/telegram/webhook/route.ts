@@ -824,6 +824,9 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
         switch (intent) {
           case 'expense':
             try {
+              // Generate unique transaction ID
+              const pendingTxId = `voice_${telegramUserId}_${Date.now()}`;
+              
               // Store pending transaction for confirmation
               const pendingTx = {
                 userId,
@@ -833,7 +836,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 walletId: decision.walletId,
                 type: 'expense'
               };
-              pendingTransactions.set(telegramUserId, pendingTx);
+              pendingTransactions.set(pendingTxId, pendingTx);
               
               const walletName = userWallets.find(w => w.id === decision.walletId)?.name || 'Unknown';
               response = `📝 *Expense Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n🏷️ Category: ${decision.category}\n💳 Wallet: ${walletName}\n\nPlease confirm this transaction:`;
@@ -844,7 +847,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 response,
                 { 
                   parse_mode: 'Markdown',
-                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
                 }
               );
               return; // Don't send another response
@@ -854,6 +857,9 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
             break;
           case 'income':
             try {
+              // Generate unique transaction ID
+              const pendingTxId = `voice_${telegramUserId}_${Date.now()}`;
+              
               // Store pending transaction for confirmation
               const pendingTx = {
                 userId,
@@ -863,7 +869,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 walletId: decision.walletId,
                 type: 'income'
               };
-              pendingTransactions.set(telegramUserId, pendingTx);
+              pendingTransactions.set(pendingTxId, pendingTx);
               
               const walletName = userWallets.find(w => w.id === decision.walletId)?.name || 'Unknown';
               response = `📝 *Income Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n🏷️ Source: ${decision.source}\n💳 Wallet: ${walletName}\n\nPlease confirm this transaction:`;
@@ -874,7 +880,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 response,
                 { 
                   parse_mode: 'Markdown',
-                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
                 }
               );
               return; // Don't send another response
@@ -884,6 +890,9 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
             break;
           case 'savings':
             try {
+              // Generate unique transaction ID
+              const pendingTxId = `voice_${telegramUserId}_${Date.now()}`;
+              
               // Store pending transaction for confirmation
               const pendingTx = {
                 userId,
@@ -893,7 +902,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 goalName: decision.goalName,
                 type: 'savings'
               };
-              pendingTransactions.set(telegramUserId, pendingTx);
+              pendingTransactions.set(pendingTxId, pendingTx);
               
               const walletName = userWallets.find(w => w.id === decision.walletId)?.name || 'Unknown';
               response = `📝 *Savings Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n🎯 Goal: ${decision.goalName || 'General Savings'}\n💳 Wallet: ${walletName}\n\nPlease confirm this transaction:`;
@@ -904,7 +913,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 response,
                 { 
                   parse_mode: 'Markdown',
-                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
                 }
               );
               return; // Don't send another response
@@ -914,6 +923,9 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
             break;
           case 'transfer':
             try {
+              // Generate unique transaction ID
+              const pendingTxId = `voice_${telegramUserId}_${Date.now()}`;
+              
               // Store pending transaction for confirmation
               const pendingTx = {
                 userId,
@@ -924,7 +936,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 adminFee: decision.adminFee,
                 type: 'transfer'
               };
-              pendingTransactions.set(telegramUserId, pendingTx);
+              pendingTransactions.set(pendingTxId, pendingTx);
               
               response = `📝 *Transfer Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n💳 From: ${decision.fromWalletName}\n💳 To: ${decision.toWalletName}\n\nPlease confirm this transaction:`;
               
@@ -934,7 +946,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 response,
                 { 
                   parse_mode: 'Markdown',
-                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
                 }
               );
               return; // Don't send another response
@@ -996,7 +1008,10 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 }
                 
                 if (pendingTx) {
-                  pendingTransactions.set(telegramUserId, pendingTx);
+                  // Generate unique transaction ID
+                  const pendingTxId = `voice_${telegramUserId}_${Date.now()}`;
+                  pendingTransactions.set(pendingTxId, pendingTx);
+                  
                   const walletName = userWallets.find(w => w.id === pendingTx.walletId)?.name || 'Unknown';
                   
                   let transactionDetails = `💰 Amount: Rp${pendingTx.amount.toLocaleString()}\n📝 Description: ${pendingTx.description}`;
@@ -1019,7 +1034,7 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                     response,
                     { 
                       parse_mode: 'Markdown',
-                      reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                      reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
                     }
                   );
                   return; // Don't send another response
