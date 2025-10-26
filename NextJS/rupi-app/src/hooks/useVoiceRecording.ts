@@ -117,10 +117,6 @@ export function useVoiceRecording() {
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
 
     try {
-      // Convert blob to buffer
-      const arrayBuffer = await state.audioBlob.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
       // Send to transcription API
       const formData = new FormData();
       const audioFile = new File([state.audioBlob], 'voice-message.webm', {
@@ -128,16 +124,23 @@ export function useVoiceRecording() {
       });
       formData.append('audio', audioFile);
 
+      console.log('🎤 Sending audio for transcription...', { size: audioFile.size, type: audioFile.type });
+
       const response = await fetch('/api/transcribe-voice', {
         method: 'POST',
         body: formData
       });
 
+      console.log('📡 Transcription response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Transcription failed');
+        const errorText = await response.text();
+        console.error('❌ Transcription failed:', errorText);
+        throw new Error(`Transcription failed: ${response.status}`);
       }
 
       const result = await response.json();
+      console.log('✅ Transcription result:', result);
       
       setState(prev => ({ 
         ...prev, 

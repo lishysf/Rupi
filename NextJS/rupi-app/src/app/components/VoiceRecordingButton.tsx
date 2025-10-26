@@ -30,11 +30,18 @@ export default function VoiceRecordingButton({
   // Handle transcription completion
   useEffect(() => {
     if (isProcessing) {
+      console.log('🔄 Starting audio processing...');
       processAudio().then((transcribedText) => {
+        console.log('📝 Transcription completed:', transcribedText);
         if (transcribedText) {
+          console.log('✅ Calling onTranscriptionComplete with:', transcribedText);
           onTranscriptionComplete(transcribedText);
           reset();
+        } else {
+          console.log('❌ No transcription text received');
         }
+      }).catch((error) => {
+        console.error('❌ Error in transcription process:', error);
       });
     }
   }, [isProcessing, processAudio, onTranscriptionComplete, reset]);

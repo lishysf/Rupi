@@ -175,9 +175,11 @@ export default function FloatingChat() {
   };
 
   const handleVoiceTranscription = (transcribedText: string) => {
+    console.log('🎤 Voice transcription received in FloatingChat:', transcribedText);
     setInputValue(transcribedText);
     // Auto-send the transcribed message
     setTimeout(() => {
+      console.log('📤 Auto-sending transcribed message...');
       handleSendMessage();
     }, 100);
   };
