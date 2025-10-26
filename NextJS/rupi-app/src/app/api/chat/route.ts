@@ -6,23 +6,25 @@ import { PerformanceMonitor } from '@/lib/performance-monitor';
 
 // Prepare optimized financial context for AI (token-efficient)
 async function prepareFinancialContext(userId: number) {
+  // Get current date in Indonesia timezone
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const indonesiaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  const currentYear = indonesiaTime.getFullYear();
+  const currentMonth = indonesiaTime.getMonth();
+  
+  // Get start of current month in Indonesia time
+  const startOfMonth = new Date(currentYear, currentMonth, 1);
+  startOfMonth.setHours(0, 0, 0, 0);
 
-  // Get all transactions for this month
+  // Get all recent transactions (last 3 months to be safe)
   const allTransactions = await TransactionDatabase.getUserTransactions(userId, 1000, 0);
   
-  // Filter by this month
+  // Filter by this month (using Indonesia timezone)
   const thisMonthTransactions = allTransactions.filter(t => {
     const txDate = new Date(t.created_at);
-    return txDate >= startOfMonth;
-  });
-
-  // Filter by today
-  const todayTransactions = thisMonthTransactions.filter(t => {
-    const txDate = new Date(t.created_at);
-    return txDate >= startOfToday;
+    // Convert to Indonesia time for comparison
+    const txIndonesiaTime = new Date(txDate.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+    return txIndonesiaTime.getMonth() === currentMonth && txIndonesiaTime.getFullYear() === currentYear;
   });
 
   // Calculate totals
@@ -74,8 +76,7 @@ async function prepareFinancialContext(userId: number) {
       cat: e.category 
     }));
 
-  // Get current date/time in Indonesia timezone
-  const indonesiaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  // Format date/time in Indonesia timezone (already calculated above)
   const dateString = indonesiaTime.toLocaleDateString('id-ID', { 
     weekday: 'long', 
     year: 'numeric', 
