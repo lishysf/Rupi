@@ -12,54 +12,80 @@ const userStates = new Map<string, { state: 'awaiting_email' | 'awaiting_passwor
 // Store pending transactions for confirmation (in-memory for simplicity)
 const pendingTransactions = new Map<string, any>();
 
+// Store session mappings for bulk operations (to avoid long callback data)
+const sessionMappings = new Map<string, string[]>();
+
 // Parse structured transaction format (no AI needed)
 function parseStructuredTransaction(text: string) {
   try {
     // Remove code block markers if present
     const cleanText = text.replace(/```json|```/g, '').trim();
     
-    // Try to parse as JSON first (for multiple transactions)
-    try {
-      const jsonData = JSON.parse(cleanText);
-      if (jsonData.transactions && Array.isArray(jsonData.transactions)) {
-        // Multiple transactions in JSON format
-        const parsedTransactions = jsonData.transactions.map((tx: any) => {
-          const transaction: any = {
-            type: tx.type,
-            description: tx.description,
-            amount: tx.amount,
-            confidence: 1.0
-          };
+    // Check if this is multiple transactions (has # Transaction markers)
+    if (cleanText.includes('# Transaction')) {
+      // Multiple transactions in key-value format
+      const transactionBlocks = cleanText.split('# Transaction').filter(block => block.trim());
+      const parsedTransactions = [];
 
-          if (tx.type === 'expense') {
-            transaction.category = tx.category;
-            transaction.walletName = tx.wallet;
-            transaction.walletType = 'bank_card';
-          } else if (tx.type === 'income') {
-            transaction.source = tx.source;
-            transaction.walletName = tx.wallet;
-            transaction.walletType = 'bank_card';
-          } else if (tx.type === 'transfer') {
-            transaction.walletName = tx.from_wallet;
-            transaction.walletType = 'bank_card';
-            transaction.toWalletName = tx.to_wallet;
-            transaction.adminFee = tx.admin_fee || 0;
-          } else if (tx.type === 'savings') {
-            transaction.walletName = tx.wallet;
-            transaction.walletType = 'bank_card';
-            transaction.goalName = tx.goal;
+      for (const block of transactionBlocks) {
+        const lines = block.split('\n').filter(line => line.trim());
+        const transaction: any = { confidence: 1.0 };
+
+        for (const line of lines) {
+          const [key, ...valueParts] = line.split(':');
+          if (key && valueParts.length > 0) {
+            const value = valueParts.join(':').trim();
+            const cleanKey = key.trim().toLowerCase();
+
+            switch (cleanKey) {
+              case 'type':
+                transaction.type = value.toLowerCase();
+                break;
+              case 'description':
+                transaction.description = value;
+                break;
+              case 'amount':
+                transaction.amount = parseFloat(value.replace(/[^\d.]/g, '')) || 0;
+                break;
+              case 'category':
+                transaction.category = value;
+                break;
+              case 'source':
+                transaction.source = value;
+                break;
+              case 'wallet':
+                transaction.walletName = value;
+                transaction.walletType = 'bank_card';
+                break;
+              case 'from_wallet':
+                transaction.walletName = value;
+                transaction.walletType = 'bank_card';
+                break;
+              case 'to_wallet':
+                transaction.toWalletName = value;
+                break;
+              case 'admin_fee':
+                transaction.adminFee = parseFloat(value.replace(/[^\d.]/g, '')) || 0;
+                break;
+              case 'goal':
+                transaction.goalName = value;
+                break;
+            }
           }
+        }
 
-          return transaction;
-        });
+        // Validate required fields
+        if (transaction.type && transaction.description && transaction.amount) {
+          parsedTransactions.push(transaction);
+        }
+      }
 
+      if (parsedTransactions.length > 0) {
         return {
           intent: 'multiple_transaction',
           transactions: parsedTransactions
         };
       }
-    } catch (jsonError) {
-      // Not JSON, continue with key-value parsing
     }
     
     // Parse as key-value format (single transaction)
@@ -871,15 +897,17 @@ async function handleMessage(update: TelegramUpdate) {
                 inline_keyboard: [] as any[]
               };
 
-              // Add bulk action buttons first
+              // Add bulk action buttons first (use session ID to avoid long callback data)
+              const sessionId = `${telegramUserId}_${Date.now()}`;
+              sessionMappings.set(sessionId, pendingTxIds);
               keyboard.inline_keyboard.push([
                 {
                   text: '✅ Confirm All',
-                  callback_data: `confirm_all_tx:${pendingTxIds.join(',')}`
+                  callback_data: `confirm_all:${sessionId}`
                 },
                 {
                   text: '✏️ Edit All',
-                  callback_data: `edit_all_tx:${pendingTxIds.join(',')}`
+                  callback_data: `edit_all:${sessionId}`
                 }
               ]);
 
@@ -1198,8 +1226,9 @@ async function handleCallbackQuery(callbackQuery: any) {
     }
 
     // Handle confirm all
-    if (data.startsWith('confirm_all_tx:')) {
-      const pendingTxIds = data.replace('confirm_all_tx:', '').split(',');
+    if (data.startsWith('confirm_all:')) {
+      const sessionId = data.replace('confirm_all:', '');
+      const pendingTxIds = sessionMappings.get(sessionId) || [];
       let successCount = 0;
       let failCount = 0;
       const errors: string[] = [];
@@ -1271,6 +1300,9 @@ async function handleCallbackQuery(callbackQuery: any) {
         resultMessage,
         { parse_mode: 'Markdown' }
       );
+      
+      // Clean up session mapping
+      sessionMappings.delete(sessionId);
       return;
     }
 
@@ -1346,8 +1378,9 @@ async function handleCallbackQuery(callbackQuery: any) {
     }
 
     // Handle edit all
-    if (data.startsWith('edit_all_tx:')) {
-      const pendingTxIds = data.replace('edit_all_tx:', '').split(',');
+    if (data.startsWith('edit_all:')) {
+      const sessionId = data.replace('edit_all:', '');
+      const pendingTxIds = sessionMappings.get(sessionId) || [];
       const transactions = [];
 
       for (const pendingTxId of pendingTxIds) {
@@ -1369,51 +1402,52 @@ async function handleCallbackQuery(callbackQuery: any) {
       // Standard category list for all users
       const categoryList = EXPENSE_CATEGORIES.join(', ');
 
-      // Create JSON format for all transactions (clean JSON only)
-      const jsonData = {
-        transactions: transactions.map(tx => {
-          const baseTx = {
-            type: tx.type,
-            description: tx.description,
-            amount: tx.amount
-          };
-
-          if (tx.type === 'expense') {
-            return {
-              ...baseTx,
-              category: tx.category,
-              wallet: tx.walletName || 'WALLET_NAME'
-            };
-          } else if (tx.type === 'income') {
-            return {
-              ...baseTx,
-              source: tx.source,
-              wallet: tx.walletName || 'WALLET_NAME'
-            };
-          } else if (tx.type === 'transfer') {
-            const destWalletName = (tx as any).walletNameDestination || (tx as any).walletName2 || 'DESTINATION_WALLET';
-            return {
-              ...baseTx,
-              from_wallet: tx.walletName || 'SOURCE_WALLET',
-              to_wallet: destWalletName,
-              admin_fee: (tx as any).adminFee || 0
-            };
-          } else if (tx.type === 'savings') {
-            return {
-              ...baseTx,
-              wallet: tx.walletName || 'WALLET_NAME',
-              goal: (tx as any).savingsGoal || (tx as any).goalName || 'GOAL_NAME'
-            };
-          }
-
-          return baseTx;
-        })
-      };
+      // Create key-value format for all transactions
+      let keyValueTemplate = '';
+      for (let i = 0; i < transactions.length; i++) {
+        const tx = transactions[i];
+        keyValueTemplate += `# Transaction ${i + 1}\n`;
+        
+        if (tx.type === 'expense') {
+          keyValueTemplate += `type: expense
+description: ${tx.description}
+amount: ${tx.amount}
+category: ${tx.category}
+wallet: ${tx.walletName || 'WALLET_NAME'}`;
+        } else if (tx.type === 'income') {
+          keyValueTemplate += `type: income
+description: ${tx.description}
+amount: ${tx.amount}
+source: ${tx.source}
+wallet: ${tx.walletName || 'WALLET_NAME'}`;
+        } else if (tx.type === 'transfer') {
+          const destWalletName = (tx as any).walletNameDestination || (tx as any).walletName2 || 'DESTINATION_WALLET';
+          keyValueTemplate += `type: transfer
+description: ${tx.description}
+amount: ${tx.amount}
+from_wallet: ${tx.walletName || 'SOURCE_WALLET'}
+to_wallet: ${destWalletName}
+admin_fee: ${(tx as any).adminFee || 0}`;
+        } else if (tx.type === 'savings') {
+          keyValueTemplate += `type: savings
+description: ${tx.description}
+amount: ${tx.amount}
+wallet: ${tx.walletName || 'WALLET_NAME'}
+goal: ${(tx as any).savingsGoal || (tx as any).goalName || 'GOAL_NAME'}`;
+        }
+        
+        if (i < transactions.length - 1) {
+          keyValueTemplate += '\n\n';
+        }
+      }
 
       // Remove all pending transactions since user will create new ones
       for (const pendingTxId of pendingTxIds) {
         pendingTransactions.delete(pendingTxId);
       }
+      
+      // Clean up session mapping
+      sessionMappings.delete(sessionId);
 
       await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Edit template sent!');
       
@@ -1421,14 +1455,14 @@ async function handleCallbackQuery(callbackQuery: any) {
       await TelegramBotService.editMessageText(
         chatId,
         messageId,
-        `✏️ *Edit All Transactions (JSON Format)*\n\nCopy the JSON below, modify the values, and send it back:\n\n_This will replace all ${transactions.length} transactions with your edited versions._\n\n*Your wallets:* ${walletNames}\n*Available categories:* ${categoryList}\n*Available sources:* ${INCOME_SOURCES.join(', ')}`,
+        `✏️ *Edit All Transactions (Structured Format)*\n\nCopy the template below, modify the values, and send it back:\n\n_This will replace all ${transactions.length} transactions with your edited versions._\n\n*Your wallets:* ${walletNames}\n*Available categories:* ${categoryList}\n*Available sources:* ${INCOME_SOURCES.join(', ')}`,
         { parse_mode: 'Markdown' }
       );
 
-      // Send JSON in separate message for easy copying
+      // Send key-value template in separate message for easy copying
       await TelegramBotService.sendMessage(
         chatId,
-        `\`\`\`json\n${JSON.stringify(jsonData, null, 2)}\n\`\`\``,
+        `\`\`\`\n${keyValueTemplate}\n\`\`\``,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -1451,63 +1485,71 @@ async function handleCallbackQuery(callbackQuery: any) {
       // Standard category list for all users
       const categoryList = EXPENSE_CATEGORIES.join(', ');
 
-      // Generate a structured template for direct parsing (no AI needed)
-      let editTemplate = `✏️ *Edit Transaction (Structured Format)*\n\n`;
-      editTemplate += `Copy this template, modify the values, and send it back:\n\n`;
+      // Generate instructions message
+      let instructionsMessage = `✏️ *Edit Transaction (Structured Format)*\n\n`;
+      instructionsMessage += `Copy the template below, modify the values, and send it back:\n\n`;
       
       if (pendingTx.type === 'expense') {
-        editTemplate += `\`\`\`\n`;
-        editTemplate += `type: expense\n`;
-        editTemplate += `description: ${pendingTx.description}\n`;
-        editTemplate += `amount: ${pendingTx.amount}\n`;
-        editTemplate += `category: ${pendingTx.category}\n`;
-        editTemplate += `wallet: ${pendingTx.walletName || 'WALLET_NAME'}\n`;
-        editTemplate += `\`\`\`\n\n`;
-        editTemplate += `*Available categories:* ${categoryList}\n`;
-        editTemplate += `*Your wallets:* ${walletNames}`;
+        instructionsMessage += `*Available categories:* ${categoryList}\n`;
+        instructionsMessage += `*Your wallets:* ${walletNames}`;
       } else if (pendingTx.type === 'income') {
-        editTemplate += `\`\`\`\n`;
-        editTemplate += `type: income\n`;
-        editTemplate += `description: ${pendingTx.description}\n`;
-        editTemplate += `amount: ${pendingTx.amount}\n`;
-        editTemplate += `source: ${pendingTx.source}\n`;
-        editTemplate += `wallet: ${pendingTx.walletName || 'WALLET_NAME'}\n`;
-        editTemplate += `\`\`\`\n\n`;
-        editTemplate += `*Available sources:* ${INCOME_SOURCES.join(', ')}\n`;
-        editTemplate += `*Your wallets:* ${walletNames}`;
+        instructionsMessage += `*Available sources:* ${INCOME_SOURCES.join(', ')}\n`;
+        instructionsMessage += `*Your wallets:* ${walletNames}`;
       } else if (pendingTx.type === 'transfer') {
-        const destWalletName = (pendingTx as any).walletNameDestination || (pendingTx as any).walletName2 || 'DESTINATION_WALLET';
-        editTemplate += `\`\`\`\n`;
-        editTemplate += `type: transfer\n`;
-        editTemplate += `description: ${pendingTx.description}\n`;
-        editTemplate += `amount: ${pendingTx.amount}\n`;
-        editTemplate += `from_wallet: ${pendingTx.walletName || 'SOURCE_WALLET'}\n`;
-        editTemplate += `to_wallet: ${destWalletName}\n`;
-        editTemplate += `admin_fee: ${(pendingTx as any).adminFee || 0}\n`;
-        editTemplate += `\`\`\`\n\n`;
-        editTemplate += `*Your wallets:* ${walletNames}`;
+        instructionsMessage += `*Your wallets:* ${walletNames}`;
       } else if (pendingTx.type === 'savings') {
-        const goalName = (pendingTx as any).savingsGoal || (pendingTx as any).goalName || 'GOAL_NAME';
-        editTemplate += `\`\`\`\n`;
-        editTemplate += `type: savings\n`;
-        editTemplate += `description: ${pendingTx.description}\n`;
-        editTemplate += `amount: ${pendingTx.amount}\n`;
-        editTemplate += `wallet: ${pendingTx.walletName || 'WALLET_NAME'}\n`;
-        editTemplate += `goal: ${goalName}\n`;
-        editTemplate += `\`\`\`\n\n`;
-        editTemplate += `*Your wallets:* ${walletNames}`;
+        instructionsMessage += `*Your wallets:* ${walletNames}`;
       }
 
-      editTemplate += `\n\n_Just modify the values and send back - no AI processing needed!_`;
+      instructionsMessage += `\n\n_Just modify the values and send back - no AI processing needed!_`;
 
       // Remove the pending transaction since user will create a new one
       pendingTransactions.delete(pendingTxId);
 
       await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Edit template sent!');
+      
+      // Send instructions first
       await TelegramBotService.editMessageText(
         chatId,
         messageId,
-        editTemplate,
+        instructionsMessage,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Send key-value template in separate message for easy copying
+      let keyValueTemplate = '';
+      if (pendingTx.type === 'expense') {
+        keyValueTemplate = `type: expense
+description: ${pendingTx.description}
+amount: ${pendingTx.amount}
+category: ${pendingTx.category}
+wallet: ${pendingTx.walletName || 'WALLET_NAME'}`;
+      } else if (pendingTx.type === 'income') {
+        keyValueTemplate = `type: income
+description: ${pendingTx.description}
+amount: ${pendingTx.amount}
+source: ${pendingTx.source}
+wallet: ${pendingTx.walletName || 'WALLET_NAME'}`;
+      } else if (pendingTx.type === 'transfer') {
+        const destWalletName = (pendingTx as any).walletNameDestination || (pendingTx as any).walletName2 || 'DESTINATION_WALLET';
+        keyValueTemplate = `type: transfer
+description: ${pendingTx.description}
+amount: ${pendingTx.amount}
+from_wallet: ${pendingTx.walletName || 'SOURCE_WALLET'}
+to_wallet: ${destWalletName}
+admin_fee: ${(pendingTx as any).adminFee || 0}`;
+      } else if (pendingTx.type === 'savings') {
+        const goalName = (pendingTx as any).savingsGoal || (pendingTx as any).goalName || 'GOAL_NAME';
+        keyValueTemplate = `type: savings
+description: ${pendingTx.description}
+amount: ${pendingTx.amount}
+wallet: ${pendingTx.walletName || 'WALLET_NAME'}
+goal: ${goalName}`;
+      }
+
+      await TelegramBotService.sendMessage(
+        chatId,
+        `\`\`\`\n${keyValueTemplate}\n\`\`\``,
         { parse_mode: 'Markdown' }
       );
       return;
