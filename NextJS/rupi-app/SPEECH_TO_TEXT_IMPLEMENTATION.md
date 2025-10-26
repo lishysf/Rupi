@@ -52,27 +52,40 @@ The implementation adds the ability to:
 
 The implementation uses the following Groq configuration:
 - **Model**: `whisper-large-v3-turbo`
-- **Language**: English (configurable to Indonesian)
+- **Language**: Indonesian (`id`) - optimized for Indonesian voice messages
 - **Temperature**: 0.0 (deterministic output)
 - **Response Format**: `verbose_json` with word/segment timestamps
-- **Context Prompt**: Optimized for financial transaction descriptions
+- **Context Prompt**: Optimized for Indonesian financial transaction descriptions
 
 ## Usage Examples
 
 ### Voice Message Examples
 
-Users can send voice messages like:
-- "I spent 50,000 rupiah on lunch today"
-- "Received 2 million from salary"
-- "Transferred 100k from Gojek to BCA"
-- "Saved 500k for vacation fund"
+Users can send voice messages in Indonesian like:
+- "Beli makan siang 50 ribu rupiah hari ini"
+- "Terima gaji 2 juta dari kantor"
+- "Transfer 100 ribu dari Gojek ke BCA"
+- "Simpan 500 ribu untuk liburan"
+- "Bayar listrik 200 ribu pakai BCA"
+- "Dapat uang 1 juta dari freelance"
 
 ### Expected Flow
 
-1. User sends voice message
+1. User sends voice message (max 30 seconds)
 2. Bot responds: "🎤 Audio Transcribed: [text] Processing as transaction..."
-3. Bot processes transaction and shows confirmation
-4. User can confirm, edit, or cancel the transaction
+3. Bot processes transaction and shows confirmation with transaction details
+4. User can confirm, edit, or cancel the transaction using inline buttons
+5. Transaction is recorded only after user confirmation
+
+### Confirmation Flow
+
+Voice messages now follow the same confirmation flow as text messages:
+
+- **✅ Confirm**: Records the transaction immediately
+- **✏️ Edit**: Allows user to modify transaction details
+- **❌ Cancel**: Discards the transaction without recording
+
+This ensures consistency between voice and text input methods while giving users full control over their transactions.
 
 ## Error Handling
 

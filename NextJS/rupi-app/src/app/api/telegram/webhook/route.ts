@@ -649,6 +649,300 @@ async function handleSavingsCreation(
   }
 }
 
+// Process transcribed text from audio messages
+async function processTranscribedText(transcribedText: string, originalMessage: any) {
+  const telegramUserId = originalMessage.from.id.toString();
+  const chatId = originalMessage.chat.id.toString();
+  const username = originalMessage.from.username;
+  const firstName = originalMessage.from.first_name;
+  const lastName = originalMessage.from.last_name;
+
+  console.log(`📝 Processing transcribed text: "${transcribedText}" for user ${telegramUserId}`);
+
+  try {
+    // Check authentication flow FIRST (before any database operations)
+    let userState = null;
+    try {
+      userState = await TelegramDatabase.getAuthState(telegramUserId);
+      console.log(`🔍 Database auth state for user ${telegramUserId}:`, userState);
+    } catch (error) {
+      console.error('❌ Error getting auth state from database:', error);
+    }
+    
+    if (userState) {
+      console.log(`🔍 User is in authentication flow: ${userState.state}`);
+      // Handle authentication flow - for now, just send a message
+      await TelegramBotService.sendMessage(chatId, 'Please complete your authentication first.');
+      return;
+    }
+
+    // Check if user is authenticated
+    const session = await TelegramDatabase.getOrCreateSession(telegramUserId, username, firstName, lastName);
+    if (!session) {
+      console.log(`❌ No session found for user ${telegramUserId}, sending login prompt`);
+      await TelegramBotService.sendMessage(
+        chatId,
+        `👋 Hi ${firstName}! Welcome to Fundy!\n\nI can help you track your expenses, income, and savings. To get started, please log in to your account.`,
+        { reply_markup: TelegramBotService.createLoginKeyboard() }
+      );
+      return;
+    }
+
+    // Handle regular chat messages (AI chat)
+    await TelegramBotService.sendTypingAction(chatId);
+
+    try {
+      const userId = session.fundy_user_id;
+
+      // Get current chat mode
+      const chatMode = await TelegramDatabase.getChatMode(telegramUserId);
+      console.log(`💬 Chat mode for user ${telegramUserId}: ${chatMode}`);
+
+      // Get user wallets
+      const userWallets = await UserWalletDatabase.getAllWallets(userId);
+
+      // Check if this is a structured transaction format first (faster, no AI needed)
+      const structuredResult = parseStructuredTransaction(transcribedText);
+      let decision: any;
+      let intent: string;
+
+      if (structuredResult) {
+        console.log('📝 Detected structured transaction format, skipping AI processing');
+        decision = structuredResult;
+        intent = structuredResult.intent;
+      } else if (chatMode === 'general') {
+        // In general chat mode, skip intent detection entirely - go straight to conversational AI
+        console.log('💬 General chat mode - skipping intent detection, going to conversational AI');
+        intent = 'general_chat';
+        decision = { intent: 'general_chat' };
+      } else {
+        // Use the same AI decision logic as web chat (only for transaction mode)
+        decision = await GroqAIService.decideAndParse(transcribedText, userId);
+        intent = decision.intent;
+      }
+
+      let response = '';
+      let transactionCreated = false;
+
+      // In transaction mode, block non-transaction intents
+      if (chatMode === 'transaction' && intent !== 'general_chat' && !['expense', 'income', 'savings', 'transfer', 'multiple_transactions'].includes(intent)) {
+        response = 'I\'m in transaction mode. Please send me a financial transaction to record (expense, income, savings, or transfer).';
+      } else {
+        // Process based on intent
+        switch (intent) {
+          case 'expense':
+            try {
+              // Store pending transaction for confirmation
+              const pendingTx = {
+                userId,
+                description: decision.description,
+                amount: decision.amount,
+                category: decision.category,
+                walletId: decision.walletId,
+                type: 'expense'
+              };
+              pendingTransactions.set(telegramUserId, pendingTx);
+              
+              const walletName = userWallets.find(w => w.id === decision.walletId)?.name || 'Unknown';
+              response = `📝 *Expense Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n🏷️ Category: ${decision.category}\n💳 Wallet: ${walletName}\n\nPlease confirm this transaction:`;
+              
+              // Send confirmation message with buttons
+              await TelegramBotService.sendMessage(
+                chatId,
+                response,
+                { 
+                  parse_mode: 'Markdown',
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                }
+              );
+              return; // Don't send another response
+            } catch (error) {
+              response = `❌ Error: ${error instanceof Error ? error.message : 'Failed to process expense'}`;
+            }
+            break;
+          case 'income':
+            try {
+              // Store pending transaction for confirmation
+              const pendingTx = {
+                userId,
+                description: decision.description,
+                amount: decision.amount,
+                source: decision.source,
+                walletId: decision.walletId,
+                type: 'income'
+              };
+              pendingTransactions.set(telegramUserId, pendingTx);
+              
+              const walletName = userWallets.find(w => w.id === decision.walletId)?.name || 'Unknown';
+              response = `📝 *Income Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n🏷️ Source: ${decision.source}\n💳 Wallet: ${walletName}\n\nPlease confirm this transaction:`;
+              
+              // Send confirmation message with buttons
+              await TelegramBotService.sendMessage(
+                chatId,
+                response,
+                { 
+                  parse_mode: 'Markdown',
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                }
+              );
+              return; // Don't send another response
+            } catch (error) {
+              response = `❌ Error: ${error instanceof Error ? error.message : 'Failed to process income'}`;
+            }
+            break;
+          case 'savings':
+            try {
+              // Store pending transaction for confirmation
+              const pendingTx = {
+                userId,
+                description: decision.description,
+                amount: decision.amount,
+                walletId: decision.walletId,
+                goalName: decision.goalName,
+                type: 'savings'
+              };
+              pendingTransactions.set(telegramUserId, pendingTx);
+              
+              const walletName = userWallets.find(w => w.id === decision.walletId)?.name || 'Unknown';
+              response = `📝 *Savings Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n🎯 Goal: ${decision.goalName || 'General Savings'}\n💳 Wallet: ${walletName}\n\nPlease confirm this transaction:`;
+              
+              // Send confirmation message with buttons
+              await TelegramBotService.sendMessage(
+                chatId,
+                response,
+                { 
+                  parse_mode: 'Markdown',
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                }
+              );
+              return; // Don't send another response
+            } catch (error) {
+              response = `❌ Error: ${error instanceof Error ? error.message : 'Failed to process savings'}`;
+            }
+            break;
+          case 'transfer':
+            try {
+              // Store pending transaction for confirmation
+              const pendingTx = {
+                userId,
+                description: decision.description,
+                amount: decision.amount,
+                fromWalletName: decision.fromWalletName,
+                toWalletName: decision.toWalletName,
+                adminFee: decision.adminFee,
+                type: 'transfer'
+              };
+              pendingTransactions.set(telegramUserId, pendingTx);
+              
+              response = `📝 *Transfer Transaction Detected*\n\n💰 Amount: Rp${decision.amount.toLocaleString()}\n📝 Description: ${decision.description}\n💳 From: ${decision.fromWalletName}\n💳 To: ${decision.toWalletName}\n\nPlease confirm this transaction:`;
+              
+              // Send confirmation message with buttons
+              await TelegramBotService.sendMessage(
+                chatId,
+                response,
+                { 
+                  parse_mode: 'Markdown',
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                }
+              );
+              return; // Don't send another response
+            } catch (error) {
+              response = `❌ Error: ${error instanceof Error ? error.message : 'Failed to process transfer'}`;
+            }
+            break;
+          case 'multiple_transactions':
+            // Handle multiple transactions - for now, just process the first one
+            if (decision.transactions && decision.transactions.length > 0) {
+              const firstTx = decision.transactions[0];
+              try {
+                let pendingTx;
+                switch (firstTx.type) {
+                  case 'expense':
+                    pendingTx = {
+                      userId,
+                      description: firstTx.description,
+                      amount: firstTx.amount,
+                      category: firstTx.category,
+                      walletId: firstTx.walletId,
+                      type: 'expense'
+                    };
+                    break;
+                  case 'income':
+                    pendingTx = {
+                      userId,
+                      description: firstTx.description,
+                      amount: firstTx.amount,
+                      source: firstTx.source,
+                      walletId: firstTx.walletId,
+                      type: 'income'
+                    };
+                    break;
+                  default:
+                    response = 'Multiple transactions detected but only single transactions are supported via voice.';
+                    break;
+                }
+                
+                if (pendingTx) {
+                  pendingTransactions.set(telegramUserId, pendingTx);
+                  const walletName = userWallets.find(w => w.id === pendingTx.walletId)?.name || 'Unknown';
+                  response = `📝 *${firstTx.type.charAt(0).toUpperCase() + firstTx.type.slice(1)} Transaction Detected* (from multiple)\n\n💰 Amount: Rp${pendingTx.amount.toLocaleString()}\n📝 Description: ${pendingTx.description}\n💳 Wallet: ${walletName}\n\nPlease confirm this transaction:`;
+                  
+                  // Send confirmation message with buttons
+                  await TelegramBotService.sendMessage(
+                    chatId,
+                    response,
+                    { 
+                      parse_mode: 'Markdown',
+                      reply_markup: TelegramBotService.createTransactionConfirmKeyboard(JSON.stringify(pendingTx))
+                    }
+                  );
+                  return; // Don't send another response
+                }
+              } catch (error) {
+                response = `❌ Error: ${error instanceof Error ? error.message : 'Failed to process transaction'}`;
+              }
+            } else {
+              response = 'No valid transactions found in the message.';
+            }
+            break;
+          case 'general_chat':
+            // Use conversational AI
+            const conversation = conversationHistory.get(telegramUserId);
+            response = await GroqAIService.generateChatResponse(transcribedText, '', userId.toString());
+            
+            // Update conversation history
+            conversationHistory.set(telegramUserId, {
+              user: transcribedText,
+              ai: response
+            });
+            break;
+          default:
+            response = 'I\'m not sure how to help with that. Please try describing a financial transaction (expense, income, savings, or transfer).';
+        }
+      }
+
+      // Send response
+      if (response) {
+        await TelegramBotService.sendMessage(chatId, response, { parse_mode: 'Markdown' });
+      }
+
+    } catch (error) {
+      console.error('❌ Error processing transcribed text:', error);
+      await TelegramBotService.sendMessage(
+        chatId,
+        '❌ Sorry, I encountered an error processing your request. Please try again.'
+      );
+    }
+
+  } catch (error) {
+    console.error('❌ Error in processTranscribedText:', error);
+    await TelegramBotService.sendMessage(
+      chatId,
+      '❌ Sorry, I encountered an error. Please try again.'
+    );
+  }
+}
+
 // Handle audio/voice messages
 async function handleAudioMessage(message: any) {
   const telegramUserId = message.from.id.toString();
@@ -734,20 +1028,9 @@ async function handleAudioMessage(message: any) {
       { parse_mode: 'Markdown' }
     );
 
-    // Process the transcribed text as a regular message
-    const messageWithText = {
-      ...message,
-      text: transcribedText
-    };
-
-    // Create a new update object with the transcribed text
-    const updateWithText = {
-      update_id: Date.now(),
-      message: messageWithText
-    };
-
-    // Process the transcribed text using the existing message handling logic
-    await handleMessage(updateWithText);
+    // Process the transcribed text directly without creating a new message object
+    // to avoid recursive calls to handleAudioMessage
+    await processTranscribedText(transcribedText, message);
 
   } catch (error) {
     console.error('❌ Error processing audio message:', error);

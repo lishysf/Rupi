@@ -2108,10 +2108,10 @@ Once you have some transactions recorded, I can provide detailed analysis of you
       const transcription = await groq.audio.transcriptions.create({
         file: audioFile,
         model: "whisper-large-v3-turbo",
-        prompt: "This is a financial transaction recording. The user is describing an expense, income, savings, or transfer transaction. Focus on understanding amounts, categories, and transaction details. Common phrases include: spent, bought, paid, received, earned, saved, transferred.",
+        prompt: "This is a financial transaction recording in Indonesian. The user is describing an expense, income, savings, or transfer transaction. Focus on understanding amounts, categories, and transaction details. Common Indonesian phrases include: beli, bayar, terima, dapat, simpan, transfer, keluar, masuk, pengeluaran, pemasukan.",
         response_format: "verbose_json",
         timestamp_granularities: ["word", "segment"],
-        language: "en", // Can be changed to "id" for Indonesian
+        language: "id", // Indonesian language
         temperature: 0.0,
       });
 
