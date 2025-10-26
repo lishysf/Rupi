@@ -180,6 +180,22 @@ async function prepareFinancialContext(userId: number) {
   return contextString;
 }
 
+// Clean text for Telegram (remove problematic characters)
+function cleanTextForTelegram(text: string): string {
+  return text
+    // Remove or replace problematic markdown characters
+    .replace(/\*/g, '') // Remove asterisks
+    .replace(/_/g, '') // Remove underscores
+    .replace(/`/g, '') // Remove backticks
+    .replace(/\[/g, '(') // Replace square brackets with parentheses
+    .replace(/\]/g, ')') // Replace square brackets with parentheses
+    .replace(/\(/g, '(') // Keep parentheses as is
+    .replace(/\)/g, ')') // Keep parentheses as is
+    // Clean up multiple spaces
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Split long messages into chunks that fit Telegram's limit
 function splitMessage(text: string, maxLength: number): string[] {
   if (text.length <= maxLength) {
@@ -991,7 +1007,7 @@ async function handleMessage(update: TelegramUpdate) {
                  "• Record savings: 'Nabung 1 juta ke tabungan'\n" +
                  "• Record transfers: 'Transfer 500rb dari BCA ke Dana'";
       
-      await TelegramBotService.sendMessage(chatId, response);
+      await TelegramBotService.sendMessage(chatId, cleanTextForTelegram(response), { parse_mode: undefined });
       return;
     }
 
@@ -1203,101 +1219,101 @@ async function handleMessage(update: TelegramUpdate) {
           }
         } else {
           // General chat mode - create transactions immediately (old behavior)
-          let responses = [];
-          
-          for (const parsedTransaction of transactions) {
-            if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
-              let walletId: number | undefined;
-              let destinationWalletId: number | undefined;
-              
-              if (parsedTransaction.walletName && parsedTransaction.walletType) {
-                walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
-                console.log(`🔍 Source wallet found: ${parsedTransaction.walletName} (${parsedTransaction.walletType}) -> ID: ${walletId}`);
-              }
-              
-              // Check for destination wallet with different field names
-              if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
-                destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
-                console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletNameDestination} (${(parsedTransaction as any).walletTypeDestination}) -> ID: ${destinationWalletId}`);
-              } else if ((parsedTransaction as any).walletName2 && (parsedTransaction as any).walletType2) {
-                destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletName2, (parsedTransaction as any).walletType2);
-                console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletName2} (${(parsedTransaction as any).walletType2}) -> ID: ${destinationWalletId}`);
-              }
+        let responses = [];
+        
+        for (const parsedTransaction of transactions) {
+          if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
+            let walletId: number | undefined;
+            let destinationWalletId: number | undefined;
+            
+            if (parsedTransaction.walletName && parsedTransaction.walletType) {
+              walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
+              console.log(`🔍 Source wallet found: ${parsedTransaction.walletName} (${parsedTransaction.walletType}) -> ID: ${walletId}`);
+            }
+            
+            // Check for destination wallet with different field names
+            if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
+              destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
+              console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletNameDestination} (${(parsedTransaction as any).walletTypeDestination}) -> ID: ${destinationWalletId}`);
+            } else if ((parsedTransaction as any).walletName2 && (parsedTransaction as any).walletType2) {
+              destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletName2, (parsedTransaction as any).walletType2);
+              console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletName2} (${(parsedTransaction as any).walletType2}) -> ID: ${destinationWalletId}`);
+            }
 
-              if (parsedTransaction.type === 'expense') {
-                try {
-                  await handleExpenseCreation(
-                    userId,
-                    parsedTransaction.description,
-                    parsedTransaction.amount,
-                    parsedTransaction.category!,
-                    walletId
-                  );
-                  
-                  const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
-                  responses.push(`✅ Expense recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in ${parsedTransaction.category} category${walletInfo}.`);
-                  transactionCreated = true;
-                } catch (error) {
-                  responses.push(error instanceof Error ? error.message : 'Error recording expense');
-                }
-              } else if (parsedTransaction.type === 'income') {
-                try {
-                  await handleIncomeCreation(
-                    userId,
-                    parsedTransaction.description,
-                    parsedTransaction.amount,
-                    parsedTransaction.source!,
-                    walletId
-                  );
+            if (parsedTransaction.type === 'expense') {
+              try {
+                await handleExpenseCreation(
+                  userId,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  parsedTransaction.category!,
+                  walletId
+                );
+                
+                const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
+                responses.push(`✅ Expense recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in ${parsedTransaction.category} category${walletInfo}.`);
+                transactionCreated = true;
+              } catch (error) {
+                responses.push(error instanceof Error ? error.message : 'Error recording expense');
+              }
+            } else if (parsedTransaction.type === 'income') {
+              try {
+                await handleIncomeCreation(
+                  userId,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  parsedTransaction.source!,
+                  walletId
+                );
 
-                  const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
-                  responses.push(`✅ Income recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}.`);
-                  transactionCreated = true;
-                } catch (error) {
-                  responses.push(error instanceof Error ? error.message : 'Error recording income');
-                }
-              } else if (parsedTransaction.type === 'transfer') {
-                try {
-                  await handleTransferCreation(
-                    userId,
-                    parsedTransaction.description,
-                    parsedTransaction.amount,
-                    walletId,
-                    destinationWalletId,
-                    (parsedTransaction as any).adminFee
-                  );
-                  
-                  const sourceInfo = walletId ? ` from ${parsedTransaction.walletName}` : '';
-                  const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
-                  const destInfo = destinationWalletId ? ` to ${destWalletName}` : '';
-                  const adminInfo = (parsedTransaction as any).adminFee ? ` (Admin fee: Rp${(parsedTransaction as any).adminFee.toLocaleString()})` : '';
-                  responses.push(`✅ Transfer recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${sourceInfo}${destInfo}${adminInfo}.`);
-                  transactionCreated = true;
-                } catch (error) {
-                  responses.push(error instanceof Error ? error.message : 'Error recording transfer');
-                }
-              } else if (parsedTransaction.type === 'savings') {
-                try {
-                  await handleSavingsCreation(
-                    userId,
-                    parsedTransaction.description,
-                    parsedTransaction.amount,
-                    walletId,
-                    (parsedTransaction as any).savingsGoal
-                  );
-                  
-                  const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
-                  const goalInfo = (parsedTransaction as any).savingsGoal ? ` for ${(parsedTransaction as any).savingsGoal}` : '';
-                  responses.push(`✅ Savings recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${walletInfo}${goalInfo}.`);
-                  transactionCreated = true;
-                } catch (error) {
-                  responses.push(error instanceof Error ? error.message : 'Error recording savings');
-                }
+                const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
+                responses.push(`✅ Income recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}.`);
+                transactionCreated = true;
+              } catch (error) {
+                responses.push(error instanceof Error ? error.message : 'Error recording income');
+              }
+            } else if (parsedTransaction.type === 'transfer') {
+              try {
+                await handleTransferCreation(
+                  userId,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  walletId,
+                  destinationWalletId,
+                  (parsedTransaction as any).adminFee
+                );
+                
+                const sourceInfo = walletId ? ` from ${parsedTransaction.walletName}` : '';
+                const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
+                const destInfo = destinationWalletId ? ` to ${destWalletName}` : '';
+                const adminInfo = (parsedTransaction as any).adminFee ? ` (Admin fee: Rp${(parsedTransaction as any).adminFee.toLocaleString()})` : '';
+                responses.push(`✅ Transfer recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${sourceInfo}${destInfo}${adminInfo}.`);
+                transactionCreated = true;
+              } catch (error) {
+                responses.push(error instanceof Error ? error.message : 'Error recording transfer');
+              }
+            } else if (parsedTransaction.type === 'savings') {
+              try {
+                await handleSavingsCreation(
+                  userId,
+                  parsedTransaction.description,
+                  parsedTransaction.amount,
+                  walletId,
+                  (parsedTransaction as any).savingsGoal
+                );
+                
+                const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
+                const goalInfo = (parsedTransaction as any).savingsGoal ? ` for ${(parsedTransaction as any).savingsGoal}` : '';
+                responses.push(`✅ Savings recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${walletInfo}${goalInfo}.`);
+                transactionCreated = true;
+              } catch (error) {
+                responses.push(error instanceof Error ? error.message : 'Error recording savings');
               }
             }
           }
-          
-          response = responses.join('\n\n');
+        }
+        
+        response = responses.join('\n\n');
         }
       } else {
         response = 'I need more details to record this transaction. Please specify the amount, description, and wallet.';
@@ -1344,21 +1360,22 @@ async function handleMessage(update: TelegramUpdate) {
       console.log(`🤖 AI response size: ${response.length} characters`);
     }
 
-    // Send response as plain text (no markdown to avoid parsing errors)
+    // Clean and send response as plain text (no markdown to avoid parsing errors)
+    const cleanedResponse = cleanTextForTelegram(response);
     const MAX_MESSAGE_LENGTH = 4000; // Leave some buffer
     
-    if (response.length <= MAX_MESSAGE_LENGTH) {
+    if (cleanedResponse.length <= MAX_MESSAGE_LENGTH) {
       // Send as single message (plain text, no markdown parsing)
-      await TelegramBotService.sendMessage(chatId, response);
+      await TelegramBotService.sendMessage(chatId, cleanedResponse, { parse_mode: undefined });
     } else {
       // Split response into chunks that fit Telegram's limit
-      const chunks = splitMessage(response, MAX_MESSAGE_LENGTH);
+      const chunks = splitMessage(cleanedResponse, MAX_MESSAGE_LENGTH);
       
-      console.log(`📤 Splitting AI response into ${chunks.length} chunks (original: ${response.length} chars)`);
+      console.log(`📤 Splitting AI response into ${chunks.length} chunks (original: ${cleanedResponse.length} chars)`);
       
       for (let i = 0; i < chunks.length; i++) {
         console.log(`📤 Sending chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)`);
-        await TelegramBotService.sendMessage(chatId, chunks[i]);
+        await TelegramBotService.sendMessage(chatId, chunks[i], { parse_mode: undefined });
         // Small delay between messages to avoid rate limiting
         if (i < chunks.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -1811,23 +1828,23 @@ export async function POST(request: NextRequest) {
     }
     // Handle regular messages
     else if (update.message) {
-      try {
-        console.log('🚀 Processing message immediately...');
-        await handleMessage(update);
-        console.log('✅ Message processing completed');
-      } catch (error) {
-        console.error('❌ Error handling telegram message:', error);
-        console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-        
-        // Try to send error message to user if possible
-        if (update.message?.chat?.id) {
-          try {
-            await TelegramBotService.sendMessage(
-              update.message.chat.id.toString(), 
-              '❌ Sorry, I encountered an error processing your message. Please try again.'
-            );
-          } catch (sendError) {
-            console.error('❌ Failed to send error message to user:', sendError);
+    try {
+      console.log('🚀 Processing message immediately...');
+      await handleMessage(update);
+      console.log('✅ Message processing completed');
+    } catch (error) {
+      console.error('❌ Error handling telegram message:', error);
+      console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      // Try to send error message to user if possible
+      if (update.message?.chat?.id) {
+        try {
+          await TelegramBotService.sendMessage(
+            update.message.chat.id.toString(), 
+            '❌ Sorry, I encountered an error processing your message. Please try again.'
+          );
+        } catch (sendError) {
+          console.error('❌ Failed to send error message to user:', sendError);
           }
         }
       }
