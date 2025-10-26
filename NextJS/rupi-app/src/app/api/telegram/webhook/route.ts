@@ -12,8 +12,11 @@ const userStates = new Map<string, { state: 'awaiting_email' | 'awaiting_passwor
 // Store pending transactions for confirmation (in-memory for simplicity)
 const pendingTransactions = new Map<string, any>();
 
-// Store session mappings for bulk operations (to avoid long callback data)
-const sessionMappings = new Map<string, string[]>();
+  // Store session mappings for bulk operations (to avoid long callback data)
+  const sessionMappings = new Map<string, string[]>();
+  
+  // Store conversation history (just one previous message per user for context)
+  const conversationHistory = new Map<string, { user: string; ai: string }>();
 
 // Prepare optimized financial context for AI (token-efficient)
 async function prepareFinancialContext(userId: number) {
@@ -1305,9 +1308,15 @@ async function handleMessage(update: TelegramUpdate) {
       // Get optimized financial context
       const financialContext = await prepareFinancialContext(userId);
       
-      // Send user question with compact financial data and explicit time context
+      // Get conversation history for context
+      const history = conversationHistory.get(telegramUserId);
+      const conversationContext = history 
+        ? `Previous conversation:\nUser: ${history.user}\nAI: ${history.ai}\n\n`
+        : '';
+      
+      // Send user question with compact financial data and conversation history
       response = await GroqAIService.generateChatResponse(
-        `User Question: ${text}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
+        `${conversationContext}User Question: ${text}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
         '',
         'You are a helpful financial assistant. Provide concise, actionable advice based on the user\'s financial data. Keep responses under 2000 characters and focus on the most important insights.'
       );
@@ -1319,9 +1328,15 @@ async function handleMessage(update: TelegramUpdate) {
       // Get optimized financial context for general chat too
       const financialContext = await prepareFinancialContext(userId);
       
-      // Send user question with compact financial data and explicit time context
+      // Get conversation history for context
+      const history = conversationHistory.get(telegramUserId);
+      const conversationContext = history 
+        ? `Previous conversation:\nUser: ${history.user}\nAI: ${history.ai}\n\n`
+        : '';
+      
+      // Send user question with compact financial data, conversation history, and explicit time context
       response = await GroqAIService.generateChatResponse(
-        `User Question: ${text}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
+        `${conversationContext}User Question: ${text}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
         '',
         'You are a helpful financial assistant. Provide concise, actionable advice based on the user\'s financial data. Keep responses under 2000 characters and focus on the most important insights.'
       );
@@ -1349,6 +1364,15 @@ async function handleMessage(update: TelegramUpdate) {
           await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
+    }
+
+    // Store conversation history for next interaction (only for general chat and data analysis)
+    if (intent === 'general_chat' || intent === 'data_analysis') {
+      conversationHistory.set(telegramUserId, {
+        user: text,
+        ai: response
+      });
+      console.log(`💾 Stored conversation history for user ${telegramUserId}`);
     }
 
     // Update activity

@@ -4,6 +4,9 @@ import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDat
 import { requireAuth } from '@/lib/auth-utils';
 import { PerformanceMonitor } from '@/lib/performance-monitor';
 
+// In-memory storage for chat history (userId -> last conversation)
+const chatHistory = new Map<number, { user: string; ai: string }>();
+
 // Prepare optimized financial context for AI (token-efficient)
 async function prepareFinancialContext(userId: number) {
   // Get current date in Indonesia timezone
@@ -1506,9 +1509,15 @@ export async function POST(request: NextRequest) {
         // Use optimized financial context instead of full data
         const financialContext = await prepareFinancialContext(user.id);
         
-        // Send user question with compact financial data and explicit time context
+        // Get conversation history for context
+        const history = chatHistory.get(user.id);
+        const conversationContext = history 
+          ? `Previous conversation:\nUser: ${history.user}\nAI: ${history.ai}\n\n`
+          : '';
+        
+        // Send user question with compact financial data, conversation history, and explicit time context
         response = await GroqAIService.generateChatResponse(
-          `User Question: ${message}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
+          `${conversationContext}User Question: ${message}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
           '',
           conversationHistory
         );
@@ -1679,9 +1688,15 @@ export async function POST(request: NextRequest) {
         // Generate general chat response using optimized financial context
         const financialContext = await prepareFinancialContext(user.id);
         
-        // Send user question with compact financial data and explicit time context
+        // Get conversation history for context
+        const history = chatHistory.get(user.id);
+        const conversationContext = history 
+          ? `Previous conversation:\nUser: ${history.user}\nAI: ${history.ai}\n\n`
+          : '';
+        
+        // Send user question with compact financial data, conversation history, and explicit time context
         response = await GroqAIService.generateChatResponse(
-          `User Question: ${message}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
+          `${conversationContext}User Question: ${message}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
           '',
           conversationHistory
         );
@@ -1689,6 +1704,15 @@ export async function POST(request: NextRequest) {
     }
 
     const totalTime = PerformanceMonitor.endTimer('chat-request-total');
+    
+    // Store conversation history for next interaction (only for general chat and data analysis)
+    if ((intent === 'general_chat' || intent === 'data_analysis') && response) {
+      chatHistory.set(user.id, {
+        user: message,
+        ai: response
+      });
+      console.log(`💾 Stored conversation history for user ${user.id}`);
+    }
     
     // Log performance metrics
     console.log('⏱️ Performance Metrics:');
