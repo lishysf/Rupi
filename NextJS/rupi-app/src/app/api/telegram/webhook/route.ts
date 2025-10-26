@@ -56,9 +56,30 @@ async function prepareFinancialContext(userId: number) {
     return s + balance;
   }, 0);
 
-  // Get savings goals and calculate total savings
+  // Get savings goals (for goals data)
   const savingsGoals = await SavingsGoalDatabase.getAllSavingsGoals(userId);
-  const totalSavingsAmount = savingsGoals.reduce((sum, g) => sum + (g.current_amount || 0), 0);
+  console.log('🔍 Debug savings goals:', savingsGoals.map(g => ({
+    name: g.goal_name,
+    target: g.target_amount,
+    current: g.current_amount,
+    allocated: g.allocated_amount
+  })));
+  
+  // Calculate total savings from actual savings transactions (not goals)
+  const userTransactions = await TransactionDatabase.getUserTransactions(userId);
+  const savingsTransactions = userTransactions.filter(t => t.type === 'savings');
+  console.log('🔍 Debug savings transactions:', savingsTransactions.map(t => ({
+    id: t.id,
+    description: t.description,
+    amount: t.amount,
+    goal_name: t.goal_name,
+    date: t.date
+  })));
+  
+  // Calculate total savings from transactions (positive = deposits, negative = withdrawals)
+  const totalSavingsAmount = savingsTransactions.reduce((sum, t) => sum + (typeof t.amount === 'string' ? parseFloat(t.amount) : t.amount), 0);
+  console.log('💰 Total savings amount from transactions:', totalSavingsAmount);
+  
   const goalsData = savingsGoals.map(g => ({
     name: g.goal_name,
     target: g.target_amount,
@@ -149,7 +170,86 @@ async function prepareFinancialContext(userId: number) {
     goals: goalsData.slice(0, 3)
   };
 
-  return JSON.stringify(context, null, 0); // Compact JSON
+  const contextString = JSON.stringify(context, null, 0);
+  console.log(`📊 Context size: ${contextString.length} characters`);
+  console.log(`📊 Context preview: ${contextString.substring(0, 200)}...`);
+  
+  return contextString;
+}
+
+// Split long messages into chunks that fit Telegram's limit
+function splitMessage(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  let currentChunk = '';
+  
+  // First try to split by paragraphs (double newlines)
+  const paragraphs = text.split('\n\n');
+  
+  for (const paragraph of paragraphs) {
+    // If single paragraph is too long, split it by sentences
+    if (paragraph.length > maxLength) {
+      // Send current chunk if it has content
+      if (currentChunk.trim()) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      // Split long paragraph by sentences
+      const sentences = paragraph.split('. ');
+      for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i] + (i < sentences.length - 1 ? '. ' : '');
+        
+        if (currentChunk.length + sentence.length > maxLength) {
+          if (currentChunk.trim()) {
+            chunks.push(currentChunk.trim());
+            currentChunk = sentence;
+          } else {
+            // Even single sentence is too long, force split by words
+            const words = sentence.split(' ');
+            for (const word of words) {
+              if (currentChunk.length + word.length + 1 > maxLength) {
+                if (currentChunk.trim()) {
+                  chunks.push(currentChunk.trim());
+                  currentChunk = word;
+                } else {
+                  // Single word is too long, truncate it
+                  chunks.push(word.substring(0, maxLength - 3) + '...');
+                  currentChunk = '';
+                }
+              } else {
+                currentChunk += (currentChunk ? ' ' : '') + word;
+              }
+            }
+          }
+        } else {
+          currentChunk += sentence;
+        }
+      }
+    } else {
+      // Normal paragraph that fits
+      if (currentChunk.length + paragraph.length + 2 > maxLength) {
+        if (currentChunk.trim()) {
+          chunks.push(currentChunk.trim());
+          currentChunk = paragraph;
+        } else {
+          currentChunk = paragraph;
+        }
+      } else {
+        currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+      }
+    }
+  }
+  
+  // Add remaining chunk
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks;
 }
 
 // Parse structured transaction format (no AI needed)
@@ -864,8 +964,13 @@ async function handleMessage(update: TelegramUpdate) {
       console.log('📝 Detected structured transaction format, skipping AI processing');
       decision = structuredResult;
       intent = structuredResult.intent;
+    } else if (chatMode === 'general') {
+      // In general chat mode, skip intent detection entirely - go straight to conversational AI
+      console.log('💬 General chat mode - skipping intent detection, going to conversational AI');
+      intent = 'general_chat';
+      decision = { intent: 'general_chat' };
     } else {
-      // Use the same AI decision logic as web chat
+      // Use the same AI decision logic as web chat (only for transaction mode)
       decision = await GroqAIService.decideAndParse(text, userId);
       intent = decision.intent;
     }
@@ -890,19 +995,6 @@ async function handleMessage(update: TelegramUpdate) {
     // Handle transaction intent (support both single and multiple transactions)
     if (intent === 'transaction' || intent === 'multiple_transaction') {
       const transactions = decision.transactions || [];
-      
-      // In chat mode, don't process transactions - be conversational instead
-      if (chatMode === 'general') {
-        response = "💬 *I noticed you mentioned a transaction!*\n\n" +
-                   "I'm currently in General Chat mode, which is for conversation and financial analysis.\n\n" +
-                   "If you'd like to record this transaction, please:\n" +
-                   "• Switch to Transaction Mode using /transaction\n" +
-                   "• Then tell me about your transaction again\n\n" +
-                   "Or I can help you analyze your existing financial data instead! What would you like to know?";
-        
-        await TelegramBotService.sendMessage(chatId, response);
-        return;
-      }
       
       if (transactions.length > 0) {
         // In transaction mode, show pending transactions with confirmation buttons
@@ -1217,8 +1309,10 @@ async function handleMessage(update: TelegramUpdate) {
       response = await GroqAIService.generateChatResponse(
         `User Question: ${text}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
         '',
-        ''
+        'You are a helpful financial assistant. Provide concise, actionable advice based on the user\'s financial data. Keep responses under 2000 characters and focus on the most important insights.'
       );
+      
+      console.log(`🤖 AI response size: ${response.length} characters`);
     }
     // Handle general chat
     else {
@@ -1229,8 +1323,10 @@ async function handleMessage(update: TelegramUpdate) {
       response = await GroqAIService.generateChatResponse(
         `User Question: ${text}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
         '',
-        ''
+        'You are a helpful financial assistant. Provide concise, actionable advice based on the user\'s financial data. Keep responses under 2000 characters and focus on the most important insights.'
       );
+      
+      console.log(`🤖 AI response size: ${response.length} characters`);
     }
 
     // Send response as plain text (no markdown to avoid parsing errors)
@@ -1240,27 +1336,18 @@ async function handleMessage(update: TelegramUpdate) {
       // Send as single message (plain text, no markdown parsing)
       await TelegramBotService.sendMessage(chatId, response);
     } else {
-      // Split by paragraphs (double newlines) to keep context together
-      const paragraphs = response.split('\n\n');
-      let currentChunk = '';
+      // Split response into chunks that fit Telegram's limit
+      const chunks = splitMessage(response, MAX_MESSAGE_LENGTH);
       
-      for (const paragraph of paragraphs) {
-        // If adding this paragraph exceeds limit, send current chunk first
-        if (currentChunk.length + paragraph.length + 2 > MAX_MESSAGE_LENGTH) {
-          if (currentChunk) {
-            await TelegramBotService.sendMessage(chatId, currentChunk.trim());
-            // Small delay between messages
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-          currentChunk = paragraph;
-        } else {
-          currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+      console.log(`📤 Splitting AI response into ${chunks.length} chunks (original: ${response.length} chars)`);
+      
+      for (let i = 0; i < chunks.length; i++) {
+        console.log(`📤 Sending chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)`);
+        await TelegramBotService.sendMessage(chatId, chunks[i]);
+        // Small delay between messages to avoid rate limiting
+        if (i < chunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
-      }
-      
-      // Send remaining chunk
-      if (currentChunk) {
-        await TelegramBotService.sendMessage(chatId, currentChunk.trim());
       }
     }
 

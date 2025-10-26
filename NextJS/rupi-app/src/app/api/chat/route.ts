@@ -45,9 +45,14 @@ async function prepareFinancialContext(userId: number) {
     return s + balance;
   }, 0);
 
-  // Get savings goals and calculate total savings
+  // Get savings goals (for goals data)
   const savingsGoals = await SavingsGoalDatabase.getAllSavingsGoals(userId);
-  const totalSavingsAmount = savingsGoals.reduce((sum, g) => sum + (g.current_amount || 0), 0);
+  
+  // Calculate total savings from actual savings transactions (not goals)
+  const userTransactions = await TransactionDatabase.getUserTransactions(userId);
+  const savingsTransactions = userTransactions.filter(t => t.type === 'savings');
+  const totalSavingsAmount = savingsTransactions.reduce((sum, t) => sum + (typeof t.amount === 'string' ? parseFloat(t.amount) : t.amount), 0);
+  
   const goalsData = savingsGoals.map(g => ({
     name: g.goal_name,
     target: g.target_amount,
@@ -122,23 +127,26 @@ async function prepareFinancialContext(userId: number) {
   const todayExpenseTotal = todayExpenses.reduce((sum, e) => sum + e.amt, 0);
   const todayIncomeTotal = todayIncome.reduce((sum, i) => sum + i.amt, 0);
 
-  // Build simple context string
+  // Build ultra-compact context string
   const context = {
-    date: dateString,
-    time: `${timeString} WIB`,
-    assets: totalAssets,
-    wallet: totalWalletBalance,
-    savings: totalSavingsAmount,
-    month_expense: totalExpense,
-    month_income: totalIncome,
-    today_expense: todayExpenseTotal,
-    today_income: todayIncomeTotal,
-    top_categories: top3Categories.slice(0, 3),
-    today_list: todayExpenses.slice(0, 5),
-    goals: goalsData.slice(0, 3)
+    d: dateString,
+    t: `${timeString} WIB`,
+    a: totalAssets,
+    w: totalWalletBalance,
+    s: totalSavingsAmount,
+    me: totalExpense,
+    mi: totalIncome,
+    te: todayExpenseTotal,
+    ti: todayIncomeTotal,
+    tc: top3Categories.slice(0, 3),
+    tl: todayExpenses.slice(0, 3), // Reduced from 5 to 3
+    g: goalsData.slice(0, 2) // Reduced from 3 to 2
   };
 
-  return JSON.stringify(context, null, 0); // Compact JSON
+  const contextString = JSON.stringify(context, null, 0);
+  console.log(`📊 Web chat context size: ${contextString.length} characters`);
+  
+  return contextString;
 }
 
 // Helper function to find wallet by name efficiently (with caching)
@@ -704,10 +712,23 @@ export async function POST(request: NextRequest) {
     const aiDebug: Record<string, unknown> = {};
 
     // Unified decision (intent + optional parsed transactions)
-    PerformanceMonitor.startTimer('ai-decide-and-parse');
-    const decision = await GroqAIService.decideAndParse(message, user.id);
-    const aiTime = PerformanceMonitor.endTimer('ai-decide-and-parse');
-    const intent = decision.intent;
+    let decision: any;
+    let intent: string;
+    let aiTime: number;
+    
+    if (!isTransactionMode) {
+      // In general chat mode, skip intent detection entirely - go straight to conversational AI
+      console.log('💬 General chat mode - skipping intent detection, going to conversational AI');
+      intent = 'general_chat';
+      decision = { intent: 'general_chat' };
+      aiTime = 0; // No AI time for intent detection
+    } else {
+      // Use AI decision logic only for transaction mode
+      PerformanceMonitor.startTimer('ai-decide-and-parse');
+      decision = await GroqAIService.decideAndParse(message, user.id);
+      aiTime = PerformanceMonitor.endTimer('ai-decide-and-parse');
+      intent = decision.intent;
+    }
     console.log('🤖 AI Analysis: Intent=' + intent + ', Transactions=' + (decision.transactions?.length || 0) + ', Message:', message.substring(0, 50) + '...');
     console.log('🔍 API Debug - Detected intent:', intent);
     console.log('🔍 API Debug - isTransactionMode:', isTransactionMode);
@@ -838,8 +859,8 @@ export async function POST(request: NextRequest) {
           if (isTransactionMode) {
             console.log('🔍 API Debug - Creating pending multiple transactions for confirmation');
             const pendingTransactions = parsedMultipleTransactions.transactions
-              .filter(transaction => transaction.confidence >= 0.5 && transaction.amount > 0)
-              .map(transaction => {
+              .filter((transaction: any) => transaction.confidence >= 0.5 && transaction.amount > 0)
+              .map((transaction: any) => {
                 let walletId: number | undefined;
                 let fromWalletId: number | undefined;
                 let toWalletId: number | undefined;

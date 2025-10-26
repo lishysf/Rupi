@@ -1633,7 +1633,7 @@ Examples of good responses:
         messages,
         model: "llama-3.1-8b-instant",
         temperature: 0.7,
-        max_completion_tokens: 200, // Reduced for faster response
+        max_completion_tokens: 600, // Balanced for complete responses
         top_p: 0.9,
         stream: false,
         stop: null
@@ -2016,7 +2016,7 @@ Once you have some transactions recorded, I can provide detailed analysis of you
         messages,
         model: "llama-3.1-8b-instant",
         temperature: 0.1, // Very low temperature for consistent analysis
-        max_completion_tokens: 300, // Reduced for faster response
+        max_completion_tokens: 600, // Balanced for complete analysis
         top_p: 0.9,
         stream: false,
         stop: null
