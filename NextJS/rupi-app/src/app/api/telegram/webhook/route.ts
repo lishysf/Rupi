@@ -711,10 +711,23 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
         decision = structuredResult;
         intent = structuredResult.intent;
       } else if (chatMode === 'general') {
-        // In general chat mode, skip intent detection entirely - go straight to conversational AI
-        console.log('💬 General chat mode - skipping intent detection, going to conversational AI');
-        intent = 'general_chat';
-        decision = { intent: 'general_chat' };
+        // In general chat mode, still try to detect if it's a transaction first
+        console.log('💬 General chat mode - checking for transaction intent first');
+        try {
+          decision = await GroqAIService.decideAndParse(transcribedText, userId);
+          intent = decision.intent;
+          
+          // If it's a transaction, process it; otherwise treat as general chat
+          if (!['expense', 'income', 'savings', 'transfer', 'multiple_transactions', 'transaction'].includes(intent)) {
+            console.log('💬 Not a transaction, treating as general chat');
+            intent = 'general_chat';
+            decision = { intent: 'general_chat' };
+          }
+        } catch (error) {
+          console.log('💬 Error in intent detection, treating as general chat');
+          intent = 'general_chat';
+          decision = { intent: 'general_chat' };
+        }
       } else {
         // Use the same AI decision logic as web chat (only for transaction mode)
         decision = await GroqAIService.decideAndParse(transcribedText, userId);
@@ -724,7 +737,86 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
       let response = '';
       let transactionCreated = false;
 
-      // In transaction mode, block non-transaction intents
+      // Handle special case where AI returns "transaction" intent with transactions array
+      if (intent === 'transaction' && decision.transactions && decision.transactions.length > 0) {
+        console.log('🔄 Converting "transaction" intent to specific transaction type');
+        
+        if (decision.transactions.length === 1) {
+          // Single transaction - extract and process
+          const firstTx = decision.transactions[0];
+          intent = firstTx.type;
+          
+          // Map wallet name to wallet ID if needed
+          if (firstTx.walletName && !firstTx.walletId) {
+            const wallet = userWallets.find(w => w.name.toLowerCase() === firstTx.walletName.toLowerCase());
+            if (wallet) {
+              firstTx.walletId = wallet.id;
+              console.log(`💳 Mapped wallet "${firstTx.walletName}" to ID: ${wallet.id}`);
+            } else {
+              console.log(`⚠️ Wallet "${firstTx.walletName}" not found in user wallets`);
+            }
+          }
+          
+          // Handle transfer transactions with from/to wallet mapping
+          if (firstTx.type === 'transfer') {
+            if (firstTx.fromWalletName && !firstTx.fromWalletId) {
+              const fromWallet = userWallets.find(w => w.name.toLowerCase() === firstTx.fromWalletName.toLowerCase());
+              if (fromWallet) {
+                firstTx.fromWalletId = fromWallet.id;
+                console.log(`💳 Mapped from wallet "${firstTx.fromWalletName}" to ID: ${fromWallet.id}`);
+              }
+            }
+            if (firstTx.toWalletName && !firstTx.toWalletId) {
+              const toWallet = userWallets.find(w => w.name.toLowerCase() === firstTx.toWalletName.toLowerCase());
+              if (toWallet) {
+                firstTx.toWalletId = toWallet.id;
+                console.log(`💳 Mapped to wallet "${firstTx.toWalletName}" to ID: ${toWallet.id}`);
+              }
+            }
+          }
+          
+          decision = firstTx;
+          console.log(`✅ Converted to ${intent} transaction:`, decision);
+        } else {
+          // Multiple transactions - process as multiple_transactions
+          intent = 'multiple_transactions';
+          
+          // Map wallet names to IDs for all transactions
+          decision.transactions = decision.transactions.map((tx: any) => {
+            if (tx.walletName && !tx.walletId) {
+              const wallet = userWallets.find(w => w.name.toLowerCase() === tx.walletName.toLowerCase());
+              if (wallet) {
+                tx.walletId = wallet.id;
+                console.log(`💳 Mapped wallet "${tx.walletName}" to ID: ${wallet.id} for ${tx.type}`);
+              }
+            }
+            
+            // Handle transfer transactions
+            if (tx.type === 'transfer') {
+              if (tx.fromWalletName && !tx.fromWalletId) {
+                const fromWallet = userWallets.find(w => w.name.toLowerCase() === tx.fromWalletName.toLowerCase());
+                if (fromWallet) {
+                  tx.fromWalletId = fromWallet.id;
+                  console.log(`💳 Mapped from wallet "${tx.fromWalletName}" to ID: ${fromWallet.id}`);
+                }
+              }
+              if (tx.toWalletName && !tx.toWalletId) {
+                const toWallet = userWallets.find(w => w.name.toLowerCase() === tx.toWalletName.toLowerCase());
+                if (toWallet) {
+                  tx.toWalletId = toWallet.id;
+                  console.log(`💳 Mapped to wallet "${tx.toWalletName}" to ID: ${toWallet.id}`);
+                }
+              }
+            }
+            
+            return tx;
+          });
+          
+          console.log(`✅ Converted to ${intent} with ${decision.transactions.length} transactions:`, decision);
+        }
+      }
+
+      // In transaction mode, block non-transaction intents (but allow transactions in general chat mode)
       if (chatMode === 'transaction' && intent !== 'general_chat' && !['expense', 'income', 'savings', 'transfer', 'multiple_transactions'].includes(intent)) {
         response = 'I\'m in transaction mode. Please send me a financial transaction to record (expense, income, savings, or transfer).';
       } else {
@@ -877,6 +969,27 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                       type: 'income'
                     };
                     break;
+                  case 'savings':
+                    pendingTx = {
+                      userId,
+                      description: firstTx.description,
+                      amount: firstTx.amount,
+                      walletId: firstTx.walletId,
+                      goalName: firstTx.goalName,
+                      type: 'savings'
+                    };
+                    break;
+                  case 'transfer':
+                    pendingTx = {
+                      userId,
+                      description: firstTx.description,
+                      amount: firstTx.amount,
+                      fromWalletName: firstTx.fromWalletName,
+                      toWalletName: firstTx.toWalletName,
+                      adminFee: firstTx.adminFee,
+                      type: 'transfer'
+                    };
+                    break;
                   default:
                     response = 'Multiple transactions detected but only single transactions are supported via voice.';
                     break;
@@ -885,7 +998,20 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 if (pendingTx) {
                   pendingTransactions.set(telegramUserId, pendingTx);
                   const walletName = userWallets.find(w => w.id === pendingTx.walletId)?.name || 'Unknown';
-                  response = `📝 *${firstTx.type.charAt(0).toUpperCase() + firstTx.type.slice(1)} Transaction Detected* (from multiple)\n\n💰 Amount: Rp${pendingTx.amount.toLocaleString()}\n📝 Description: ${pendingTx.description}\n💳 Wallet: ${walletName}\n\nPlease confirm this transaction:`;
+                  
+                  let transactionDetails = `💰 Amount: Rp${pendingTx.amount.toLocaleString()}\n📝 Description: ${pendingTx.description}`;
+                  
+                  if (firstTx.type === 'expense') {
+                    transactionDetails += `\n🏷️ Category: ${firstTx.category}\n💳 Wallet: ${walletName}`;
+                  } else if (firstTx.type === 'income') {
+                    transactionDetails += `\n🏷️ Source: ${firstTx.source}\n💳 Wallet: ${walletName}`;
+                  } else if (firstTx.type === 'savings') {
+                    transactionDetails += `\n🎯 Goal: ${firstTx.goalName || 'General Savings'}\n💳 Wallet: ${walletName}`;
+                  } else if (firstTx.type === 'transfer') {
+                    transactionDetails += `\n💳 From: ${firstTx.fromWalletName}\n💳 To: ${firstTx.toWalletName}`;
+                  }
+                  
+                  response = `📝 *${firstTx.type.charAt(0).toUpperCase() + firstTx.type.slice(1)} Transaction Detected* (from multiple)\n\n${transactionDetails}\n\nPlease confirm this transaction:`;
                   
                   // Send confirmation message with buttons
                   await TelegramBotService.sendMessage(

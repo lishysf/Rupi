@@ -62,20 +62,61 @@ The implementation uses the following Groq configuration:
 ### Voice Message Examples
 
 Users can send voice messages in Indonesian like:
+
+**Expenses:**
 - "Beli makan siang 50 ribu rupiah hari ini"
-- "Terima gaji 2 juta dari kantor"
-- "Transfer 100 ribu dari Gojek ke BCA"
-- "Simpan 500 ribu untuk liburan"
 - "Bayar listrik 200 ribu pakai BCA"
+- "Beli kopi 25 ribu dari Gojek"
+
+**Income:**
+- "Terima gaji 2 juta dari kantor"
 - "Dapat uang 1 juta dari freelance"
+- "Terima bonus 500 ribu ke BCA"
+
+**Savings:**
+- "Simpan 500 ribu untuk liburan"
+- "Tabung 1 juta untuk dana darurat"
+- "Setor 200 ribu ke tabungan"
+
+**Transfers:**
+- "Transfer 100 ribu dari Gojek ke BCA"
+- "Pindah 500 ribu dari BCA ke Mandiri"
+- "Kirim uang 1 juta dari Dana ke OVO"
+
+**Multiple Transactions:**
+- "Beli makan 50 ribu dan bayar parkir 10 ribu"
+- "Terima gaji 2 juta dan transfer 500 ribu ke tabungan"
 
 ### Expected Flow
 
+**In Transaction Mode:**
 1. User sends voice message (max 30 seconds)
 2. Bot responds: "🎤 Audio Transcribed: [text] Processing as transaction..."
 3. Bot processes transaction and shows confirmation with transaction details
 4. User can confirm, edit, or cancel the transaction using inline buttons
 5. Transaction is recorded only after user confirmation
+
+**In General Chat Mode:**
+1. User sends voice message (max 30 seconds)
+2. Bot responds: "🎤 Audio Transcribed: [text] Processing..."
+3. Bot checks if it's a transaction or general chat
+4. If transaction: Shows confirmation with transaction details
+5. If general chat: Provides conversational AI response
+
+### Dual-Mode Support
+
+Voice messages work in both chat modes:
+
+**Transaction Mode:**
+- Only processes financial transactions
+- Blocks non-transaction voice messages
+- Shows confirmation buttons for all transactions
+
+**General Chat Mode:**
+- Intelligently detects if voice message is a transaction
+- If transaction: Processes with confirmation buttons
+- If general chat: Provides conversational AI response
+- Allows mixed usage of transactions and general conversation
 
 ### Confirmation Flow
 
