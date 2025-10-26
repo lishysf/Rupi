@@ -9,6 +9,9 @@ import bcrypt from 'bcryptjs';
 // Store user states for authentication flow
 const userStates = new Map<string, { state: 'awaiting_email' | 'awaiting_password'; email?: string }>();
 
+// Store pending transactions for confirmation (in-memory for simplicity)
+const pendingTransactions = new Map<string, any>();
+
 // Helper function to find wallet by name (same as in chat route)
 function findWalletByName(wallets: Array<{id: number, name: string}>, walletName: string | undefined, walletType: string | undefined): number | undefined {
   if (!walletName || !walletType) return undefined;
@@ -409,9 +412,37 @@ async function handleMessage(update: TelegramUpdate) {
 
   // Handle /help command
   if (text === '/help') {
-    const helpMessage = `📚 *Fundy Bot Commands*\n\n/start - Start the bot\n/login - Login with your Fundy account\n/logout - Logout from your account\n/status - Check your login status\n/savings - View your savings goals\n/help - Show this help message\n\n💬 *Once logged in, just chat with me naturally!*\n\nExamples:\n• "Beli kopi 30k pakai Gopay"\n• "Gaji 5 juta ke BCA"\n• "Tabung 500k ke BCA untuk liburan"\n• "Analisis pengeluaran bulan ini"\n• "Berapa total pengeluaran?"`;
+    const helpMessage = `📚 *Fundy Bot Commands*\n\n/start - Start the bot\n/login - Login with your Fundy account\n/logout - Logout from your account\n/status - Check your login status\n/transaction - Switch to Transaction Mode (record only)\n/chat - Switch to General Chat Mode\n/savings - View your savings goals\n/help - Show this help message\n\n💬 *Once logged in, just chat with me naturally!*\n\nExamples:\n• "Beli kopi 30k pakai Gopay"\n• "Gaji 5 juta ke BCA"\n• "Tabung 500k ke BCA untuk liburan"\n• "Analisis pengeluaran bulan ini"\n• "Berapa total pengeluaran?"`;
     
     await TelegramBotService.sendMessage(chatId, helpMessage);
+    return;
+  }
+
+  // Handle /transaction command (switch to transaction mode)
+  if (text === '/transaction') {
+    if (session.is_authenticated && session.fundy_user_id) {
+      await TelegramDatabase.setChatMode(telegramUserId, 'transaction');
+      await TelegramBotService.sendMessage(
+        chatId, 
+        '📝 *Transaction Mode Activated!*\n\nYou can now record transactions only. I will ask you to confirm each transaction before saving.\n\nExamples:\n• "Beli kopi 30k pakai Gopay"\n• "Gaji 5 juta ke BCA"\n• "Tabung 500k ke BCA untuk liburan"\n• "Transfer 100k dari BCA ke Dana"\n\nUse /chat to switch back to General Chat mode.'
+      );
+    } else {
+      await TelegramBotService.sendMessage(chatId, '❌ You are not logged in. Use /login to authenticate.');
+    }
+    return;
+  }
+
+  // Handle /chat command (switch to general chat mode)
+  if (text === '/chat') {
+    if (session.is_authenticated && session.fundy_user_id) {
+      await TelegramDatabase.setChatMode(telegramUserId, 'general');
+      await TelegramBotService.sendMessage(
+        chatId, 
+        '💬 *General Chat Mode Activated!*\n\nYou can now chat with me naturally, ask questions, and analyze your financial data.\n\nExamples:\n• "Analisis pengeluaran bulan ini"\n• "Berapa total pengeluaran?"\n• "Show me my budget status"\n\nUse /transaction to switch to Transaction Mode for recording transactions.'
+      );
+    } else {
+      await TelegramBotService.sendMessage(chatId, '❌ You are not logged in. Use /login to authenticate.');
+    }
     return;
   }
 
@@ -539,6 +570,10 @@ async function handleMessage(update: TelegramUpdate) {
   try {
     const userId = session.fundy_user_id;
 
+    // Get current chat mode
+    const chatMode = await TelegramDatabase.getChatMode(telegramUserId);
+    console.log(`💬 Chat mode for user ${telegramUserId}: ${chatMode}`);
+
     // Get user wallets
     const userWallets = await UserWalletDatabase.getAllWallets(userId);
 
@@ -549,106 +584,194 @@ async function handleMessage(update: TelegramUpdate) {
     let response = '';
     let transactionCreated = false;
 
+    // In transaction mode, block non-transaction intents
+    if (chatMode === 'transaction' && intent !== 'transaction' && intent !== 'multiple_transaction') {
+      response = "📝 *You're in Transaction Mode!*\n\nThis mode is for recording transactions only.\n\n" +
+                 "To analyze your data or have a general conversation, please switch to General Chat mode using /chat\n\n" +
+                 "In Transaction Mode, you can:\n" +
+                 "• Record expenses: 'Beli kopi 25rb pakai BCA'\n" +
+                 "• Record income: 'Gaji 8 juta ke BCA'\n" +
+                 "• Record savings: 'Nabung 1 juta ke tabungan'\n" +
+                 "• Record transfers: 'Transfer 500rb dari BCA ke Dana'";
+      
+      await TelegramBotService.sendMessage(chatId, response);
+      return;
+    }
+
     // Handle transaction intent (support both single and multiple transactions)
     if (intent === 'transaction' || intent === 'multiple_transaction') {
       const transactions = decision.transactions || [];
       
       if (transactions.length > 0) {
-        let responses = [];
-        
-        for (const parsedTransaction of transactions) {
+        // In transaction mode, show pending transaction with confirmation buttons
+        if (chatMode === 'transaction') {
+          // For simplicity, handle only single transactions with inline buttons
+          // Multiple transactions will be confirmed individually
+          const parsedTransaction = transactions[0];
+          
           if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
             let walletId: number | undefined;
             let destinationWalletId: number | undefined;
             
             if (parsedTransaction.walletName && parsedTransaction.walletType) {
               walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
-              console.log(`🔍 Source wallet found: ${parsedTransaction.walletName} (${parsedTransaction.walletType}) -> ID: ${walletId}`);
             }
             
-            // Check for destination wallet with different field names
             if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
               destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
-              console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletNameDestination} (${(parsedTransaction as any).walletTypeDestination}) -> ID: ${destinationWalletId}`);
             } else if ((parsedTransaction as any).walletName2 && (parsedTransaction as any).walletType2) {
               destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletName2, (parsedTransaction as any).walletType2);
-              console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletName2} (${(parsedTransaction as any).walletType2}) -> ID: ${destinationWalletId}`);
             }
 
-            if (parsedTransaction.type === 'expense') {
-              try {
-                await handleExpenseCreation(
-                  userId,
-                  parsedTransaction.description,
-                  parsedTransaction.amount,
-                  parsedTransaction.category!,
-                  walletId
-                );
-                
-                const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
-                responses.push(`✅ Expense recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in ${parsedTransaction.category} category${walletInfo}.`);
-                transactionCreated = true;
-              } catch (error) {
-                responses.push(error instanceof Error ? error.message : 'Error recording expense');
-              }
-            } else if (parsedTransaction.type === 'income') {
-              try {
-                await handleIncomeCreation(
-                  userId,
-                  parsedTransaction.description,
-                  parsedTransaction.amount,
-                  parsedTransaction.source!,
-                  walletId
-                );
+            // Store pending transaction
+            const pendingTxId = `${telegramUserId}_${Date.now()}`;
+            const pendingTx = {
+              ...parsedTransaction,
+              walletId,
+              destinationWalletId,
+              userId,
+              telegramUserId,
+              chatId
+            };
+            pendingTransactions.set(pendingTxId, pendingTx);
 
-                const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
-                responses.push(`✅ Income recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}.`);
-                transactionCreated = true;
-              } catch (error) {
-                responses.push(error instanceof Error ? error.message : 'Error recording income');
-              }
+            // Build confirmation message
+            let confirmMessage = `📝 *Transaction Preview*\n\n`;
+            confirmMessage += `*Type:* ${parsedTransaction.type.toUpperCase()}\n`;
+            confirmMessage += `*Description:* ${parsedTransaction.description}\n`;
+            confirmMessage += `*Amount:* Rp${parsedTransaction.amount.toLocaleString()}\n`;
+            
+            if (parsedTransaction.type === 'expense') {
+              confirmMessage += `*Category:* ${parsedTransaction.category}\n`;
+              confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
+            } else if (parsedTransaction.type === 'income') {
+              confirmMessage += `*Source:* ${parsedTransaction.source}\n`;
+              confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
             } else if (parsedTransaction.type === 'transfer') {
-              try {
-                await handleTransferCreation(
-                  userId,
-                  parsedTransaction.description,
-                  parsedTransaction.amount,
-                  walletId,
-                  destinationWalletId,
-                  (parsedTransaction as any).adminFee
-                );
-                
-                const sourceInfo = walletId ? ` from ${parsedTransaction.walletName}` : '';
-                const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
-                const destInfo = destinationWalletId ? ` to ${destWalletName}` : '';
-                const adminInfo = (parsedTransaction as any).adminFee ? ` (Admin fee: Rp${(parsedTransaction as any).adminFee.toLocaleString()})` : '';
-                responses.push(`✅ Transfer recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${sourceInfo}${destInfo}${adminInfo}.`);
-                transactionCreated = true;
-              } catch (error) {
-                responses.push(error instanceof Error ? error.message : 'Error recording transfer');
-              }
+              const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
+              confirmMessage += `*From:* ${parsedTransaction.walletName || 'Not specified'}\n`;
+              confirmMessage += `*To:* ${destWalletName || 'Not specified'}\n`;
+              const adminFee = (parsedTransaction as any).adminFee || 0;
+              confirmMessage += `*Admin Fee:* Rp${adminFee.toLocaleString()}\n`;
             } else if (parsedTransaction.type === 'savings') {
-              try {
-                await handleSavingsCreation(
-                  userId,
-                  parsedTransaction.description,
-                  parsedTransaction.amount,
-                  walletId,
-                  (parsedTransaction as any).savingsGoal
-                );
-                
-                const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
-                const goalInfo = (parsedTransaction as any).savingsGoal ? ` for ${(parsedTransaction as any).savingsGoal}` : '';
-                responses.push(`✅ Savings recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${walletInfo}${goalInfo}.`);
-                transactionCreated = true;
-              } catch (error) {
-                responses.push(error instanceof Error ? error.message : 'Error recording savings');
+              confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
+              const goalName = (parsedTransaction as any).savingsGoal || (parsedTransaction as any).goalName;
+              if (goalName) {
+                confirmMessage += `*Goal:* ${goalName}\n`;
+              }
+            }
+
+            confirmMessage += `\n_Please confirm or edit this transaction_`;
+
+            // Send with inline keyboard
+            await TelegramBotService.sendMessage(
+              chatId,
+              confirmMessage,
+              {
+                reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
+              }
+            );
+            
+            return; // Don't continue processing
+          }
+        } else {
+          // General chat mode - create transactions immediately (old behavior)
+          let responses = [];
+          
+          for (const parsedTransaction of transactions) {
+            if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
+              let walletId: number | undefined;
+              let destinationWalletId: number | undefined;
+              
+              if (parsedTransaction.walletName && parsedTransaction.walletType) {
+                walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
+                console.log(`🔍 Source wallet found: ${parsedTransaction.walletName} (${parsedTransaction.walletType}) -> ID: ${walletId}`);
+              }
+              
+              // Check for destination wallet with different field names
+              if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
+                destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
+                console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletNameDestination} (${(parsedTransaction as any).walletTypeDestination}) -> ID: ${destinationWalletId}`);
+              } else if ((parsedTransaction as any).walletName2 && (parsedTransaction as any).walletType2) {
+                destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletName2, (parsedTransaction as any).walletType2);
+                console.log(`🔍 Destination wallet found: ${(parsedTransaction as any).walletName2} (${(parsedTransaction as any).walletType2}) -> ID: ${destinationWalletId}`);
+              }
+
+              if (parsedTransaction.type === 'expense') {
+                try {
+                  await handleExpenseCreation(
+                    userId,
+                    parsedTransaction.description,
+                    parsedTransaction.amount,
+                    parsedTransaction.category!,
+                    walletId
+                  );
+                  
+                  const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
+                  responses.push(`✅ Expense recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in ${parsedTransaction.category} category${walletInfo}.`);
+                  transactionCreated = true;
+                } catch (error) {
+                  responses.push(error instanceof Error ? error.message : 'Error recording expense');
+                }
+              } else if (parsedTransaction.type === 'income') {
+                try {
+                  await handleIncomeCreation(
+                    userId,
+                    parsedTransaction.description,
+                    parsedTransaction.amount,
+                    parsedTransaction.source!,
+                    walletId
+                  );
+
+                  const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
+                  responses.push(`✅ Income recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}.`);
+                  transactionCreated = true;
+                } catch (error) {
+                  responses.push(error instanceof Error ? error.message : 'Error recording income');
+                }
+              } else if (parsedTransaction.type === 'transfer') {
+                try {
+                  await handleTransferCreation(
+                    userId,
+                    parsedTransaction.description,
+                    parsedTransaction.amount,
+                    walletId,
+                    destinationWalletId,
+                    (parsedTransaction as any).adminFee
+                  );
+                  
+                  const sourceInfo = walletId ? ` from ${parsedTransaction.walletName}` : '';
+                  const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
+                  const destInfo = destinationWalletId ? ` to ${destWalletName}` : '';
+                  const adminInfo = (parsedTransaction as any).adminFee ? ` (Admin fee: Rp${(parsedTransaction as any).adminFee.toLocaleString()})` : '';
+                  responses.push(`✅ Transfer recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${sourceInfo}${destInfo}${adminInfo}.`);
+                  transactionCreated = true;
+                } catch (error) {
+                  responses.push(error instanceof Error ? error.message : 'Error recording transfer');
+                }
+              } else if (parsedTransaction.type === 'savings') {
+                try {
+                  await handleSavingsCreation(
+                    userId,
+                    parsedTransaction.description,
+                    parsedTransaction.amount,
+                    walletId,
+                    (parsedTransaction as any).savingsGoal
+                  );
+                  
+                  const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
+                  const goalInfo = (parsedTransaction as any).savingsGoal ? ` for ${(parsedTransaction as any).savingsGoal}` : '';
+                  responses.push(`✅ Savings recorded: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${walletInfo}${goalInfo}.`);
+                  transactionCreated = true;
+                } catch (error) {
+                  responses.push(error instanceof Error ? error.message : 'Error recording savings');
+                }
               }
             }
           }
+          
+          response = responses.join('\n\n');
         }
-        
-        response = responses.join('\n\n');
       } else {
         response = 'I need more details to record this transaction. Please specify the amount, description, and wallet.';
       }
@@ -791,6 +914,135 @@ async function handleMessage(update: TelegramUpdate) {
   }
 }
 
+// Handle callback queries (inline button presses)
+async function handleCallbackQuery(callbackQuery: any) {
+  const callbackQueryId = callbackQuery.id;
+  const data = callbackQuery.data;
+  const telegramUserId = callbackQuery.from.id.toString();
+  const chatId = callbackQuery.message?.chat?.id?.toString();
+  const messageId = callbackQuery.message?.message_id;
+
+  if (!chatId || !messageId) {
+    console.error('Missing chat ID or message ID in callback query');
+    return;
+  }
+
+  console.log(`🔘 Callback query received: ${data} from user ${telegramUserId}`);
+
+  try {
+    // Handle cancel
+    if (data === 'cancel_tx') {
+      await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Transaction cancelled');
+      await TelegramBotService.editMessageText(
+        chatId,
+        messageId,
+        '❌ *Transaction Cancelled*\n\nThe transaction was not recorded.',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    // Handle confirm
+    if (data.startsWith('confirm_tx:')) {
+      const pendingTxId = data.replace('confirm_tx:', '');
+      const pendingTx = pendingTransactions.get(pendingTxId);
+
+      if (!pendingTx) {
+        await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Transaction expired. Please try again.', true);
+        return;
+      }
+
+      // Create the transaction
+      try {
+        let result = null;
+        
+        if (pendingTx.type === 'expense') {
+          result = await handleExpenseCreation(
+            pendingTx.userId,
+            pendingTx.description,
+            pendingTx.amount,
+            pendingTx.category,
+            pendingTx.walletId
+          );
+        } else if (pendingTx.type === 'income') {
+          result = await handleIncomeCreation(
+            pendingTx.userId,
+            pendingTx.description,
+            pendingTx.amount,
+            pendingTx.source,
+            pendingTx.walletId
+          );
+        } else if (pendingTx.type === 'transfer') {
+          await handleTransferCreation(
+            pendingTx.userId,
+            pendingTx.description,
+            pendingTx.amount,
+            pendingTx.walletId,
+            pendingTx.destinationWalletId,
+            pendingTx.adminFee
+          );
+        } else if (pendingTx.type === 'savings') {
+          await handleSavingsCreation(
+            pendingTx.userId,
+            pendingTx.description,
+            pendingTx.amount,
+            pendingTx.walletId,
+            pendingTx.savingsGoal || pendingTx.goalName
+          );
+        }
+
+        // Remove from pending
+        pendingTransactions.delete(pendingTxId);
+
+        // Update message
+        await TelegramBotService.answerCallbackQuery(callbackQueryId, '✅ Transaction confirmed!');
+        await TelegramBotService.editMessageText(
+          chatId,
+          messageId,
+          `✅ *Transaction Confirmed!*\n\n*${pendingTx.type.toUpperCase()}:* ${pendingTx.description}\n*Amount:* Rp${pendingTx.amount.toLocaleString()}\n\nSuccessfully recorded!`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (error) {
+        console.error('Error confirming transaction:', error);
+        await TelegramBotService.answerCallbackQuery(
+          callbackQueryId,
+          `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          true
+        );
+      }
+      return;
+    }
+
+    // Handle edit
+    if (data.startsWith('edit_tx:')) {
+      const pendingTxId = data.replace('edit_tx:', '');
+      const pendingTx = pendingTransactions.get(pendingTxId);
+
+      if (!pendingTx) {
+        await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Transaction expired. Please try again.', true);
+        return;
+      }
+
+      // For now, just inform the user that editing is not yet supported via Telegram
+      // In a full implementation, you would enter an edit flow
+      await TelegramBotService.answerCallbackQuery(
+        callbackQueryId,
+        '✏️ To edit, please cancel and create a new transaction with the correct details.',
+        true
+      );
+      return;
+    }
+
+  } catch (error) {
+    console.error('Error handling callback query:', error);
+    await TelegramBotService.answerCallbackQuery(
+      callbackQueryId,
+      'An error occurred. Please try again.',
+      true
+    );
+  }
+}
+
 // Webhook endpoint - handle POST requests from Telegram
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -802,24 +1054,37 @@ export async function POST(request: NextRequest) {
     console.log('📨 Telegram webhook received:', JSON.stringify(update, null, 2));
     console.log('⏱️ Processing time started at:', new Date().toISOString());
 
-    // Process message IMMEDIATELY (not in background) to ensure response
-    try {
-      console.log('🚀 Processing message immediately...');
-      await handleMessage(update);
-      console.log('✅ Message processing completed');
-    } catch (error) {
-      console.error('❌ Error handling telegram message:', error);
-      console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-      
-      // Try to send error message to user if possible
-      if (update.message?.chat?.id) {
-        try {
-          await TelegramBotService.sendMessage(
-            update.message.chat.id.toString(), 
-            '❌ Sorry, I encountered an error processing your message. Please try again.'
-          );
-        } catch (sendError) {
-          console.error('❌ Failed to send error message to user:', sendError);
+    // Handle callback queries (inline button presses)
+    if (update.callback_query) {
+      try {
+        console.log('🔘 Processing callback query...');
+        await handleCallbackQuery(update.callback_query);
+        console.log('✅ Callback query processing completed');
+      } catch (error) {
+        console.error('❌ Error handling callback query:', error);
+        console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      }
+    }
+    // Handle regular messages
+    else if (update.message) {
+      try {
+        console.log('🚀 Processing message immediately...');
+        await handleMessage(update);
+        console.log('✅ Message processing completed');
+      } catch (error) {
+        console.error('❌ Error handling telegram message:', error);
+        console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+        
+        // Try to send error message to user if possible
+        if (update.message?.chat?.id) {
+          try {
+            await TelegramBotService.sendMessage(
+              update.message.chat.id.toString(), 
+              '❌ Sorry, I encountered an error processing your message. Please try again.'
+            );
+          } catch (sendError) {
+            console.error('❌ Failed to send error message to user:', sendError);
+          }
         }
       }
     }

@@ -24,9 +24,30 @@ export interface TelegramMessage {
   text?: string;
 }
 
+export interface TelegramCallbackQuery {
+  id: string;
+  from: {
+    id: number;
+    is_bot: boolean;
+    first_name: string;
+    last_name?: string;
+    username?: string;
+  };
+  message?: {
+    message_id: number;
+    chat: {
+      id: number;
+      type: string;
+    };
+    text?: string;
+  };
+  data?: string;
+}
+
 export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
 }
 
 export class TelegramBotService {
@@ -102,7 +123,7 @@ export class TelegramBotService {
         },
         body: JSON.stringify({
           url: webhookUrl,
-          allowed_updates: ['message'],
+          allowed_updates: ['message', 'callback_query'],
         }),
       });
 
@@ -187,5 +208,80 @@ export class TelegramBotService {
         ]
       ]
     };
+  }
+
+  // Create inline keyboard for transaction confirmation
+  static createTransactionConfirmKeyboard(transactionData: string) {
+    return {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ Confirm',
+            callback_data: `confirm_tx:${transactionData}`
+          },
+          {
+            text: '✏️ Edit',
+            callback_data: `edit_tx:${transactionData}`
+          }
+        ],
+        [
+          {
+            text: '❌ Cancel',
+            callback_data: 'cancel_tx'
+          }
+        ]
+      ]
+    };
+  }
+
+  // Answer callback query
+  static async answerCallbackQuery(callbackQueryId: string, text?: string, showAlert?: boolean): Promise<boolean> {
+    try {
+      const response = await fetch(`${TELEGRAM_API_URL}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          callback_query_id: callbackQueryId,
+          text: text,
+          show_alert: showAlert || false
+        }),
+      });
+
+      const data = await response.json();
+      return data.ok;
+    } catch (error) {
+      console.error('Error answering callback query:', error);
+      return false;
+    }
+  }
+
+  // Edit message text
+  static async editMessageText(chatId: string | number, messageId: number, text: string, options?: {
+    parse_mode?: 'Markdown' | 'HTML';
+    reply_markup?: Record<string, unknown>;
+  }): Promise<boolean> {
+    try {
+      const response = await fetch(`${TELEGRAM_API_URL}/editMessageText`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          text: text,
+          parse_mode: options?.parse_mode || 'Markdown',
+          reply_markup: options?.reply_markup,
+        }),
+      });
+
+      const data = await response.json();
+      return data.ok;
+    } catch (error) {
+      console.error('Error editing message:', error);
+      return false;
+    }
   }
 }

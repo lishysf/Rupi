@@ -61,6 +61,7 @@ export interface TelegramSession {
   first_name?: string;
   last_name?: string;
   is_authenticated: boolean;
+  chat_mode?: 'general' | 'transaction'; // Add mode field
   created_at: Date;
   last_activity: Date;
 }
@@ -154,6 +155,7 @@ export class TelegramDatabase {
             first_name VARCHAR(255),
             last_name VARCHAR(255),
             is_authenticated BOOLEAN DEFAULT FALSE,
+            chat_mode VARCHAR(20) DEFAULT 'general',
             auth_state VARCHAR(255),
             auth_email VARCHAR(255),
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -343,6 +345,42 @@ export class TelegramDatabase {
     } catch (error) {
       console.error('Error clearing auth state:', error);
       throw error;
+    }
+  }
+
+  // Set chat mode (general or transaction)
+  static async setChatMode(telegramUserId: string, mode: 'general' | 'transaction'): Promise<void> {
+    try {
+      await this.retryOperation(async () => {
+        await pool.query(
+          'UPDATE telegram_sessions SET chat_mode = $1, last_activity = CURRENT_TIMESTAMP WHERE telegram_user_id = $2',
+          [mode, telegramUserId]
+        );
+      });
+    } catch (error) {
+      console.error('Error setting chat mode:', error);
+      throw error;
+    }
+  }
+
+  // Get chat mode
+  static async getChatMode(telegramUserId: string): Promise<'general' | 'transaction'> {
+    try {
+      const result = await this.retryOperation(async () => {
+        return await pool.query(
+          'SELECT chat_mode FROM telegram_sessions WHERE telegram_user_id = $1',
+          [telegramUserId]
+        );
+      });
+
+      if (result.rows.length === 0 || !result.rows[0].chat_mode) {
+        return 'general'; // Default to general mode
+      }
+
+      return result.rows[0].chat_mode as 'general' | 'transaction';
+    } catch (error) {
+      console.error('Error getting chat mode:', error);
+      return 'general'; // Default to general mode on error
     }
   }
 }
