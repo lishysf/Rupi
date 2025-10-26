@@ -548,7 +548,7 @@ async function handleMessage(update: TelegramUpdate) {
     let response = '';
     let transactionCreated = false;
 
-    // Handle transaction intent
+    // Handle transaction intent (support both single and multiple transactions)
     if (intent === 'transaction' || intent === 'multiple_transaction') {
       const transactions = decision.transactions || [];
       
@@ -739,27 +739,15 @@ async function handleMessage(update: TelegramUpdate) {
       response = await GroqAIService.generateChatResponse(messageWithDateContext, context, '');
     }
 
-    // Format and send response (escape special characters for Telegram)
+    // Format and send response (minimal escaping for Telegram)
     const formattedResponse = TelegramBotService.formatAIResponse(response);
+    
+    // Only escape the most problematic characters for Telegram Markdown
     const safeResponse = formattedResponse
       .replace(/\*/g, '\\*')  // Escape asterisks
       .replace(/_/g, '\\_')   // Escape underscores
       .replace(/\[/g, '\\[')  // Escape brackets
-      .replace(/\]/g, '\\]') // Escape brackets
-      .replace(/\(/g, '\\(') // Escape parentheses
-      .replace(/\)/g, '\\)') // Escape parentheses
-      .replace(/~/g, '\\~')  // Escape tildes
-      .replace(/`/g, '\\`')   // Escape backticks
-      .replace(/>/g, '\\>')   // Escape greater than
-      .replace(/#/g, '\\#')   // Escape hash
-      .replace(/\+/g, '\\+')  // Escape plus
-      .replace(/-/g, '\\-')   // Escape minus
-      .replace(/=/g, '\\=')   // Escape equals
-      .replace(/\|/g, '\\|')  // Escape pipe
-      .replace(/\{/g, '\\{')  // Escape braces
-      .replace(/\}/g, '\\}')  // Escape braces
-      .replace(/\./g, '\\.')  // Escape dots
-      .replace(/!/g, '\\!');  // Escape exclamation
+      .replace(/\]/g, '\\]'); // Escape brackets
     
     await TelegramBotService.sendMessage(chatId, safeResponse);
 
