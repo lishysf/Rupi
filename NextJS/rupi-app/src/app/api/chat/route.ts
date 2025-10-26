@@ -4,6 +4,109 @@ import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDat
 import { requireAuth } from '@/lib/auth-utils';
 import { PerformanceMonitor } from '@/lib/performance-monitor';
 
+// Prepare optimized financial context for AI (token-efficient)
+async function prepareFinancialContext(userId: number) {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Get all transactions for this month
+  const allTransactions = await TransactionDatabase.getUserTransactions(userId, 1000, 0);
+  
+  // Filter by this month
+  const thisMonthTransactions = allTransactions.filter(t => {
+    const txDate = new Date(t.created_at);
+    return txDate >= startOfMonth;
+  });
+
+  // Filter by today
+  const todayTransactions = thisMonthTransactions.filter(t => {
+    const txDate = new Date(t.created_at);
+    return txDate >= startOfToday;
+  });
+
+  // Calculate totals
+  const expenses = thisMonthTransactions.filter(t => t.type === 'expense');
+  const income = thisMonthTransactions.filter(t => t.type === 'income');
+  const savings = thisMonthTransactions.filter(t => t.type === 'savings');
+
+  const sum = (arr: any[]) => arr.reduce((s, t) => s + (typeof t.amount === 'string' ? parseFloat(t.amount) : (t.amount || 0)), 0);
+  
+  const totalExpense = sum(expenses);
+  const totalIncome = sum(income);
+  const totalSavings = sum(savings);
+
+  // Get total assets from wallets
+  const wallets = await UserWalletDatabase.getAllWalletsWithBalances(userId);
+  const totalAssets = (wallets as any[]).reduce((s, w) => {
+    const balance = typeof w.balance === 'string' ? parseFloat(w.balance) : (w.balance || 0);
+    return s + balance;
+  }, 0);
+
+  // Get savings goals
+  const savingsGoals = await SavingsGoalDatabase.getAllSavingsGoals(userId);
+  const goalsData = savingsGoals.map(g => ({
+    name: g.goal_name,
+    target: g.target_amount,
+    current: g.current_amount
+  }));
+
+  // Calculate expense breakdown by category (all categories with totals)
+  const expensesByCategory: Record<string, number> = {};
+  expenses.forEach(e => {
+    const cat = e.category || 'Others';
+    expensesByCategory[cat] = (expensesByCategory[cat] || 0) + (typeof e.amount === 'string' ? parseFloat(e.amount) : (e.amount || 0));
+  });
+
+  // Get top 3 expense categories
+  const top3Categories = Object.entries(expensesByCategory)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([cat, total]) => ({ category: cat, total }));
+
+  // Get 3 most recent expenses (summary only)
+  const recentExpenses = expenses
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 3)
+    .map(e => ({ 
+      desc: e.description, 
+      amt: typeof e.amount === 'string' ? parseFloat(e.amount) : e.amount, 
+      cat: e.category 
+    }));
+
+  // Get current date/time in Indonesia timezone
+  const indonesiaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  const dateString = indonesiaTime.toLocaleDateString('id-ID', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+  const timeString = indonesiaTime.toLocaleTimeString('id-ID', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    hour12: false 
+  });
+
+  // Build compact context string
+  const context = {
+    current_date: dateString,
+    current_time: `${timeString} WIB`,
+    period: 'This Month',
+    totals: {
+      assets: totalAssets,
+      expense: totalExpense,
+      income: totalIncome,
+      savings: totalSavings
+    },
+    top_3_expense_categories: top3Categories.length > 0 ? top3Categories : null,
+    recent_3_expenses: recentExpenses.length > 0 ? recentExpenses : null,
+    savings_goals: goalsData.length > 0 ? goalsData : null
+  };
+
+  return JSON.stringify(context, null, 0); // Compact JSON
+}
+
 // Helper function to find wallet by name efficiently (with caching)
 function findWalletByName(wallets: Array<{id: number, name: string}>, walletName: string | undefined, walletType: string | undefined): number | undefined {
   if (!walletName || !walletType) return undefined;
@@ -1345,9 +1448,15 @@ export async function POST(request: NextRequest) {
           savingsCount: financialData.savings.length
         });
 
-        // Add current date context to the message for AI
-        const messageWithDateContext = `${message}\n\nCurrent Date: ${currentDateString} (${currentDateISO})`;
-        response = await GroqAIService.generateDataAnalysisResponse(messageWithDateContext, financialData, conversationHistory, timePeriod);
+        // Use optimized financial context instead of full data
+        const financialContext = await prepareFinancialContext(user.id);
+        
+        // Send user question with compact financial data and explicit time context
+        response = await GroqAIService.generateChatResponse(
+          `User Question: ${message}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
+          '',
+          conversationHistory
+        );
       } catch (error) {
         console.error('Error generating data analysis:', error);
         response = "I'm having trouble analyzing your financial data right now. Please try again.";
@@ -1512,31 +1621,15 @@ export async function POST(request: NextRequest) {
                    "• Record savings: 'Nabung 1 juta ke tabungan'\n" +
                    "• Record transfers: 'Transfer 500rb dari BCA ke Dana'";
       } else if (!isTransactionMode && !response) {
-        // Generate general chat response using optimized system
-        // Use smaller limit for faster response
-        const allTransactions = await TransactionDatabase.getUserTransactions(user.id, 20, 0);
-        const recentExpenses = allTransactions.filter(t => t.type === 'expense').slice(0, 2);
-        const recentIncome = allTransactions.filter(t => t.type === 'income').slice(0, 2);
+        // Generate general chat response using optimized financial context
+        const financialContext = await prepareFinancialContext(user.id);
         
-        const expenseContext = recentExpenses.length > 0 
-          ? `Recent expenses: ${recentExpenses.map(e => `${e.description} (Rp${e.amount.toLocaleString()})`).join(', ')}`
-          : 'No recent expenses';
-        
-        const incomeContext = recentIncome.length > 0
-          ? `Recent income: ${recentIncome.map(i => `${i.description} (Rp${i.amount.toLocaleString()})`).join(', ')}`
-          : 'No recent income';
-          
-        const context = `${expenseContext}. ${incomeContext}`;
-        // Add current date context to general chat
-        const currentDate = new Date();
-        const currentDateString = currentDate.toLocaleDateString('en-US', { 
-          weekday: 'long', 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric' 
-        });
-        const messageWithDateContext = `${message}\n\nCurrent Date: ${currentDateString}`;
-        response = await GroqAIService.generateChatResponse(messageWithDateContext, context, conversationHistory);
+        // Send user question with compact financial data and explicit time context
+        response = await GroqAIService.generateChatResponse(
+          `User Question: ${message}\n\nCurrent Context:\n${financialContext}\n\nNote: You have access to the current date and time above. Use it when relevant to the user's question.`,
+          '',
+          conversationHistory
+        );
       }
     }
 
