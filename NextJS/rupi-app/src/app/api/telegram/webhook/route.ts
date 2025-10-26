@@ -4,6 +4,7 @@ import { TelegramBotService, TelegramUpdate } from '@/lib/telegram-bot';
 import { UserDatabase } from '@/lib/database';
 import { GroqAIService } from '@/lib/groq-ai';
 import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDatabase, Transaction, EXPENSE_CATEGORIES, INCOME_SOURCES } from '@/lib/database';
+import { broadcastTransactionUpdate, broadcastWalletUpdate } from '@/app/api/events/route';
 import bcrypt from 'bcryptjs';
 
 // Store user states for authentication flow
@@ -2066,6 +2067,30 @@ async function handleCallbackQuery(callbackQuery: any) {
         }
       }
 
+      // Broadcast transaction updates to web dashboard for successful transactions
+      if (successCount > 0) {
+        try {
+          const userSession = await TelegramDatabase.getOrCreateSession(telegramUserId, '', '', '');
+          if (userSession && userSession.fundy_user_id) {
+            broadcastTransactionUpdate(userSession.fundy_user_id.toString(), {
+              type: 'bulk_transactions',
+              count: successCount,
+              timestamp: Date.now()
+            });
+            
+            // Also broadcast wallet update for balance changes
+            broadcastWalletUpdate(userSession.fundy_user_id.toString(), {
+              type: 'balance_updated',
+              timestamp: Date.now()
+            });
+            
+            console.log(`📡 Broadcasted bulk transaction update to user ${userSession.fundy_user_id}`);
+          }
+        } catch (error) {
+          console.error('Error broadcasting bulk transaction update:', error);
+        }
+      }
+
       await TelegramBotService.answerCallbackQuery(
         callbackQueryId, 
         `✅ Confirmed ${successCount} transactions${failCount > 0 ? `, ${failCount} failed` : ''}`
@@ -2141,6 +2166,29 @@ async function handleCallbackQuery(callbackQuery: any) {
 
         // Remove from pending
         pendingTransactions.delete(pendingTxId);
+
+        // Broadcast transaction update to web dashboard
+        try {
+          const userSession = await TelegramDatabase.getOrCreateSession(telegramUserId, '', '', '');
+          if (userSession && userSession.fundy_user_id) {
+            broadcastTransactionUpdate(userSession.fundy_user_id.toString(), {
+              type: pendingTx.type,
+              description: pendingTx.description,
+              amount: pendingTx.amount,
+              timestamp: Date.now()
+            });
+            
+            // Also broadcast wallet update for balance changes
+            broadcastWalletUpdate(userSession.fundy_user_id.toString(), {
+              type: 'balance_updated',
+              timestamp: Date.now()
+            });
+            
+            console.log(`📡 Broadcasted transaction update to user ${userSession.fundy_user_id}`);
+          }
+        } catch (error) {
+          console.error('Error broadcasting transaction update:', error);
+        }
 
         // Update message
         await TelegramBotService.answerCallbackQuery(callbackQueryId, '✅ Transaction confirmed!');
