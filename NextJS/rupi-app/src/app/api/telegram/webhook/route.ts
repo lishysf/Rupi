@@ -754,6 +754,19 @@ async function handleMessage(update: TelegramUpdate) {
     if (intent === 'transaction' || intent === 'multiple_transaction') {
       const transactions = decision.transactions || [];
       
+      // In chat mode, don't process transactions - be conversational instead
+      if (chatMode === 'general') {
+        response = "💬 *I noticed you mentioned a transaction!*\n\n" +
+                   "I'm currently in General Chat mode, which is for conversation and financial analysis.\n\n" +
+                   "If you'd like to record this transaction, please:\n" +
+                   "• Switch to Transaction Mode using /transaction\n" +
+                   "• Then tell me about your transaction again\n\n" +
+                   "Or I can help you analyze your existing financial data instead! What would you like to know?";
+        
+        await TelegramBotService.sendMessage(chatId, response);
+        return;
+      }
+      
       if (transactions.length > 0) {
         // In transaction mode, show pending transactions with confirmation buttons
         if (chatMode === 'transaction') {
@@ -828,14 +841,25 @@ async function handleMessage(update: TelegramUpdate) {
               );
               
               return; // Don't continue processing
-            } else {
-              // Multiple transactions - show all with individual confirm buttons
-              let confirmMessage = `📝 *Multiple Transactions Preview*\n\n`;
-              
-              const pendingTxIds = [];
-              
-              for (let i = 0; i < validTransactions.length; i++) {
-                const parsedTransaction = validTransactions[i];
+              } else {
+                // Multiple transactions - limit to 5 for Telegram message length
+                const maxTransactions = 5;
+                const transactionsToProcess = validTransactions.slice(0, maxTransactions);
+                
+                if (validTransactions.length > maxTransactions) {
+                  await TelegramBotService.sendMessage(
+                    chatId,
+                    `⚠️ *Too many transactions!*\n\nI can only process up to ${maxTransactions} transactions at once. Processing the first ${maxTransactions} transactions only.\n\nPlease split your transactions into smaller batches.`
+                  );
+                }
+                
+                // Multiple transactions - show all with individual confirm buttons
+                let confirmMessage = `📝 *Multiple Transactions Preview*\n\n`;
+                
+                const pendingTxIds = [];
+                
+                for (let i = 0; i < transactionsToProcess.length; i++) {
+                  const parsedTransaction = transactionsToProcess[i];
                 let walletId: number | undefined;
                 let destinationWalletId: number | undefined;
                 
@@ -1141,17 +1165,39 @@ async function handleMessage(update: TelegramUpdate) {
       response = await GroqAIService.generateChatResponse(messageWithDateContext, context, '');
     }
 
-    // Format and send response (minimal escaping for Telegram)
+    // Format and send response with proper Telegram markdown
     const formattedResponse = TelegramBotService.formatAIResponse(response);
     
-    // Only escape the most problematic characters for Telegram Markdown
-    const safeResponse = formattedResponse
-      .replace(/\*/g, '\\*')  // Escape asterisks
-      .replace(/_/g, '\\_')   // Escape underscores
-      .replace(/\[/g, '\\[')  // Escape brackets
-      .replace(/\]/g, '\\]'); // Escape brackets
+    // Split long messages into chunks (Telegram has 4096 character limit)
+    const MAX_MESSAGE_LENGTH = 4000; // Leave some buffer
     
-    await TelegramBotService.sendMessage(chatId, safeResponse);
+    if (formattedResponse.length <= MAX_MESSAGE_LENGTH) {
+      // Send as single message with markdown parsing
+      await TelegramBotService.sendMessage(chatId, formattedResponse, { parse_mode: 'Markdown' });
+    } else {
+      // Split by paragraphs (double newlines) to keep context together
+      const paragraphs = formattedResponse.split('\n\n');
+      let currentChunk = '';
+      
+      for (const paragraph of paragraphs) {
+        // If adding this paragraph exceeds limit, send current chunk first
+        if (currentChunk.length + paragraph.length + 2 > MAX_MESSAGE_LENGTH) {
+          if (currentChunk) {
+            await TelegramBotService.sendMessage(chatId, currentChunk.trim(), { parse_mode: 'Markdown' });
+            // Small delay between messages
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          currentChunk = paragraph;
+        } else {
+          currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+        }
+      }
+      
+      // Send remaining chunk
+      if (currentChunk) {
+        await TelegramBotService.sendMessage(chatId, currentChunk.trim(), { parse_mode: 'Markdown' });
+      }
+    }
 
     // Update activity
     await TelegramDatabase.updateActivity(telegramUserId);
