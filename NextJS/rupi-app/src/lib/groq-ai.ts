@@ -2078,4 +2078,51 @@ Once you have some transactions recorded, I can provide detailed analysis of you
     const accuracy = (correct / total) * 100;
     console.log(`📊 Intent Detection Accuracy: ${correct}/${total} (${accuracy.toFixed(1)}%)`);
   }
+
+  // Speech-to-text transcription using Groq
+  static async transcribeAudio(audioBuffer: Buffer, filename: string = 'audio.ogg'): Promise<string | null> {
+    try {
+      console.log('🎤 Starting audio transcription...');
+      console.log(`📁 Audio file: ${filename}, size: ${audioBuffer.length} bytes`);
+      
+      // Convert Buffer to Uint8Array for File constructor
+      const uint8Array = new Uint8Array(audioBuffer);
+      
+      // Determine MIME type based on filename
+      let mimeType = 'audio/ogg';
+      if (filename.endsWith('.mp3')) {
+        mimeType = 'audio/mpeg';
+      } else if (filename.endsWith('.wav')) {
+        mimeType = 'audio/wav';
+      } else if (filename.endsWith('.m4a')) {
+        mimeType = 'audio/mp4';
+      }
+      
+      // Create a temporary file-like object for Groq
+      const audioFile = new File([uint8Array], filename, {
+        type: mimeType
+      });
+
+      console.log(`🎵 Using MIME type: ${mimeType}`);
+
+      const transcription = await groq.audio.transcriptions.create({
+        file: audioFile,
+        model: "whisper-large-v3-turbo",
+        prompt: "This is a financial transaction recording. The user is describing an expense, income, savings, or transfer transaction. Focus on understanding amounts, categories, and transaction details. Common phrases include: spent, bought, paid, received, earned, saved, transferred.",
+        response_format: "verbose_json",
+        timestamp_granularities: ["word", "segment"],
+        language: "en", // Can be changed to "id" for Indonesian
+        temperature: 0.0,
+      });
+
+      console.log('✅ Audio transcription completed');
+      console.log('📝 Transcribed text:', transcription.text);
+      
+      return transcription.text || null;
+    } catch (error) {
+      console.error('❌ Error transcribing audio:', error);
+      console.error('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
+      return null;
+    }
+  }
 }

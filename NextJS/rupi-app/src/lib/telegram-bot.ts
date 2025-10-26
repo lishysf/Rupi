@@ -22,6 +22,22 @@ export interface TelegramMessage {
   };
   date: number;
   text?: string;
+  voice?: {
+    file_id: string;
+    file_unique_id: string;
+    duration: number;
+    mime_type?: string;
+    file_size?: number;
+  };
+  audio?: {
+    file_id: string;
+    file_unique_id: string;
+    duration: number;
+    performer?: string;
+    title?: string;
+    mime_type?: string;
+    file_size?: number;
+  };
 }
 
 export interface TelegramCallbackQuery {
@@ -282,6 +298,46 @@ export class TelegramBotService {
     } catch (error) {
       console.error('Error editing message:', error);
       return false;
+    }
+  }
+
+  // Get file info from Telegram
+  static async getFile(fileId: string): Promise<{ file_path?: string } | null> {
+    try {
+      const response = await fetch(`${TELEGRAM_API_URL}/getFile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_id: fileId,
+        }),
+      });
+
+      const data = await response.json();
+      return data.ok ? data.result : null;
+    } catch (error) {
+      console.error('Error getting file info:', error);
+      return null;
+    }
+  }
+
+  // Download file from Telegram
+  static async downloadFile(filePath: string): Promise<Buffer | null> {
+    try {
+      const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
+      const response = await fetch(fileUrl);
+      
+      if (!response.ok) {
+        console.error('Failed to download file:', response.status, response.statusText);
+        return null;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      return null;
     }
   }
 }

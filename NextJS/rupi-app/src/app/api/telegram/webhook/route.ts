@@ -649,14 +649,135 @@ async function handleSavingsCreation(
   }
 }
 
+// Handle audio/voice messages
+async function handleAudioMessage(message: any) {
+  const telegramUserId = message.from.id.toString();
+  const chatId = message.chat.id.toString();
+  const firstName = message.from.first_name;
+
+  console.log(`🎤 Processing audio message from ${firstName} (${telegramUserId})`);
+
+  try {
+    // Send typing action to show we're processing
+    await TelegramBotService.sendTypingAction(chatId);
+
+    // Get the file ID from voice or audio
+    const fileId = message.voice?.file_id || message.audio?.file_id;
+    if (!fileId) {
+      console.error('❌ No file ID found in audio message');
+      await TelegramBotService.sendMessage(chatId, '❌ Sorry, I couldn\'t process the audio message. Please try again.');
+      return;
+    }
+
+    // Check audio duration (voice messages from Telegram are typically short)
+    const duration = message.voice?.duration || message.audio?.duration;
+    if (duration && duration > 30) {
+      console.log(`⚠️ Audio duration is ${duration} seconds, which exceeds the 30-second limit`);
+      await TelegramBotService.sendMessage(
+        chatId, 
+        '⚠️ Your audio message is too long. Please keep voice messages under 30 seconds for best results.'
+      );
+      return;
+    }
+
+    // Get file info from Telegram
+    const fileInfo = await TelegramBotService.getFile(fileId);
+    if (!fileInfo?.file_path) {
+      console.error('❌ Could not get file path from Telegram');
+      await TelegramBotService.sendMessage(chatId, '❌ Sorry, I couldn\'t access the audio file. Please try again.');
+      return;
+    }
+
+    // Download the audio file
+    const audioBuffer = await TelegramBotService.downloadFile(fileInfo.file_path);
+    if (!audioBuffer) {
+      console.error('❌ Could not download audio file');
+      await TelegramBotService.sendMessage(chatId, '❌ Sorry, I couldn\'t download the audio file. Please try again.');
+      return;
+    }
+
+    console.log(`📥 Downloaded audio file: ${audioBuffer.length} bytes`);
+
+    // Determine file extension based on message type
+    const filename = message.voice ? 'voice_message.ogg' : 'audio_message.ogg';
+
+    // Transcribe the audio
+    const transcribedText = await GroqAIService.transcribeAudio(audioBuffer, filename);
+    if (!transcribedText) {
+      console.error('❌ Could not transcribe audio');
+      await TelegramBotService.sendMessage(
+        chatId, 
+        '❌ Sorry, I couldn\'t understand the audio. Please try:\n' +
+        '• Speaking more clearly\n' +
+        '• Reducing background noise\n' +
+        '• Sending a text message instead'
+      );
+      return;
+    }
+
+    console.log(`📝 Transcribed text: "${transcribedText}"`);
+
+    // Check if transcription is too short or seems invalid
+    if (transcribedText.trim().length < 3) {
+      console.log('⚠️ Transcription seems too short or invalid');
+      await TelegramBotService.sendMessage(
+        chatId,
+        '⚠️ The audio transcription seems too short. Please try speaking more clearly or send a text message.'
+      );
+      return;
+    }
+
+    // Send confirmation message with transcribed text
+    await TelegramBotService.sendMessage(
+      chatId,
+      `🎤 *Audio Transcribed:*\n\n"${transcribedText}"\n\n_Processing as transaction..._`,
+      { parse_mode: 'Markdown' }
+    );
+
+    // Process the transcribed text as a regular message
+    const messageWithText = {
+      ...message,
+      text: transcribedText
+    };
+
+    // Create a new update object with the transcribed text
+    const updateWithText = {
+      update_id: Date.now(),
+      message: messageWithText
+    };
+
+    // Process the transcribed text using the existing message handling logic
+    await handleMessage(updateWithText);
+
+  } catch (error) {
+    console.error('❌ Error processing audio message:', error);
+    await TelegramBotService.sendMessage(
+      chatId,
+      '❌ Sorry, I encountered an error processing your audio message. Please try again or send a text message.'
+    );
+  }
+}
+
 // Handle incoming Telegram messages
 async function handleMessage(update: TelegramUpdate) {
   console.log('🚀 Starting message processing...');
   
   const message = update.message;
   
-  if (!message || !message.text) {
-    console.log('❌ No message or text found, skipping');
+  if (!message) {
+    console.log('❌ No message found, skipping');
+    return;
+  }
+
+  // Handle audio/voice messages
+  if (message.voice || message.audio) {
+    console.log('🎤 Processing audio/voice message...');
+    await handleAudioMessage(message);
+    return;
+  }
+
+  if (!message.text) {
+    console.log('❌ No text content found, skipping');
     return;
   }
 
