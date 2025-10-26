@@ -427,8 +427,8 @@ async function handleMessage(update: TelegramUpdate) {
           let message = '📊 *Your Savings Goals*\n\n';
           
           for (const goal of savingsGoals) {
-            // The current_amount is already calculated from transactions in getAllSavingsGoals
-            const currentAmount = Math.round(goal.current_amount || 0);
+            // Get actual current amount from allocated_amount field
+            const currentAmount = Math.round(parseFloat(goal.allocated_amount?.toString() || '0') || 0);
             const targetAmount = Math.round(goal.target_amount);
             
             message += `🎯 *${goal.goal_name}*\n`;
