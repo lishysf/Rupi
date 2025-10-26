@@ -12,6 +12,73 @@ const userStates = new Map<string, { state: 'awaiting_email' | 'awaiting_passwor
 // Store pending transactions for confirmation (in-memory for simplicity)
 const pendingTransactions = new Map<string, any>();
 
+// Parse structured transaction format (no AI needed)
+function parseStructuredTransaction(text: string) {
+  try {
+    // Remove code block markers if present
+    const cleanText = text.replace(/```/g, '').trim();
+    
+    const lines = cleanText.split('\n').filter(line => line.trim());
+    const transaction: any = {};
+    
+    for (const line of lines) {
+      const [key, ...valueParts] = line.split(':');
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join(':').trim();
+        const cleanKey = key.trim().toLowerCase();
+        
+        switch (cleanKey) {
+          case 'type':
+            transaction.type = value.toLowerCase();
+            break;
+          case 'description':
+            transaction.description = value;
+            break;
+          case 'amount':
+            transaction.amount = parseFloat(value.replace(/[^\d.]/g, '')) || 0;
+            break;
+          case 'category':
+            transaction.category = value;
+            break;
+          case 'source':
+            transaction.source = value;
+            break;
+          case 'wallet':
+            transaction.walletName = value;
+            transaction.walletType = 'bank_card'; // Default type
+            break;
+          case 'from_wallet':
+            transaction.walletName = value;
+            transaction.walletType = 'bank_card';
+            break;
+          case 'to_wallet':
+            transaction.toWalletName = value;
+            break;
+          case 'admin_fee':
+            transaction.adminFee = parseFloat(value.replace(/[^\d.]/g, '')) || 0;
+            break;
+          case 'goal':
+            transaction.goalName = value;
+            break;
+        }
+      }
+    }
+    
+    // Validate required fields
+    if (!transaction.type || !transaction.description || !transaction.amount) {
+      return null;
+    }
+    
+    // Set confidence to 1.0 since it's structured data
+    transaction.confidence = 1.0;
+    
+    return transaction;
+  } catch (error) {
+    console.error('Error parsing structured transaction:', error);
+    return null;
+  }
+}
+
 // Helper function to find wallet by name (same as in chat route)
 function findWalletByName(wallets: Array<{id: number, name: string}>, walletName: string | undefined, walletType: string | undefined): number | undefined {
   if (!walletName || !walletType) return undefined;
@@ -577,9 +644,23 @@ async function handleMessage(update: TelegramUpdate) {
     // Get user wallets
     const userWallets = await UserWalletDatabase.getAllWallets(userId);
 
-    // Use the same AI decision logic as web chat
-    const decision = await GroqAIService.decideAndParse(text, userId);
-    const intent = decision.intent;
+    // Check if this is a structured transaction format first (faster, no AI needed)
+    const structuredTransaction = parseStructuredTransaction(text);
+    let decision: any;
+    let intent: string;
+
+    if (structuredTransaction) {
+      console.log('📝 Detected structured transaction format, skipping AI processing');
+      decision = {
+        intent: 'transaction',
+        transactions: [structuredTransaction]
+      };
+      intent = 'transaction';
+    } else {
+      // Use the same AI decision logic as web chat
+      decision = await GroqAIService.decideAndParse(text, userId);
+      intent = decision.intent;
+    }
 
     let response = '';
     let transactionCreated = false;
@@ -603,76 +684,181 @@ async function handleMessage(update: TelegramUpdate) {
       const transactions = decision.transactions || [];
       
       if (transactions.length > 0) {
-        // In transaction mode, show pending transaction with confirmation buttons
+        // In transaction mode, show pending transactions with confirmation buttons
         if (chatMode === 'transaction') {
-          // For simplicity, handle only single transactions with inline buttons
-          // Multiple transactions will be confirmed individually
-          const parsedTransaction = transactions[0];
+          // Handle both single and multiple transactions
+          const validTransactions = transactions.filter((tx: any) => tx.confidence >= 0.5 && tx.amount > 0);
           
-          if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
-            let walletId: number | undefined;
-            let destinationWalletId: number | undefined;
-            
-            if (parsedTransaction.walletName && parsedTransaction.walletType) {
-              walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
-            }
-            
-            if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
-              destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
-            } else if ((parsedTransaction as any).walletName2 && (parsedTransaction as any).walletType2) {
-              destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletName2, (parsedTransaction as any).walletType2);
-            }
-
-            // Store pending transaction
-            const pendingTxId = `${telegramUserId}_${Date.now()}`;
-            const pendingTx = {
-              ...parsedTransaction,
-              walletId,
-              destinationWalletId,
-              userId,
-              telegramUserId,
-              chatId
-            };
-            pendingTransactions.set(pendingTxId, pendingTx);
-
-            // Build confirmation message
-            let confirmMessage = `📝 *Transaction Preview*\n\n`;
-            confirmMessage += `*Type:* ${parsedTransaction.type.toUpperCase()}\n`;
-            confirmMessage += `*Description:* ${parsedTransaction.description}\n`;
-            confirmMessage += `*Amount:* Rp${parsedTransaction.amount.toLocaleString()}\n`;
-            
-            if (parsedTransaction.type === 'expense') {
-              confirmMessage += `*Category:* ${parsedTransaction.category}\n`;
-              confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
-            } else if (parsedTransaction.type === 'income') {
-              confirmMessage += `*Source:* ${parsedTransaction.source}\n`;
-              confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
-            } else if (parsedTransaction.type === 'transfer') {
-              const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
-              confirmMessage += `*From:* ${parsedTransaction.walletName || 'Not specified'}\n`;
-              confirmMessage += `*To:* ${destWalletName || 'Not specified'}\n`;
-              const adminFee = (parsedTransaction as any).adminFee || 0;
-              confirmMessage += `*Admin Fee:* Rp${adminFee.toLocaleString()}\n`;
-            } else if (parsedTransaction.type === 'savings') {
-              confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
-              const goalName = (parsedTransaction as any).savingsGoal || (parsedTransaction as any).goalName;
-              if (goalName) {
-                confirmMessage += `*Goal:* ${goalName}\n`;
+          if (validTransactions.length > 0) {
+            // For multiple transactions, show them all with individual buttons
+            if (validTransactions.length === 1) {
+              // Single transaction - show with inline buttons
+              const parsedTransaction = validTransactions[0];
+              let walletId: number | undefined;
+              let destinationWalletId: number | undefined;
+              
+              if (parsedTransaction.walletName && parsedTransaction.walletType) {
+                walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
               }
-            }
-
-            confirmMessage += `\n_Please confirm or edit this transaction_`;
-
-            // Send with inline keyboard
-            await TelegramBotService.sendMessage(
-              chatId,
-              confirmMessage,
-              {
-                reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
+              
+              if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
+                destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
+              } else if ((parsedTransaction as any).walletName2 && (parsedTransaction as any).walletType2) {
+                destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletName2, (parsedTransaction as any).walletType2);
               }
-            );
-            
-            return; // Don't continue processing
+
+              // Store pending transaction
+              const pendingTxId = `${telegramUserId}_${Date.now()}`;
+              const pendingTx = {
+                ...parsedTransaction,
+                walletId,
+                destinationWalletId,
+                userId,
+                telegramUserId,
+                chatId
+              };
+              pendingTransactions.set(pendingTxId, pendingTx);
+
+              // Build confirmation message
+              let confirmMessage = `📝 *Transaction Preview*\n\n`;
+              confirmMessage += `*Type:* ${parsedTransaction.type.toUpperCase()}\n`;
+              confirmMessage += `*Description:* ${parsedTransaction.description}\n`;
+              confirmMessage += `*Amount:* Rp${parsedTransaction.amount.toLocaleString()}\n`;
+              
+              if (parsedTransaction.type === 'expense') {
+                confirmMessage += `*Category:* ${parsedTransaction.category}\n`;
+                confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
+              } else if (parsedTransaction.type === 'income') {
+                confirmMessage += `*Source:* ${parsedTransaction.source}\n`;
+                confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
+              } else if (parsedTransaction.type === 'transfer') {
+                const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
+                confirmMessage += `*From:* ${parsedTransaction.walletName || 'Not specified'}\n`;
+                confirmMessage += `*To:* ${destWalletName || 'Not specified'}\n`;
+                const adminFee = (parsedTransaction as any).adminFee || 0;
+                confirmMessage += `*Admin Fee:* Rp${adminFee.toLocaleString()}\n`;
+              } else if (parsedTransaction.type === 'savings') {
+                confirmMessage += `*Wallet:* ${parsedTransaction.walletName || 'Not specified'}\n`;
+                const goalName = (parsedTransaction as any).savingsGoal || (parsedTransaction as any).goalName;
+                if (goalName) {
+                  confirmMessage += `*Goal:* ${goalName}\n`;
+                }
+              }
+
+              confirmMessage += `\n_Please confirm or edit this transaction_`;
+
+              // Send with inline keyboard
+              await TelegramBotService.sendMessage(
+                chatId,
+                confirmMessage,
+                {
+                  reply_markup: TelegramBotService.createTransactionConfirmKeyboard(pendingTxId)
+                }
+              );
+              
+              return; // Don't continue processing
+            } else {
+              // Multiple transactions - show all with individual confirm buttons
+              let confirmMessage = `📝 *Multiple Transactions Preview*\n\n`;
+              
+              const pendingTxIds = [];
+              
+              for (let i = 0; i < validTransactions.length; i++) {
+                const parsedTransaction = validTransactions[i];
+                let walletId: number | undefined;
+                let destinationWalletId: number | undefined;
+                
+                if (parsedTransaction.walletName && parsedTransaction.walletType) {
+                  walletId = findWalletByName(userWallets, parsedTransaction.walletName, parsedTransaction.walletType);
+                }
+                
+                if ((parsedTransaction as any).walletNameDestination && (parsedTransaction as any).walletTypeDestination) {
+                  destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletNameDestination, (parsedTransaction as any).walletTypeDestination);
+                } else if ((parsedTransaction as any).walletName2 && (parsedTransaction as any).walletType2) {
+                  destinationWalletId = findWalletByName(userWallets, (parsedTransaction as any).walletName2, (parsedTransaction as any).walletType2);
+                }
+
+                // Store pending transaction
+                const pendingTxId = `${telegramUserId}_${Date.now()}_${i}`;
+                const pendingTx = {
+                  ...parsedTransaction,
+                  walletId,
+                  destinationWalletId,
+                  userId,
+                  telegramUserId,
+                  chatId
+                };
+                pendingTransactions.set(pendingTxId, pendingTx);
+                pendingTxIds.push(pendingTxId);
+
+                // Add to message
+                confirmMessage += `*${i + 1}. ${parsedTransaction.type.toUpperCase()}*\n`;
+                confirmMessage += `Description: ${parsedTransaction.description}\n`;
+                confirmMessage += `Amount: Rp${parsedTransaction.amount.toLocaleString()}\n`;
+                
+                if (parsedTransaction.type === 'expense') {
+                  confirmMessage += `Category: ${parsedTransaction.category}\n`;
+                  confirmMessage += `Wallet: ${parsedTransaction.walletName || 'Not specified'}\n`;
+                } else if (parsedTransaction.type === 'income') {
+                  confirmMessage += `Source: ${parsedTransaction.source}\n`;
+                  confirmMessage += `Wallet: ${parsedTransaction.walletName || 'Not specified'}\n`;
+                } else if (parsedTransaction.type === 'transfer') {
+                  const destWalletName = (parsedTransaction as any).walletNameDestination || (parsedTransaction as any).walletName2;
+                  confirmMessage += `From: ${parsedTransaction.walletName || 'Not specified'}\n`;
+                  confirmMessage += `To: ${destWalletName || 'Not specified'}\n`;
+                  const adminFee = (parsedTransaction as any).adminFee || 0;
+                  confirmMessage += `Admin Fee: Rp${adminFee.toLocaleString()}\n`;
+                } else if (parsedTransaction.type === 'savings') {
+                  confirmMessage += `Wallet: ${parsedTransaction.walletName || 'Not specified'}\n`;
+                  const goalName = (parsedTransaction as any).savingsGoal || (parsedTransaction as any).goalName;
+                  if (goalName) {
+                    confirmMessage += `Goal: ${goalName}\n`;
+                  }
+                }
+                
+                confirmMessage += `\n`;
+              }
+
+              confirmMessage += `_Please confirm each transaction individually_`;
+
+              // Create keyboard with individual confirm buttons for each transaction
+              const keyboard = {
+                inline_keyboard: [] as any[]
+              };
+
+              // Add confirm buttons for each transaction
+              for (let i = 0; i < pendingTxIds.length; i++) {
+                keyboard.inline_keyboard.push([
+                  {
+                    text: `✅ Confirm #${i + 1}`,
+                    callback_data: `confirm_tx:${pendingTxIds[i]}`
+                  },
+                  {
+                    text: `✏️ Edit #${i + 1}`,
+                    callback_data: `edit_tx:${pendingTxIds[i]}`
+                  }
+                ]);
+              }
+
+              // Add cancel all button
+              keyboard.inline_keyboard.push([
+                {
+                  text: '❌ Cancel All',
+                  callback_data: 'cancel_all_tx'
+                }
+              ]);
+
+              // Send with inline keyboard
+              await TelegramBotService.sendMessage(
+                chatId,
+                confirmMessage,
+                {
+                  reply_markup: keyboard
+                }
+              );
+              
+              return; // Don't continue processing
+            }
           }
         } else {
           // General chat mode - create transactions immediately (old behavior)
@@ -942,6 +1128,18 @@ async function handleCallbackQuery(callbackQuery: any) {
       return;
     }
 
+    // Handle cancel all
+    if (data === 'cancel_all_tx') {
+      await TelegramBotService.answerCallbackQuery(callbackQueryId, 'All transactions cancelled');
+      await TelegramBotService.editMessageText(
+        chatId,
+        messageId,
+        '❌ *All Transactions Cancelled*\n\nNo transactions were recorded.',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
     // Handle confirm
     if (data.startsWith('confirm_tx:')) {
       const pendingTxId = data.replace('confirm_tx:', '');
@@ -1023,12 +1221,64 @@ async function handleCallbackQuery(callbackQuery: any) {
         return;
       }
 
-      // For now, just inform the user that editing is not yet supported via Telegram
-      // In a full implementation, you would enter an edit flow
-      await TelegramBotService.answerCallbackQuery(
-        callbackQueryId,
-        '✏️ To edit, please cancel and create a new transaction with the correct details.',
-        true
+      // Generate a structured template for direct parsing (no AI needed)
+      let editTemplate = `✏️ *Edit Transaction (Structured Format)*\n\n`;
+      editTemplate += `Copy this template, modify the values, and send it back:\n\n`;
+      
+      if (pendingTx.type === 'expense') {
+        editTemplate += `\`\`\`\n`;
+        editTemplate += `type: expense\n`;
+        editTemplate += `description: ${pendingTx.description}\n`;
+        editTemplate += `amount: ${pendingTx.amount}\n`;
+        editTemplate += `category: ${pendingTx.category}\n`;
+        editTemplate += `wallet: ${pendingTx.walletName || 'WALLET_NAME'}\n`;
+        editTemplate += `\`\`\`\n\n`;
+        editTemplate += `*Available categories:* Food, Transport, Bills, Shopping, Entertainment, Health, Education, Others\n`;
+        editTemplate += `*Available wallets:* BCA, Mandiri, Gopay, OVO, Dana, Cash, etc.`;
+      } else if (pendingTx.type === 'income') {
+        editTemplate += `\`\`\`\n`;
+        editTemplate += `type: income\n`;
+        editTemplate += `description: ${pendingTx.description}\n`;
+        editTemplate += `amount: ${pendingTx.amount}\n`;
+        editTemplate += `source: ${pendingTx.source}\n`;
+        editTemplate += `wallet: ${pendingTx.walletName || 'WALLET_NAME'}\n`;
+        editTemplate += `\`\`\`\n\n`;
+        editTemplate += `*Available sources:* Salary, Freelance, Investment, Business, Bonus, Others\n`;
+        editTemplate += `*Available wallets:* BCA, Mandiri, Gopay, OVO, Dana, Cash, etc.`;
+      } else if (pendingTx.type === 'transfer') {
+        const destWalletName = (pendingTx as any).walletNameDestination || (pendingTx as any).walletName2 || 'DESTINATION_WALLET';
+        editTemplate += `\`\`\`\n`;
+        editTemplate += `type: transfer\n`;
+        editTemplate += `description: ${pendingTx.description}\n`;
+        editTemplate += `amount: ${pendingTx.amount}\n`;
+        editTemplate += `from_wallet: ${pendingTx.walletName || 'SOURCE_WALLET'}\n`;
+        editTemplate += `to_wallet: ${destWalletName}\n`;
+        editTemplate += `admin_fee: ${(pendingTx as any).adminFee || 0}\n`;
+        editTemplate += `\`\`\`\n\n`;
+        editTemplate += `*Available wallets:* BCA, Mandiri, Gopay, OVO, Dana, Cash, etc.`;
+      } else if (pendingTx.type === 'savings') {
+        const goalName = (pendingTx as any).savingsGoal || (pendingTx as any).goalName || 'GOAL_NAME';
+        editTemplate += `\`\`\`\n`;
+        editTemplate += `type: savings\n`;
+        editTemplate += `description: ${pendingTx.description}\n`;
+        editTemplate += `amount: ${pendingTx.amount}\n`;
+        editTemplate += `wallet: ${pendingTx.walletName || 'WALLET_NAME'}\n`;
+        editTemplate += `goal: ${goalName}\n`;
+        editTemplate += `\`\`\`\n\n`;
+        editTemplate += `*Available wallets:* BCA, Mandiri, Gopay, OVO, Dana, Cash, etc.`;
+      }
+
+      editTemplate += `\n\n_Just modify the values and send back - no AI processing needed!_`;
+
+      // Remove the pending transaction since user will create a new one
+      pendingTransactions.delete(pendingTxId);
+
+      await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Edit template sent!');
+      await TelegramBotService.editMessageText(
+        chatId,
+        messageId,
+        editTemplate,
+        { parse_mode: 'Markdown' }
       );
       return;
     }
