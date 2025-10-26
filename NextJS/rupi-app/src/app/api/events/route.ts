@@ -5,9 +5,6 @@ const connections = new Map<string, ReadableStreamDefaultController>();
 
 // Function to broadcast transaction updates to all connected clients
 export function broadcastTransactionUpdate(userId: string, transactionData: any) {
-  console.log(`📡 Attempting to broadcast transaction update to user ${userId}`);
-  console.log(`📡 Active connections:`, Array.from(connections.keys()));
-  
   const connection = connections.get(userId);
   if (connection) {
     try {
@@ -18,13 +15,11 @@ export function broadcastTransactionUpdate(userId: string, transactionData: any)
       });
       
       connection.enqueue(`data: ${data}\n\n`);
-      console.log(`📡 Successfully broadcasted transaction update to user ${userId}`);
+      console.log(`📡 Broadcasted transaction update to user ${userId}`);
     } catch (error) {
       console.error('Error broadcasting to user:', error);
       connections.delete(userId);
     }
-  } else {
-    console.log(`📡 No active connection found for user ${userId}`);
   }
 }
 
@@ -52,10 +47,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
 
-  console.log(`🔌 SSE connection request for user: ${userId}`);
-
   if (!userId) {
-    console.log('❌ No userId provided in SSE request');
     return new Response('User ID required', { status: 400 });
   }
 

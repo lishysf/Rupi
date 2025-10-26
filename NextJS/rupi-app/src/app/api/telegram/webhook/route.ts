@@ -4,7 +4,7 @@ import { TelegramBotService, TelegramUpdate } from '@/lib/telegram-bot';
 import { UserDatabase } from '@/lib/database';
 import { GroqAIService } from '@/lib/groq-ai';
 import { TransactionDatabase, UserWalletDatabase, BudgetDatabase, SavingsGoalDatabase, Transaction, EXPENSE_CATEGORIES, INCOME_SOURCES } from '@/lib/database';
-import { addUserUpdate } from '@/app/api/polling-updates/route';
+import { broadcastTransactionUpdate, broadcastWalletUpdate } from '@/app/api/events/route';
 import bcrypt from 'bcryptjs';
 
 // Store user states for authentication flow
@@ -2068,27 +2068,27 @@ async function handleCallbackQuery(callbackQuery: any) {
         }
       }
 
-      // Add polling updates for web dashboard for successful transactions
+      // Broadcast transaction updates to web dashboard for successful transactions
       if (successCount > 0) {
         try {
           const userSession = await TelegramDatabase.getOrCreateSession(telegramUserId, '', '', '');
           if (userSession && userSession.fundy_user_id) {
-            addUserUpdate(userSession.fundy_user_id.toString(), 'transaction_created', {
+            broadcastTransactionUpdate(userSession.fundy_user_id.toString(), {
               type: 'bulk_transactions',
               count: successCount,
               timestamp: Date.now()
             });
             
-            // Also add wallet update for balance changes
-            addUserUpdate(userSession.fundy_user_id.toString(), 'wallet_updated', {
+            // Also broadcast wallet update for balance changes
+            broadcastWalletUpdate(userSession.fundy_user_id.toString(), {
               type: 'balance_updated',
               timestamp: Date.now()
             });
             
-            console.log(`📡 Added bulk transaction polling updates for user ${userSession.fundy_user_id}`);
+            console.log(`📡 Broadcasted bulk transaction update to user ${userSession.fundy_user_id}`);
           }
         } catch (error) {
-          console.error('Error adding bulk transaction polling updates:', error);
+          console.error('Error broadcasting bulk transaction update:', error);
         }
       }
 
@@ -2168,34 +2168,27 @@ async function handleCallbackQuery(callbackQuery: any) {
         // Remove from pending
         pendingTransactions.delete(pendingTxId);
 
-        // Add polling update for web dashboard
+        // Broadcast transaction update to web dashboard
         try {
           const userSession = await TelegramDatabase.getOrCreateSession(telegramUserId, '', '', '');
-          console.log(`📡 User session for telegram user ${telegramUserId}:`, userSession);
-          
           if (userSession && userSession.fundy_user_id) {
-            const fundyUserId = userSession.fundy_user_id.toString();
-            console.log(`📡 Adding polling update for fundy user ID: ${fundyUserId}`);
-            
-            addUserUpdate(fundyUserId, 'transaction_created', {
+            broadcastTransactionUpdate(userSession.fundy_user_id.toString(), {
               type: pendingTx.type,
               description: pendingTx.description,
               amount: pendingTx.amount,
               timestamp: Date.now()
             });
             
-            // Also add wallet update for balance changes
-            addUserUpdate(fundyUserId, 'wallet_updated', {
+            // Also broadcast wallet update for balance changes
+            broadcastWalletUpdate(userSession.fundy_user_id.toString(), {
               type: 'balance_updated',
               timestamp: Date.now()
             });
             
-            console.log(`📡 Added polling updates for user ${fundyUserId}`);
-          } else {
-            console.log(`📡 No fundy_user_id found for telegram user ${telegramUserId}`);
+            console.log(`📡 Broadcasted transaction update to user ${userSession.fundy_user_id}`);
           }
         } catch (error) {
-          console.error('Error adding polling update:', error);
+          console.error('Error broadcasting transaction update:', error);
         }
 
         // Update message

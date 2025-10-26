@@ -5,6 +5,7 @@ import { Send, MessageCircle, X, CheckCircle, AlertCircle, Receipt, MessageSquar
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import TransactionEditModal from './TransactionEditModal';
 import MultipleTransactionEditModal from './MultipleTransactionEditModal';
+import VoiceRecordingButton from './VoiceRecordingButton';
 
 interface ChatMessage {
   id: string;
@@ -171,6 +172,14 @@ export default function FloatingChat() {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleVoiceTranscription = (transcribedText: string) => {
+    setInputValue(transcribedText);
+    // Auto-send the transcribed message
+    setTimeout(() => {
+      handleSendMessage();
+    }, 100);
   };
 
   const handleInputFocus = () => {
@@ -781,25 +790,31 @@ export default function FloatingChat() {
 
         {/* Chat Input */}
         <div className="relative">
-          <div className="flex items-center bg-white dark:bg-neutral-800 rounded-3xl shadow-lg border border-neutral-200/50 dark:border-neutral-700/50 p-3 w-full">
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              onFocus={handleInputFocus}
-              placeholder={isTransactionMode ? "Record a transaction..." : "Ask me anything..."}
-              className="flex-1 px-3 py-2 bg-transparent text-neutral-900 dark:text-white placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none text-sm"
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={!inputValue.trim() || isLoading}
-              className="p-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-neutral-300 dark:disabled:bg-neutral-600 text-white rounded-full transition-all duration-200 disabled:cursor-not-allowed flex-shrink-0 shadow-sm hover:shadow-md disabled:shadow-none"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
+           <div className="flex items-center bg-white dark:bg-neutral-800 rounded-3xl shadow-lg border border-neutral-200/50 dark:border-neutral-700/50 p-3 w-full gap-2">
+             <input
+               ref={inputRef}
+               type="text"
+               value={inputValue}
+               onChange={(e) => setInputValue(e.target.value)}
+               onKeyPress={handleKeyPress}
+               onFocus={handleInputFocus}
+               placeholder={isTransactionMode ? "Record a transaction..." : "Ask me anything..."}
+               className="flex-1 px-3 py-2 bg-transparent text-neutral-900 dark:text-white placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none text-sm"
+             />
+             <div className="flex items-center gap-1">
+               <VoiceRecordingButton
+                 onTranscriptionComplete={handleVoiceTranscription}
+                 disabled={isLoading}
+               />
+               <button
+                 onClick={handleSendMessage}
+                 disabled={!inputValue.trim() || isLoading}
+                 className="p-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-neutral-300 dark:disabled:bg-neutral-600 text-white rounded-full transition-all duration-200 disabled:cursor-not-allowed flex-shrink-0 shadow-sm hover:shadow-md disabled:shadow-none"
+               >
+                 <Send className="w-4 h-4" />
+               </button>
+             </div>
+           </div>
 
           {/* Floating indicator when collapsed */}
           {!isExpanded && (
