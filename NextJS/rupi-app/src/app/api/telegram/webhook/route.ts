@@ -180,7 +180,7 @@ async function prepareFinancialContext(userId: number) {
   return contextString;
 }
 
-// Clean text for Telegram (remove problematic characters)
+// Clean text for Telegram (remove problematic characters but preserve formatting)
 function cleanTextForTelegram(text: string): string {
   return text
     // Remove or replace problematic markdown characters
@@ -189,10 +189,10 @@ function cleanTextForTelegram(text: string): string {
     .replace(/`/g, '') // Remove backticks
     .replace(/\[/g, '(') // Replace square brackets with parentheses
     .replace(/\]/g, ')') // Replace square brackets with parentheses
-    .replace(/\(/g, '(') // Keep parentheses as is
-    .replace(/\)/g, ')') // Keep parentheses as is
-    // Clean up multiple spaces
-    .replace(/\s+/g, ' ')
+    // Clean up multiple spaces but preserve line breaks
+    .replace(/[ \t]+/g, ' ') // Replace multiple spaces/tabs with single space
+    .replace(/\n[ \t]+/g, '\n') // Remove leading spaces from new lines
+    .replace(/[ \t]+\n/g, '\n') // Remove trailing spaces before new lines
     .trim();
 }
 
