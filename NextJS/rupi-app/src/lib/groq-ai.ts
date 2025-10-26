@@ -33,6 +33,8 @@ export interface ParsedTransaction {
   assetName?: string;
   walletName?: string; // e.g., "Gojek", "BCA", "Dana", "Cash"
   walletType?: string; // e.g., "e_wallet", "bank_card", "cash", "bank_account"
+  fromWalletName?: string; // For transfer transactions - source wallet
+  toWalletName?: string; // For transfer transactions - destination wallet
   adminFee?: number; // Admin fee for transfers (default 0)
   confidence: number;
 }

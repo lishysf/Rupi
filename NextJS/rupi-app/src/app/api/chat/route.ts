@@ -366,7 +366,16 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     const body = await request.json();
-    const { message, conversationHistory } = body;
+    const { message, conversationHistory, isTransactionMode: rawIsTransactionMode, action, transactionData } = body;
+    
+    // Ensure isTransactionMode is a boolean
+    const isTransactionMode = rawIsTransactionMode === true || rawIsTransactionMode === 'true';
+    
+    console.log('🔍 API Debug - raw isTransactionMode:', rawIsTransactionMode, 'type:', typeof rawIsTransactionMode);
+    console.log('🔍 API Debug - converted isTransactionMode:', isTransactionMode, 'type:', typeof isTransactionMode);
+    console.log('🔍 API Debug - message:', message);
+    console.log('🔍 API Debug - action:', action);
+    console.log('🔍 API Debug - transactionData:', transactionData);
     
     // Cache user wallets to avoid multiple database queries
     PerformanceMonitor.startTimer('fetch-wallets');
@@ -384,6 +393,174 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Handle transaction confirmation
+    if (action === 'confirm_transaction' && transactionData) {
+      console.log('🔍 API Debug - CONFIRM TRANSACTION ACTION');
+      console.log('🔍 API Debug - transactionData:', transactionData);
+      try {
+        let createdTransaction = null;
+        
+        if (transactionData.type === 'expense') {
+          console.log('🔍 API Debug - Creating expense transaction:', {
+            userId: user.id,
+            description: transactionData.description,
+            amount: transactionData.amount,
+            category: transactionData.category,
+            walletId: transactionData.walletId
+          });
+          createdTransaction = await handleExpenseCreation(
+            user.id,
+            transactionData.description,
+            transactionData.amount,
+            transactionData.category!,
+            transactionData.walletId
+          );
+          console.log('🔍 API Debug - Expense transaction created:', createdTransaction);
+        } else if (transactionData.type === 'income') {
+          createdTransaction = await handleIncomeCreation(
+            user.id,
+            transactionData.description,
+            transactionData.amount,
+            transactionData.source!,
+            transactionData.walletId
+          );
+        } else if (transactionData.type === 'savings') {
+          createdTransaction = await handleSavingsTransfer(
+            user.id,
+            transactionData.description,
+            transactionData.amount,
+            transactionData.goalName,
+            transactionData.walletId
+          );
+        } else if (transactionData.type === 'transfer') {
+          createdTransaction = await handleWalletTransfer(
+            user.id,
+            transactionData.description,
+            transactionData.amount,
+            transactionData.fromWalletId,
+            transactionData.toWalletId
+          );
+        }
+
+        console.log('🔍 API Debug - Returning confirm response:', {
+          success: true,
+          createdTransaction
+        });
+        return NextResponse.json({
+          success: true,
+          data: {
+            response: 'Transaction confirmed and saved successfully!',
+            transactionCreated: createdTransaction,
+            timestamp: new Date().toISOString()
+          }
+        });
+      } catch (error) {
+        console.error('Error confirming transaction:', error);
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to confirm transaction'
+        }, { status: 500 });
+      }
+    }
+
+    // Handle multiple transactions confirmation
+    if (action === 'confirm_multiple_transactions' && body.transactionsData) {
+      console.log('🔍 API Debug - CONFIRM MULTIPLE TRANSACTIONS ACTION');
+      console.log('🔍 API Debug - transactionsData:', body.transactionsData);
+      
+      try {
+        const transactionsData = body.transactionsData as Array<any>;
+        const createdTransactions = [];
+        const failedTransactions = [];
+        
+        // Process each transaction
+        for (const transactionData of transactionsData) {
+          try {
+            let createdTransaction = null;
+            
+            if (transactionData.type === 'expense') {
+              createdTransaction = await handleExpenseCreation(
+                user.id,
+                transactionData.description,
+                transactionData.amount,
+                transactionData.category!,
+                transactionData.walletId
+              );
+            } else if (transactionData.type === 'income') {
+              createdTransaction = await handleIncomeCreation(
+                user.id,
+                transactionData.description,
+                transactionData.amount,
+                transactionData.source!,
+                transactionData.walletId
+              );
+            } else if (transactionData.type === 'savings') {
+              createdTransaction = await handleSavingsTransfer(
+                user.id,
+                transactionData.description,
+                transactionData.amount,
+                transactionData.goalName,
+                transactionData.walletId
+              );
+            } else if (transactionData.type === 'transfer') {
+              createdTransaction = await handleWalletTransfer(
+                user.id,
+                transactionData.description,
+                transactionData.amount,
+                transactionData.fromWalletId,
+                transactionData.toWalletId
+              );
+            }
+            
+            if (createdTransaction) {
+              createdTransactions.push({
+                transaction: transactionData,
+                created: createdTransaction
+              });
+            }
+          } catch (error) {
+            console.error('Error creating transaction:', error);
+            failedTransactions.push({
+              transaction: transactionData,
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        }
+        
+        // Generate response
+        const successCount = createdTransactions.length;
+        const failCount = failedTransactions.length;
+        
+        let responseMessage = '';
+        if (successCount > 0) {
+          responseMessage = `Successfully created ${successCount} transaction(s)!`;
+          if (failCount > 0) {
+            responseMessage += ` ${failCount} transaction(s) failed.`;
+          }
+        } else {
+          responseMessage = `Failed to create all ${failCount} transaction(s). Please check the details and try again.`;
+        }
+        
+        return NextResponse.json({
+          success: successCount > 0,
+          data: {
+            response: responseMessage,
+            createdTransactions,
+            failedTransactions,
+            successCount,
+            failCount,
+            timestamp: new Date().toISOString()
+          }
+        });
+      } catch (error) {
+        console.error('Error confirming multiple transactions:', error);
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to confirm multiple transactions'
+        }, { status: 500 });
+      }
+    }
+
     let response;
     let transactionCreated = null;
     let multipleTransactionsCreated = null;
@@ -395,11 +572,27 @@ export async function POST(request: NextRequest) {
     const aiTime = PerformanceMonitor.endTimer('ai-decide-and-parse');
     const intent = decision.intent;
     console.log('🤖 AI Analysis: Intent=' + intent + ', Transactions=' + (decision.transactions?.length || 0) + ', Message:', message.substring(0, 50) + '...');
+    console.log('🔍 API Debug - Detected intent:', intent);
+    console.log('🔍 API Debug - isTransactionMode:', isTransactionMode);
     aiDebug.intent = intent;
     aiDebug.transactions = decision.transactions || [];
 
     // Handle based on detected intent
     if (intent === 'multiple_transaction') {
+      console.log('🔍 API Debug - MULTIPLE TRANSACTION INTENT DETECTED, isTransactionMode:', isTransactionMode);
+      // ONLY allow transaction creation in Transaction Mode
+      if (!isTransactionMode) {
+        console.log('🔍 API Debug - Blocking transaction in General Chat mode');
+        response = "I can help you analyze your financial data, but I can't record transactions in General Chat mode. Please switch to Transaction Mode to record transactions, or ask me about your financial data instead.";
+        
+        return NextResponse.json({
+          success: true,
+          data: {
+            response,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
       try {
         // Use AI-supplied transactions if present; fallback to parser
         const parsedMultipleTransactions = decision.transactions && decision.transactions.length > 0
@@ -432,32 +625,63 @@ export async function POST(request: NextRequest) {
             }
             
             if (parsedTransaction.type === 'expense') {
+              console.log('🔍 API Debug - REACHED EXPENSE HANDLING SECTION - Transaction Mode Only');
+              console.log('🔍 API Debug - About to create pending transaction');
               try {
-                transactionCreated = await handleExpenseCreation(
-                  user.id,
-                  parsedTransaction.description,
-                  parsedTransaction.amount,
-                  parsedTransaction.category!,
-                  walletId
-                );
+                // ONLY create pending transactions in Transaction Mode
+                console.log('🔍 API Debug - Creating pending expense transaction');
+                const pendingTransaction = {
+                  type: 'expense' as const,
+                  description: parsedTransaction.description,
+                  amount: parsedTransaction.amount,
+                  category: parsedTransaction.category,
+                  walletName: parsedTransaction.walletName,
+                  walletId: walletId
+                };
                 
-                const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
-                response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category${walletInfo}. Your expense has been saved successfully!`;
+                response = `I understand you want to record an expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category${walletId ? ` using ${parsedTransaction.walletName}` : ''}. Please confirm this transaction.`;
+                
+                console.log('🔍 API Debug - Returning pending transaction:', { response, pendingTransaction });
+                return NextResponse.json({
+                  success: true,
+                  data: {
+                    response,
+                    pendingTransaction,
+                    timestamp: new Date().toISOString()
+                  }
+                });
               } catch (expenseError) {
-                console.error('Error creating expense:', expenseError);
+                console.error('Error creating pending expense:', expenseError);
                 response = expenseError instanceof Error ? expenseError.message : 'Unknown error';
               }
             } else if (parsedTransaction.type === 'income') {
-              transactionCreated = await handleIncomeCreation(
-                user.id,
-                parsedTransaction.description,
-                parsedTransaction.amount,
-                parsedTransaction.source!,
-                walletId
-              );
-
-              const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
-              response = `Excellent! I've recorded your income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}. Your income has been saved successfully!`;
+              console.log('🔍 API Debug - REACHED INCOME HANDLING SECTION - Transaction Mode Only');
+              try {
+                // ONLY create pending transactions in Transaction Mode
+                console.log('🔍 API Debug - Creating pending income transaction');
+                const pendingTransaction = {
+                  type: 'income' as const,
+                  description: parsedTransaction.description,
+                  amount: parsedTransaction.amount,
+                  source: parsedTransaction.source,
+                  walletName: parsedTransaction.walletName,
+                  walletId: walletId
+                };
+                
+                response = `I understand you want to record income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletId ? ` to ${parsedTransaction.walletName}` : ''}. Please confirm this transaction.`;
+                
+                return NextResponse.json({
+                  success: true,
+                  data: {
+                    response,
+                    pendingTransaction,
+                    timestamp: new Date().toISOString()
+                  }
+                });
+              } catch (incomeError) {
+                console.error('Error creating pending income:', incomeError);
+                response = incomeError instanceof Error ? incomeError.message : 'Unknown error';
+              }
             }
             
             return NextResponse.json({
@@ -473,11 +697,75 @@ export async function POST(request: NextRequest) {
         }
         
         if (parsedMultipleTransactions.transactions.length > 0) {
-          const createdTransactions = [];
-          const failedTransactions = [];
-          
-          // Process each transaction
-          for (const transaction of parsedMultipleTransactions.transactions) {
+          // In Transaction Mode, return pending transactions for confirmation
+          if (isTransactionMode) {
+            console.log('🔍 API Debug - Creating pending multiple transactions for confirmation');
+            const pendingTransactions = parsedMultipleTransactions.transactions
+              .filter(transaction => transaction.confidence >= 0.5 && transaction.amount > 0)
+              .map(transaction => {
+                let walletId: number | undefined;
+                let fromWalletId: number | undefined;
+                let toWalletId: number | undefined;
+                
+                // For regular transactions (expense, income, savings)
+                if (transaction.walletName && transaction.walletType) {
+                  walletId = findWalletByName(userWallets, transaction.walletName, transaction.walletType);
+                }
+                
+                // For transfer transactions, we need both from and to wallets
+                if (transaction.type === 'transfer') {
+                  // Try to find from and to wallet names in the transaction
+                  if (transaction.fromWalletName) {
+                    fromWalletId = findWalletByName(userWallets, transaction.fromWalletName, 'bank');
+                  }
+                  if (transaction.toWalletName) {
+                    toWalletId = findWalletByName(userWallets, transaction.toWalletName, 'bank');
+                  }
+                  // Fallback: if not specified, use the main walletName for fromWallet
+                  if (!fromWalletId && transaction.walletName) {
+                    fromWalletId = findWalletByName(userWallets, transaction.walletName, transaction.walletType);
+                  }
+                }
+                
+                return {
+                  type: transaction.type,
+                  description: transaction.description,
+                  amount: transaction.amount,
+                  category: transaction.category,
+                  source: transaction.source,
+                  walletName: transaction.walletName,
+                  goalName: transaction.goalName,
+                  fromWalletName: transaction.fromWalletName || transaction.walletName,
+                  toWalletName: transaction.toWalletName,
+                  adminFee: transaction.adminFee,
+                  walletId: walletId,
+                  fromWalletId: fromWalletId,
+                  toWalletId: toWalletId
+                };
+              });
+            
+            if (pendingTransactions.length > 0) {
+              response = `I found ${pendingTransactions.length} transaction(s). Please review and confirm them.`;
+              
+              return NextResponse.json({
+                success: true,
+                data: {
+                  response,
+                  pendingTransactions,
+                  supportsMultipleEdit: true, // Flag to indicate editing multiple transactions is now supported
+                  timestamp: new Date().toISOString()
+                }
+              });
+            } else {
+              response = "I couldn't identify any valid transactions. Please provide more specific details for each transaction.";
+            }
+          } else {
+            // Old behavior for non-transaction mode (shouldn't reach here due to earlier check)
+            const createdTransactions = [];
+            const failedTransactions = [];
+            
+            // Process each transaction
+            for (const transaction of parsedMultipleTransactions.transactions) {
             if (transaction.confidence >= 0.5 && transaction.amount > 0) {
               try {
                 let createdTransaction = null;
@@ -643,17 +931,33 @@ export async function POST(request: NextRequest) {
             console.log('Total transactions:', parsedMultipleTransactions.totalTransactions);
             response = `I understood that you mentioned multiple transactions, but I couldn't process any of them clearly. Could you please try again with more specific details? For example: "I bought coffee for 25,000, paid electricity bill 200,000, and got salary 8 million".`;
           }
-        } else {
-          response = `I couldn't identify any clear transactions in your message. Could you please try again with more specific details?`;
-        }
-      } catch (error) {
+        } // Close the else block for non-transaction mode
+      } else {
+        response = `I couldn't identify any clear transactions in your message. Could you please try again with more specific details?`;
+      }
+    } catch (error) {
         console.error('Error parsing multiple transactions:', error);
         response = "I had trouble understanding your multiple transactions. Could you please try again with a clearer format? For example: 'I bought coffee for 25,000, paid rent 2,000,000, and got salary 8 million'.";
       }
     }
     // Check if this is a single transaction input
     else if (intent === 'transaction') {
+      console.log('🔍 API Debug - SINGLE TRANSACTION INTENT DETECTED, isTransactionMode:', isTransactionMode);
+      // ONLY allow transaction creation in Transaction Mode
+      if (!isTransactionMode) {
+        console.log('🔍 API Debug - Blocking single transaction in General Chat mode');
+        response = "I can help you analyze your financial data, but I can't record transactions in General Chat mode. Please switch to Transaction Mode to record transactions, or ask me about your financial data instead.";
+        
+        return NextResponse.json({
+          success: true,
+          data: {
+            response,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
         try {
+          console.log('🔍 API Debug - ENTERING SINGLE TRANSACTION PROCESSING');
           // Use AI-supplied transaction if present; fallback to parser
           const parsedTransaction = decision.transactions?.[0] || await GroqAIService.parseTransaction(message, user.id);
           
@@ -723,38 +1027,71 @@ export async function POST(request: NextRequest) {
               console.log('Transfer details parsed:', transferDetails);
               
               if (transferDetails.fromWalletId && transferDetails.toWalletId) {
-                const result = await handleWalletTransfer(user.id, message, parsedTransaction.amount, transferDetails.fromWalletId, transferDetails.toWalletId);
-                
-                // Handle admin fee if present
-                const adminFee = parsedTransaction.adminFee || 0;
-                if (adminFee > 0) {
-                  console.log('Creating admin fee expense:', adminFee);
-                  try {
-                    await handleExpenseCreation(
-                      user.id,
-                      `Admin fee for ${parsedTransaction.description}`,
-                      adminFee,
-                      'Bank Charges', // Categorize admin fees under Bank Charges
-                      transferDetails.fromWalletId // Admin fee is deducted from source wallet
-                    );
-                    console.log('Admin fee expense created successfully');
-                  } catch (adminFeeError) {
-                    console.error('Error creating admin fee expense:', adminFeeError);
-                    // Don't fail the entire transfer if admin fee creation fails
+                if (isTransactionMode) {
+                  // Return pending transaction for confirmation
+                  const pendingTransaction = {
+                    type: 'transfer' as const,
+                    description: parsedTransaction.description,
+                    amount: parsedTransaction.amount,
+                    fromWalletName: transferDetails.fromWalletName,
+                    toWalletName: transferDetails.toWalletName,
+                    fromWalletId: transferDetails.fromWalletId,
+                    toWalletId: transferDetails.toWalletId,
+                    adminFee: parsedTransaction.adminFee || 0
+                  };
+                  
+                  const adminFeeMessage = pendingTransaction.adminFee > 0 ? ` (with Rp ${pendingTransaction.adminFee.toLocaleString()} admin fee)` : '';
+                  const response = `I understand you want to transfer Rp ${parsedTransaction.amount.toLocaleString()} from your ${transferDetails.fromWalletName} to your ${transferDetails.toWalletName}${adminFeeMessage}. Please confirm this transaction.`;
+                  
+                  return NextResponse.json({
+                    success: true,
+                    data: {
+                      response,
+                      pendingTransaction,
+                      timestamp: new Date().toISOString()
+                    }
+                  });
+                } else {
+                  // Create transaction immediately (old behavior)
+                  const result = await handleWalletTransfer(user.id, message, parsedTransaction.amount, transferDetails.fromWalletId, transferDetails.toWalletId);
+                  
+                  // Handle admin fee if present
+                  const adminFee = parsedTransaction.adminFee || 0;
+                  if (adminFee > 0) {
+                    console.log('Creating admin fee expense:', adminFee);
+                    try {
+                      await handleExpenseCreation(
+                        user.id,
+                        `Admin fee for ${parsedTransaction.description}`,
+                        adminFee,
+                        'Bank Charges', // Categorize admin fees under Bank Charges
+                        transferDetails.fromWalletId // Admin fee is deducted from source wallet
+                      );
+                      console.log('Admin fee expense created successfully');
+                    } catch (adminFeeError) {
+                      console.error('Error creating admin fee expense:', adminFeeError);
+                      // Don't fail the entire transfer if admin fee creation fails
+                    }
                   }
+                  
+                  const adminFeeMessage = adminFee > 0 ? ` (with Rp ${adminFee.toLocaleString()} admin fee)` : '';
+                  return NextResponse.json({
+                    success: true,
+                    data: {
+                      response: `Perfect! I've transferred Rp ${parsedTransaction.amount.toLocaleString()} from your ${transferDetails.fromWalletName} to your ${transferDetails.toWalletName}${adminFeeMessage}. Your wallet balances have been updated!`,
+                      transactionCreated: result,
+                      timestamp: new Date().toISOString()
+                    }
+                  });
                 }
-                
-                const adminFeeMessage = adminFee > 0 ? ` (with Rp ${adminFee.toLocaleString()} admin fee)` : '';
-                return NextResponse.json({
-                  success: true,
-                  message: `Perfect! I've transferred Rp ${parsedTransaction.amount.toLocaleString()} from your ${transferDetails.fromWalletName} to your ${transferDetails.toWalletName}${adminFeeMessage}. Your wallet balances have been updated!`,
-                  data: result
-                });
               } else {
                 console.log('Failed to parse wallet transfer - missing wallet IDs:', transferDetails);
                 return NextResponse.json({
                   success: false,
-                  message: `I understand you want to transfer money, but I need you to specify both the source and destination wallets clearly. For example: "Transfer 1 juta dari BCA ke GoPay" or "Pindah 500rb dari Mandiri ke Dana".`
+                  data: {
+                    response: `I understand you want to transfer money, but I need you to specify both the source and destination wallets clearly. For example: "Transfer 1 juta dari BCA ke GoPay" or "Pindah 500rb dari Mandiri ke Dana".`,
+                    timestamp: new Date().toISOString()
+                  }
                 });
               }
             }
@@ -770,80 +1107,95 @@ export async function POST(request: NextRequest) {
                   parsedTransaction.description.toLowerCase().includes('savings')
                 ))) {
               
-              // Savings transactions are already handled in the main transaction processing flow above
-              // No need for duplicate handling here
-              console.log('Savings transaction already processed in main flow');
+              console.log('🔍 API Debug - REACHED SAVINGS HANDLING SECTION - Transaction Mode Only');
+              try {
+                // ONLY create pending transactions in Transaction Mode
+                console.log('🔍 API Debug - Creating pending savings transaction');
+                const pendingTransaction = {
+                  type: 'savings' as const,
+                  description: parsedTransaction.description,
+                  amount: parsedTransaction.amount,
+                  goalName: parsedTransaction.goalName,
+                  walletName: parsedTransaction.walletName,
+                  walletId: walletId
+                };
+                
+                response = `I understand you want to transfer to savings: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${parsedTransaction.goalName ? ` for ${parsedTransaction.goalName}` : ''}${walletId ? ` from ${parsedTransaction.walletName}` : ''}. Please confirm this transaction.`;
+                
+                return NextResponse.json({
+                  success: true,
+                  data: {
+                    response,
+                    pendingTransaction,
+                    timestamp: new Date().toISOString()
+                  }
+                });
+              } catch (savingsError) {
+                console.error('Error creating pending savings:', savingsError);
+                response = savingsError instanceof Error ? savingsError.message : 'Unknown error';
+              }
             }
             
-            // Handle other transaction types (income, expense)
-
-          if (parsedTransaction.type === 'expense') {
-            // Handle expense creation with balance validation
-            try {
-              transactionCreated = await handleExpenseCreation(
-                user.id,
-                parsedTransaction.description,
-                parsedTransaction.amount,
-                parsedTransaction.category!,
-                walletId
-              );
-              
-              const walletInfo = walletId ? ` using ${parsedTransaction.walletName}` : '';
-              response = `Great! I've recorded your expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category${walletInfo}. Your expense has been saved successfully!`;
-            } catch (expenseError) {
-              console.error('Error creating expense:', expenseError);
-              response = expenseError instanceof Error ? expenseError.message : 'Unknown error';
-            }
-          } else if (parsedTransaction.type === 'income') {
-            transactionCreated = await handleIncomeCreation(
-              user.id,
-              parsedTransaction.description,
-              parsedTransaction.amount,
-              parsedTransaction.source!,
-              walletId
-            );
-
-            const walletInfo = walletId ? ` to ${parsedTransaction.walletName}` : '';
-            response = `Excellent! I've recorded your income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletInfo}. Your income has been saved successfully!`;
-          } else if (parsedTransaction.type === 'savings') {
-            // Handle savings transfer with balance validation
-            try {
-              console.log('AI parsed savings transaction:', {
-                originalMessage: message,
-                parsedDescription: parsedTransaction.description,
-                parsedAmount: parsedTransaction.amount,
-                parsedGoalName: parsedTransaction.goalName,
-                walletId: walletId
-              });
-              
-              transactionCreated = await handleSavingsTransfer(
-                user.id,
-                parsedTransaction.description,
-                parsedTransaction.amount,
-                parsedTransaction.goalName,
-                walletId
-              );
-              
-              const descriptionLower = parsedTransaction.description.toLowerCase();
-              const isTransferToSavings = descriptionLower.includes('transfer to') || 
-                                         descriptionLower.includes('tabung') ||
-                                         descriptionLower.includes('simpan') ||
-                                         descriptionLower.includes('nabung') ||
-                                         descriptionLower.includes('transfer ke tabungan') ||
-                                         descriptionLower.includes('masuk ke tabungan');
-              
-              if (isTransferToSavings) {
-                response = `Perfect! I've transferred Rp${parsedTransaction.amount.toLocaleString()} from your wallet to your savings account. Your savings balance has been updated!`;
-              } else {
-                // Check if a specific wallet was mentioned for the withdrawal
-                const walletName = parsedTransaction.walletName || 'wallet';
-                response = `Perfect! I've withdrawn Rp${parsedTransaction.amount.toLocaleString()} from your savings and added it to your ${walletName}. Your savings and wallet balances have been updated!`;
+            // Handle expense transactions
+            if (parsedTransaction.type === 'expense') {
+              console.log('🔍 API Debug - REACHED EXPENSE HANDLING SECTION - Transaction Mode Only');
+              console.log('🔍 API Debug - About to create pending transaction');
+              try {
+                // ONLY create pending transactions in Transaction Mode
+                console.log('🔍 API Debug - Creating pending expense transaction');
+                const pendingTransaction = {
+                  type: 'expense' as const,
+                  description: parsedTransaction.description,
+                  amount: parsedTransaction.amount,
+                  category: parsedTransaction.category,
+                  walletName: parsedTransaction.walletName,
+                  walletId: walletId
+                };
+                
+                response = `I understand you want to record an expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category${walletId ? ` using ${parsedTransaction.walletName}` : ''}. Please confirm this transaction.`;
+                
+                console.log('🔍 API Debug - Returning pending transaction:', { response, pendingTransaction });
+                return NextResponse.json({
+                  success: true,
+                  data: {
+                    response,
+                    pendingTransaction,
+                    timestamp: new Date().toISOString()
+                  }
+                });
+              } catch (expenseError) {
+                console.error('Error creating pending expense:', expenseError);
+                response = expenseError instanceof Error ? expenseError.message : 'Unknown error';
               }
-            } catch (savingsError) {
-              console.error('Error creating savings:', savingsError);
-              response = savingsError instanceof Error ? savingsError.message : 'Unknown error';
+            } else if (parsedTransaction.type === 'income') {
+              console.log('🔍 API Debug - REACHED INCOME HANDLING SECTION - Transaction Mode Only');
+              try {
+                // ONLY create pending transactions in Transaction Mode
+                console.log('🔍 API Debug - Creating pending income transaction');
+                const pendingTransaction = {
+                  type: 'income' as const,
+                  description: parsedTransaction.description,
+                  amount: parsedTransaction.amount,
+                  source: parsedTransaction.source,
+                  walletName: parsedTransaction.walletName,
+                  walletId: walletId
+                };
+                
+                response = `I understand you want to record income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletId ? ` to ${parsedTransaction.walletName}` : ''}. Please confirm this transaction.`;
+                
+                return NextResponse.json({
+                  success: true,
+                  data: {
+                    response,
+                    pendingTransaction,
+                    timestamp: new Date().toISOString()
+                  }
+                });
+              } catch (incomeError) {
+                console.error('Error creating pending income:', incomeError);
+                response = incomeError instanceof Error ? incomeError.message : 'Unknown error';
+              }
             }
-          }
         } else {
           if (parsedTransaction.type === 'expense') {
             response = `I understood that you want to record an expense, but I need more clarity. Please specify the amount, what you purchased, and which wallet to use. For example: "Beli kopi 25rb pakai BCA" or "Bayar listrik 200rb dari Gojek".`;
@@ -860,6 +1212,28 @@ export async function POST(request: NextRequest) {
     }
     // Check if this is a data analysis request
     else if (intent === 'data_analysis') {
+      console.log('🔍 API Debug - DATA ANALYSIS INTENT DETECTED');
+      
+      // Block data analysis in Transaction Mode
+      if (isTransactionMode) {
+        console.log('🔍 API Debug - Blocking data analysis in Transaction Mode');
+        response = "📝 You're in Transaction Mode! This mode is for recording transactions only.\n\n" +
+                   "To analyze your data, please switch to General Chat mode using the toggle button.\n\n" +
+                   "In Transaction Mode, you can:\n" +
+                   "• Record expenses: 'Beli kopi 25rb pakai BCA'\n" +
+                   "• Record income: 'Gaji 8 juta ke BCA'\n" +
+                   "• Record savings: 'Nabung 1 juta ke tabungan'\n" +
+                   "• Record transfers: 'Transfer 500rb dari BCA ke Dana'";
+        
+        return NextResponse.json({
+          success: true,
+          data: {
+            response,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+      
       try {
         console.log('Data analysis request detected:', message);
         
@@ -979,31 +1353,191 @@ export async function POST(request: NextRequest) {
         response = "I'm having trouble analyzing your financial data right now. Please try again.";
       }
     } else {
-      // Generate general chat response using optimized system
-      // Use smaller limit for faster response
-      const allTransactions = await TransactionDatabase.getUserTransactions(user.id, 20, 0);
-      const recentExpenses = allTransactions.filter(t => t.type === 'expense').slice(0, 2);
-      const recentIncome = allTransactions.filter(t => t.type === 'income').slice(0, 2);
+      console.log('🔍 API Debug - GENERAL CHAT INTENT DETECTED, intent:', intent);
       
-      const expenseContext = recentExpenses.length > 0 
-        ? `Recent expenses: ${recentExpenses.map(e => `${e.description} (Rp${e.amount.toLocaleString()})`).join(', ')}`
-        : 'No recent expenses';
-      
-      const incomeContext = recentIncome.length > 0
-        ? `Recent income: ${recentIncome.map(i => `${i.description} (Rp${i.amount.toLocaleString()})`).join(', ')}`
-        : 'No recent income';
+      // In Transaction Mode, if we reach here, it means the AI didn't detect a transaction intent
+      // But the user is trying to record a transaction, so we should force transaction detection
+      if (isTransactionMode) {
+        console.log('🔍 API Debug - Transaction Mode active but no transaction intent detected, forcing transaction detection');
         
-      const context = `${expenseContext}. ${incomeContext}`;
-      // Add current date context to general chat
-      const currentDate = new Date();
-      const currentDateString = currentDate.toLocaleDateString('en-US', { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-      });
-      const messageWithDateContext = `${message}\n\nCurrent Date: ${currentDateString}`;
-      response = await GroqAIService.generateChatResponse(messageWithDateContext, context, conversationHistory);
+        // Try to parse as a single transaction
+        try {
+          const parsedTransaction = await GroqAIService.parseTransaction(message, user.id);
+          console.log('🔍 API Debug - Forced transaction parsing result:', parsedTransaction);
+          
+          if (parsedTransaction.confidence >= 0.5 && parsedTransaction.amount > 0) {
+            // Find wallet if mentioned
+            let walletId: number | undefined;
+            if (parsedTransaction.walletName && parsedTransaction.walletType) {
+              const walletNameLower = parsedTransaction.walletName.toLowerCase();
+              let matchingWallet = userWallets.find(w => w.name.toLowerCase() === walletNameLower);
+              if (!matchingWallet) {
+                matchingWallet = userWallets.find(w => w.name.toLowerCase().includes(walletNameLower));
+              }
+              if (!matchingWallet) {
+                matchingWallet = userWallets.find(w => walletNameLower.includes(w.name.toLowerCase()));
+              }
+              walletId = matchingWallet?.id;
+            }
+            
+            if (parsedTransaction.type === 'expense') {
+              console.log('🔍 API Debug - Creating pending expense transaction');
+              const pendingTransaction = {
+                type: 'expense' as const,
+                description: parsedTransaction.description,
+                amount: parsedTransaction.amount,
+                category: parsedTransaction.category,
+                walletName: parsedTransaction.walletName,
+                walletId: walletId
+              };
+              
+              response = `I understand you want to record an expense: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} in the ${parsedTransaction.category} category${walletId ? ` using ${parsedTransaction.walletName}` : ''}. Please confirm this transaction.`;
+              
+              return NextResponse.json({
+                success: true,
+                data: {
+                  response,
+                  pendingTransaction,
+                  timestamp: new Date().toISOString()
+                }
+              });
+            } else if (parsedTransaction.type === 'income') {
+              console.log('🔍 API Debug - Creating pending income transaction');
+              const pendingTransaction = {
+                type: 'income' as const,
+                description: parsedTransaction.description,
+                amount: parsedTransaction.amount,
+                source: parsedTransaction.source,
+                walletName: parsedTransaction.walletName,
+                walletId: walletId
+              };
+              
+              response = `I understand you want to record income: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()} from ${parsedTransaction.source}${walletId ? ` to ${parsedTransaction.walletName}` : ''}. Please confirm this transaction.`;
+              
+              return NextResponse.json({
+                success: true,
+                data: {
+                  response,
+                  pendingTransaction,
+                  timestamp: new Date().toISOString()
+                }
+              });
+            } else if (parsedTransaction.type === 'savings') {
+              console.log('🔍 API Debug - Creating pending savings transaction');
+              const pendingTransaction = {
+                type: 'savings' as const,
+                description: parsedTransaction.description,
+                amount: parsedTransaction.amount,
+                goalName: parsedTransaction.goalName,
+                walletName: parsedTransaction.walletName,
+                walletId: walletId
+              };
+              
+              response = `I understand you want to transfer to savings: ${parsedTransaction.description} for Rp${parsedTransaction.amount.toLocaleString()}${walletId ? ` from ${parsedTransaction.walletName}` : ''}. Please confirm this transaction.`;
+              
+              return NextResponse.json({
+                success: true,
+                data: {
+                  response,
+                  pendingTransaction,
+                  timestamp: new Date().toISOString()
+                }
+              });
+            } else if (parsedTransaction.type === 'transfer') {
+              console.log('🔍 API Debug - Creating pending transfer transaction');
+              // For transfers, we need to parse the transfer details
+              try {
+                const transferDetails = await GroqAIService.parseWalletTransfer(message, user.id);
+                if (transferDetails.fromWalletId && transferDetails.toWalletId) {
+                  const pendingTransaction = {
+                    type: 'transfer' as const,
+                    description: parsedTransaction.description,
+                    amount: parsedTransaction.amount,
+                    fromWalletName: transferDetails.fromWalletName,
+                    toWalletName: transferDetails.toWalletName,
+                    fromWalletId: transferDetails.fromWalletId,
+                    toWalletId: transferDetails.toWalletId,
+                    adminFee: parsedTransaction.adminFee || 0
+                  };
+                  
+                  const adminFeeMessage = pendingTransaction.adminFee > 0 ? ` (with Rp ${pendingTransaction.adminFee.toLocaleString()} admin fee)` : '';
+                  response = `I understand you want to transfer Rp ${parsedTransaction.amount.toLocaleString()} from your ${transferDetails.fromWalletName} to your ${transferDetails.toWalletName}${adminFeeMessage}. Please confirm this transaction.`;
+                  
+                  return NextResponse.json({
+                    success: true,
+                    data: {
+                      response,
+                      pendingTransaction,
+                      timestamp: new Date().toISOString()
+                    }
+                  });
+                }
+              } catch (transferError) {
+                console.error('Error parsing transfer details:', transferError);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error in forced transaction parsing:', error);
+        }
+        
+        // If we still couldn't parse a transaction, give a clear message
+        if (isTransactionMode && !response) {
+          console.log('🔍 API Debug - Could not parse transaction in Transaction Mode');
+          response = "📝 You're in Transaction Mode! I couldn't understand that as a transaction.\n\n" +
+                     "Please record a transaction using this format:\n\n" +
+                     "**Expenses:**\n" +
+                     "• 'Beli kopi 25rb pakai BCA'\n" +
+                     "• 'Bayar listrik 200rb dari Dana'\n\n" +
+                     "**Income:**\n" +
+                     "• 'Gaji 8 juta ke BCA'\n" +
+                     "• 'Bonus 1.5 juta ke Mandiri'\n\n" +
+                     "**Savings:**\n" +
+                     "• 'Nabung 1 juta dari BCA'\n" +
+                     "• 'Simpan 500rb untuk liburan'\n\n" +
+                     "**Transfers:**\n" +
+                     "• 'Transfer 500rb dari BCA ke Dana'\n\n" +
+                     "💡 **Tip:** Switch to General Chat mode if you want to ask questions or analyze your data!";
+        }
+      }
+      
+      // Block general chat in Transaction Mode
+      if (isTransactionMode && !response) {
+        console.log('🔍 API Debug - Blocking general chat in Transaction Mode');
+        response = "📝 You're in Transaction Mode! This mode is for recording transactions only.\n\n" +
+                   "To have a general conversation or analyze your data, please switch to General Chat mode using the toggle button.\n\n" +
+                   "In Transaction Mode, you can:\n" +
+                   "• Record expenses: 'Beli kopi 25rb pakai BCA'\n" +
+                   "• Record income: 'Gaji 8 juta ke BCA'\n" +
+                   "• Record savings: 'Nabung 1 juta ke tabungan'\n" +
+                   "• Record transfers: 'Transfer 500rb dari BCA ke Dana'";
+      } else if (!isTransactionMode && !response) {
+        // Generate general chat response using optimized system
+        // Use smaller limit for faster response
+        const allTransactions = await TransactionDatabase.getUserTransactions(user.id, 20, 0);
+        const recentExpenses = allTransactions.filter(t => t.type === 'expense').slice(0, 2);
+        const recentIncome = allTransactions.filter(t => t.type === 'income').slice(0, 2);
+        
+        const expenseContext = recentExpenses.length > 0 
+          ? `Recent expenses: ${recentExpenses.map(e => `${e.description} (Rp${e.amount.toLocaleString()})`).join(', ')}`
+          : 'No recent expenses';
+        
+        const incomeContext = recentIncome.length > 0
+          ? `Recent income: ${recentIncome.map(i => `${i.description} (Rp${i.amount.toLocaleString()})`).join(', ')}`
+          : 'No recent income';
+          
+        const context = `${expenseContext}. ${incomeContext}`;
+        // Add current date context to general chat
+        const currentDate = new Date();
+        const currentDateString = currentDate.toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        });
+        const messageWithDateContext = `${message}\n\nCurrent Date: ${currentDateString}`;
+        response = await GroqAIService.generateChatResponse(messageWithDateContext, context, conversationHistory);
+      }
     }
 
     const totalTime = PerformanceMonitor.endTimer('chat-request-total');

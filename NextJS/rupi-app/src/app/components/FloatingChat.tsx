@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, MessageCircle, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Send, MessageCircle, X, CheckCircle, AlertCircle, Receipt, MessageSquare } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
+import TransactionEditModal from './TransactionEditModal';
+import MultipleTransactionEditModal from './MultipleTransactionEditModal';
 
 interface ChatMessage {
   id: string;
@@ -14,6 +16,21 @@ interface ChatMessage {
   multipleTransactionsCreated?: boolean;
   transactionCount?: number;
   isLoading?: boolean;
+  pendingTransaction?: {
+    type: 'income' | 'expense' | 'savings' | 'transfer';
+    description: string;
+    amount: number;
+    category?: string;
+    source?: string;
+    walletName?: string;
+    goalName?: string;
+    fromWalletName?: string;
+    toWalletName?: string;
+    adminFee?: number;
+  };
+  pendingTransactions?: any[];
+  showConfirmation?: boolean;
+  showMultipleConfirmation?: boolean;
 }
 
 export default function FloatingChat() {
@@ -21,6 +38,11 @@ export default function FloatingChat() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isTransactionMode, setIsTransactionMode] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
+  const [multipleEditModalOpen, setMultipleEditModalOpen] = useState(false);
+  const [editingMultipleTransactions, setEditingMultipleTransactions] = useState<{ transactions: any[], messageId: string } | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
@@ -72,16 +94,21 @@ export default function FloatingChat() {
         .map(msg => `${msg.isUser ? 'User' : 'Assistant'}: ${msg.text}`)
         .join(' | ');
 
+      const requestBody = {
+        message: userMessage,
+        action: 'chat',
+        conversationHistory: conversationHistory || undefined,
+        isTransactionMode: isTransactionMode
+      };
+      
+      console.log('🔍 Frontend Debug - Sending isTransactionMode:', isTransactionMode, 'type:', typeof isTransactionMode);
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: userMessage,
-          action: 'chat',
-          conversationHistory: conversationHistory || undefined
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -89,7 +116,7 @@ export default function FloatingChat() {
       if (data.success) {
         const aiResponse: ChatMessage = {
           id: (Date.now() + 2).toString(),
-          text: data.message || data.data?.response || 'Transaction completed successfully!',
+          text: data.data?.response || data.message || 'Transaction completed successfully!',
           timestamp: new Date(),
           isUser: false,
           transactionCreated: !!data.data?.transactionCreated,
@@ -97,7 +124,11 @@ export default function FloatingChat() {
             (data.data?.transactionCreated?.amount ? 
               (data.data?.transactionCreated.category ? 'expense' : 'income') : undefined),
           multipleTransactionsCreated: !!data.data?.multipleTransactionsCreated,
-          transactionCount: data.data?.multipleTransactionsCreated?.successCount
+          transactionCount: data.data?.multipleTransactionsCreated?.successCount,
+          pendingTransaction: data.data?.pendingTransaction,
+          pendingTransactions: data.data?.pendingTransactions,
+          showConfirmation: isTransactionMode && !!data.data?.pendingTransaction,
+          showMultipleConfirmation: isTransactionMode && !!data.data?.pendingTransactions
         };
 
         // Replace loading message with actual response
@@ -149,6 +180,251 @@ export default function FloatingChat() {
   const handleClose = () => {
     setIsExpanded(false);
     inputRef.current?.blur();
+  };
+
+  const handleConfirmTransaction = async (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message?.pendingTransaction) return;
+
+    setIsLoading(true);
+    
+    try {
+      // Create the actual transaction
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Confirm transaction: ${message.pendingTransaction.description}`,
+          action: 'confirm_transaction',
+          transactionData: message.pendingTransaction
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Update the message to show it's confirmed
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { 
+                ...msg, 
+                showConfirmation: false, 
+                transactionCreated: true,
+                text: `✅ Transaction confirmed: ${message.pendingTransaction?.description} for Rp${message.pendingTransaction?.amount.toLocaleString()}`
+              }
+            : msg
+        ));
+
+        // Refresh dashboard data
+        refreshAfterTransaction();
+      } else {
+        throw new Error(data.error || 'Failed to confirm transaction');
+      }
+    } catch (error) {
+      console.error('Error confirming transaction:', error);
+      // Show error message
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { 
+              ...msg, 
+              showConfirmation: false,
+              text: `❌ Failed to confirm transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
+            }
+          : msg
+      ));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditTransaction = (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message?.pendingTransaction) return;
+
+    // Open the edit modal and store the message ID for later
+    setEditingTransaction({ ...message.pendingTransaction, messageId });
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEditedTransaction = async (updatedTransaction: any) => {
+    setIsLoading(true);
+    setEditModalOpen(false);
+    
+    try {
+      // Create the actual transaction with updated data
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Confirm edited transaction: ${updatedTransaction.description}`,
+          action: 'confirm_transaction',
+          transactionData: updatedTransaction
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Add a new message showing the edited transaction was confirmed
+        const confirmationMessage: ChatMessage = {
+          id: Date.now().toString(),
+          text: `✅ Transaction edited and confirmed: ${updatedTransaction.description} for Rp${updatedTransaction.amount.toLocaleString()}`,
+          timestamp: new Date(),
+          isUser: false,
+          transactionCreated: true
+        };
+        
+        setMessages(prev => [...prev, confirmationMessage]);
+        refreshAfterTransaction();
+      } else {
+        throw new Error(data.error || 'Failed to confirm edited transaction');
+      }
+    } catch (error) {
+      console.error('Error confirming edited transaction:', error);
+      // Show error message
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        text: `❌ Failed to save edited transaction: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+        isUser: false
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConfirmMultipleTransactions = async (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message?.pendingTransactions) return;
+
+    setIsLoading(true);
+    
+    try {
+      // Use the new batch API endpoint
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Confirm multiple transactions`,
+          action: 'confirm_multiple_transactions',
+          transactionsData: message.pendingTransactions
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        const successCount = data.data.successCount || 0;
+        const failCount = data.data.failCount || 0;
+        
+        // Update the message to show results
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { 
+                ...msg, 
+                showMultipleConfirmation: false,
+                text: `✅ Confirmed ${successCount} transaction(s) successfully${failCount > 0 ? `, ${failCount} failed` : ''}`,
+                multipleTransactionsCreated: true,
+                transactionCount: successCount
+              }
+            : msg
+        ));
+
+        // Refresh dashboard data
+        if (successCount > 0) {
+          refreshAfterTransaction();
+        }
+      } else {
+        throw new Error(data.error || 'Failed to confirm transactions');
+      }
+    } catch (error) {
+      console.error('Error confirming multiple transactions:', error);
+      // Show error message
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { 
+              ...msg, 
+              showMultipleConfirmation: false,
+              text: `❌ Failed to confirm transactions: ${error instanceof Error ? error.message : 'Unknown error'}`
+            }
+          : msg
+      ));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditMultipleTransactions = (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message?.pendingTransactions) return;
+
+    // Open the multiple transaction edit modal
+    setEditingMultipleTransactions({ transactions: message.pendingTransactions, messageId });
+    setMultipleEditModalOpen(true);
+  };
+
+  const handleSaveMultipleEditedTransactions = async (updatedTransactions: any[]) => {
+    setIsLoading(true);
+    setMultipleEditModalOpen(false);
+    
+    try {
+      // Confirm all edited transactions using the batch API
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Confirm edited multiple transactions`,
+          action: 'confirm_multiple_transactions',
+          transactionsData: updatedTransactions
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        const successCount = data.data.successCount || 0;
+        const failCount = data.data.failCount || 0;
+        
+        // Add a new message showing the edited transactions were confirmed
+        const confirmationMessage: ChatMessage = {
+          id: Date.now().toString(),
+          text: `✅ Successfully edited and confirmed ${successCount} transaction(s)!${failCount > 0 ? ` ${failCount} failed.` : ''}`,
+          timestamp: new Date(),
+          isUser: false,
+          multipleTransactionsCreated: true,
+          transactionCount: successCount
+        };
+        
+        setMessages(prev => [...prev, confirmationMessage]);
+        refreshAfterTransaction();
+      } else {
+        throw new Error(data.error || 'Failed to confirm edited transactions');
+      }
+    } catch (error) {
+      console.error('Error confirming edited transactions:', error);
+      // Show error message
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        text: `❌ Failed to save edited transactions: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+        isUser: false
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+      setEditingMultipleTransactions(null);
+    }
   };
 
   // Format message text with better styling
@@ -234,7 +510,9 @@ export default function FloatingChat() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">AI Assistant</h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">Online</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Your financial companion
+                </p>
               </div>
             </div>
             <button
@@ -291,6 +569,160 @@ export default function FloatingChat() {
                           </span>
                         </div>
                       )}
+                      {message.showConfirmation && message.pendingTransaction && (
+                        <div className="mt-3 max-w-xs">
+                          <div className="p-2.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg mb-2">
+                            <div className="flex items-center space-x-1.5 mb-1.5">
+                              <div className="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>
+                              <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                                Preview
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-700">
+                                <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Type</span>
+                                <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 capitalize">{message.pendingTransaction.type}</span>
+                              </div>
+                              <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-700">
+                                <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Desc</span>
+                                <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-24">{message.pendingTransaction.description}</span>
+                              </div>
+                              <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-700">
+                                <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Amount</span>
+                                <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Rp{message.pendingTransaction.amount.toLocaleString()}</span>
+                              </div>
+                              {message.pendingTransaction.category && (
+                                <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-700">
+                                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Category</span>
+                                  <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-20">{message.pendingTransaction.category}</span>
+                                </div>
+                              )}
+                              {message.pendingTransaction.source && (
+                                <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-700">
+                                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Source</span>
+                                  <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-20">{message.pendingTransaction.source}</span>
+                                </div>
+                              )}
+                              {message.pendingTransaction.walletName && (
+                                <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-700">
+                                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Wallet</span>
+                                  <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-20">{message.pendingTransaction.walletName}</span>
+                                </div>
+                              )}
+                              {message.pendingTransaction.fromWalletName && message.pendingTransaction.toWalletName && (
+                                <>
+                                  <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-700">
+                                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Transfer</span>
+                                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-20">{message.pendingTransaction.fromWalletName} → {message.pendingTransaction.toWalletName}</span>
+                                  </div>
+                                  {message.pendingTransaction.type === 'transfer' && (
+                                    <div className="flex justify-between items-center py-0.5">
+                                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Admin Fee</span>
+                                      <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                                        {message.pendingTransaction.adminFee && message.pendingTransaction.adminFee > 0 
+                                          ? `Rp${message.pendingTransaction.adminFee.toLocaleString()}` 
+                                          : 'Rp0'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex space-x-1">
+                            <button
+                              onClick={() => handleConfirmTransaction(message.id)}
+                              disabled={isLoading}
+                              className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-green-300 disabled:to-green-400 text-white text-xs font-medium px-1.5 py-1 rounded-md transition-all duration-200 disabled:cursor-not-allowed shadow-sm hover:shadow-md disabled:shadow-none flex items-center justify-center space-x-0.5"
+                            >
+                              {isLoading ? (
+                                <>
+                                  <div className="w-2 h-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                  <span>...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Confirm</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleEditTransaction(message.id)}
+                              disabled={isLoading}
+                              className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-orange-300 disabled:to-orange-400 text-white text-xs font-medium px-1.5 py-1 rounded-md transition-all duration-200 disabled:cursor-not-allowed shadow-sm hover:shadow-md disabled:shadow-none flex items-center justify-center space-x-0.5"
+                            >
+                              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              <span>Edit</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {message.showMultipleConfirmation && message.pendingTransactions && (
+                        <div className="mt-3 max-w-xs">
+                          <div className="p-2.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg mb-2">
+                            <div className="flex items-center space-x-1.5 mb-1.5">
+                              <div className="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>
+                              <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                                Multiple Transactions ({message.pendingTransactions.length})
+                              </span>
+                            </div>
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                              {message.pendingTransactions.map((transaction, index) => (
+                                <div key={index} className="p-2 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                                  <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-600">
+                                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Type</span>
+                                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 capitalize">{transaction.type}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-600">
+                                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Desc</span>
+                                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-24">{transaction.description}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center py-0.5">
+                                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Amount</span>
+                                    <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Rp{transaction.amount.toLocaleString()}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex space-x-1">
+                            <button
+                              onClick={() => handleConfirmMultipleTransactions(message.id)}
+                              disabled={isLoading}
+                              className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-green-300 disabled:to-green-400 text-white text-xs font-medium px-1.5 py-1 rounded-md transition-all duration-200 disabled:cursor-not-allowed shadow-sm hover:shadow-md disabled:shadow-none flex items-center justify-center space-x-0.5"
+                            >
+                              {isLoading ? (
+                                <>
+                                  <div className="w-2 h-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                  <span>...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Confirm All</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleEditMultipleTransactions(message.id)}
+                              disabled={isLoading}
+                              className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-orange-300 disabled:to-orange-400 text-white text-xs font-medium px-1.5 py-1 rounded-md transition-all duration-200 disabled:cursor-not-allowed shadow-sm hover:shadow-md disabled:shadow-none flex items-center justify-center space-x-0.5"
+                            >
+                              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              <span>Edit</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className={`px-4 pb-2 ${
@@ -311,10 +743,40 @@ export default function FloatingChat() {
                   </div>
                 </div>
               </div>
-            );
-            })}
+             );
+             })}
+           </div>
+         </div>
+        )}
+
+        {/* Mode Toggle - Above Input */}
+        {isExpanded && (
+          <div className="mb-3 px-1">
+            <div className="flex items-center justify-center gap-2 bg-neutral-100 dark:bg-neutral-800/50 rounded-2xl p-1.5 border border-neutral-200 dark:border-neutral-700">
+              <button
+                onClick={() => setIsTransactionMode(false)}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  !isTransactionMode
+                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>General Chat</span>
+              </button>
+              <button
+                onClick={() => setIsTransactionMode(true)}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  isTransactionMode
+                    ? 'bg-emerald-500 text-white shadow-sm'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                }`}
+              >
+                <Receipt className="w-4 h-4" />
+                <span>Transaction</span>
+              </button>
+            </div>
           </div>
-        </div>
         )}
 
         {/* Chat Input */}
@@ -327,7 +789,7 @@ export default function FloatingChat() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
               onFocus={handleInputFocus}
-              placeholder="Message..."
+              placeholder={isTransactionMode ? "Record a transaction..." : "Ask me anything..."}
               className="flex-1 px-3 py-2 bg-transparent text-neutral-900 dark:text-white placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none text-sm"
             />
             <button
@@ -345,6 +807,36 @@ export default function FloatingChat() {
           )}
         </div>
       </div>
+
+      {/* Transaction Edit Modal */}
+      {editingTransaction && (
+        <TransactionEditModal
+          isOpen={editModalOpen}
+          onClose={() => {
+            setEditModalOpen(false);
+            // Don't clear editingTransaction immediately to prevent flash
+            setTimeout(() => setEditingTransaction(null), 300);
+          }}
+          transaction={editingTransaction}
+          onSave={handleSaveEditedTransaction}
+          isLoading={isLoading}
+        />
+      )}
+
+      {/* Multiple Transaction Edit Modal */}
+      {editingMultipleTransactions && (
+        <MultipleTransactionEditModal
+          isOpen={multipleEditModalOpen}
+          onClose={() => {
+            setMultipleEditModalOpen(false);
+            // Don't clear editingMultipleTransactions immediately to prevent flash
+            setTimeout(() => setEditingMultipleTransactions(null), 300);
+          }}
+          transactions={editingMultipleTransactions.transactions}
+          onSave={handleSaveMultipleEditedTransactions}
+          isLoading={isLoading}
+        />
+      )}
     </>
   );
 }
