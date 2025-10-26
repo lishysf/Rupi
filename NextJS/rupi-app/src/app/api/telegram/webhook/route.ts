@@ -950,6 +950,8 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
                 amount: decision.amount,
                 fromWalletName: decision.fromWalletName,
                 toWalletName: decision.toWalletName,
+                fromWalletId: decision.fromWalletId,
+                toWalletId: decision.toWalletId,
                 adminFee: decision.adminFee,
                 type: 'transfer'
               };
@@ -2061,8 +2063,8 @@ async function handleCallbackQuery(callbackQuery: any) {
               pendingTx.userId,
               pendingTx.description,
               pendingTx.amount,
-              pendingTx.walletId,
-              pendingTx.destinationWalletId,
+              pendingTx.fromWalletId,
+              pendingTx.toWalletId,
               pendingTx.adminFee
             );
           } else if (pendingTx.type === 'savings') {
@@ -2167,8 +2169,8 @@ async function handleCallbackQuery(callbackQuery: any) {
             pendingTx.userId,
             pendingTx.description,
             pendingTx.amount,
-            pendingTx.walletId,
-            pendingTx.destinationWalletId,
+            pendingTx.fromWalletId,
+            pendingTx.toWalletId,
             pendingTx.adminFee
           );
         } else if (pendingTx.type === 'savings') {
