@@ -13,7 +13,8 @@ import {
   XMarkIcon,
   WalletIcon,
   BanknotesIcon,
-  ChartPieIcon
+  ChartPieIcon,
+  ShareIcon
 } from '@heroicons/react/24/outline';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -45,6 +46,12 @@ const getNavigationItems = (username: string, t: (k: string) => string) => [
     name: 'Budget Tracking',
     href: `/budgets`,
     icon: ChartBarIcon,
+    current: false
+  },
+  {
+    name: 'Split Bill',
+    href: `/split-bill`,
+    icon: ShareIcon,
     current: false
   },
   {
