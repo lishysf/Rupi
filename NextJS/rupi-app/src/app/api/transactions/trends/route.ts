@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-utils';
 import { TransactionDatabase } from '@/lib/database';
+import { 
+  getIndonesiaDate, 
+  getIndonesiaCurrentMonthRange, 
+  getIndonesiaLastDaysRange,
+  formatIndonesiaDate 
+} from '@/lib/indonesia-timezone';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,19 +23,27 @@ export async function GET(request: NextRequest) {
       ? transactions.filter(t => t.type === type)
       : transactions;
 
-    // Calculate date range
-    const now = new Date();
+    // Calculate date range using Indonesia timezone
+    const now = getIndonesiaDate();
     let startDate: Date;
-    const endDate: Date = now;
+    let endDate: Date;
 
     if (range === 'week') {
-      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const weekRange = getIndonesiaLastDaysRange(7);
+      startDate = weekRange.startDate;
+      endDate = weekRange.endDate;
     } else if (range === 'month') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthRange = getIndonesiaCurrentMonthRange();
+      startDate = monthRange.startDate;
+      endDate = monthRange.endDate;
     } else if (range === 'year') {
-      startDate = new Date(now.getFullYear(), 0, 1);
+      const yearStart = new Date(now.getFullYear(), 0, 1);
+      startDate = yearStart;
+      endDate = now;
     } else {
-      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Default to 30 days
+      const daysRange = getIndonesiaLastDaysRange(30); // Default to 30 days
+      startDate = daysRange.startDate;
+      endDate = daysRange.endDate;
     }
 
     // Filter transactions by date range
@@ -42,7 +56,7 @@ export async function GET(request: NextRequest) {
     const dailyData: { [key: string]: { date: string, income: number, expenses: number, savings: number, transfers: number, total: number } } = {};
     
     rangeTransactions.forEach(transaction => {
-      const date = new Date(transaction.date).toISOString().split('T')[0];
+      const date = formatIndonesiaDate(new Date(transaction.date));
       
       if (!dailyData[date]) {
         dailyData[date] = {
@@ -102,8 +116,8 @@ export async function GET(request: NextRequest) {
         trends: trendsData,
         summary,
         range: {
-          start: startDate.toISOString().split('T')[0],
-          end: endDate.toISOString().split('T')[0]
+          start: formatIndonesiaDate(startDate),
+          end: formatIndonesiaDate(endDate)
         }
       },
       message: 'Trends data retrieved successfully'

@@ -682,6 +682,32 @@ export default function FloatingChat() {
                                     <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Desc</span>
                                     <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-24">{transaction.description}</span>
                                   </div>
+                                  {transaction.type === 'expense' && transaction.category && (
+                                    <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-600">
+                                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Category</span>
+                                      <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-24">{transaction.category}</span>
+                                    </div>
+                                  )}
+                                  {transaction.type === 'income' && transaction.source && (
+                                    <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-600">
+                                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Source</span>
+                                      <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-24">{transaction.source}</span>
+                                    </div>
+                                  )}
+                                  {transaction.type === 'savings' && transaction.goalName && (
+                                    <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-600">
+                                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Goal</span>
+                                      <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-24">{transaction.goalName}</span>
+                                    </div>
+                                  )}
+                                  {transaction.type === 'transfer' && (transaction.fromWalletName || transaction.toWalletName) && (
+                                    <div className="flex justify-between items-center py-0.5 border-b border-gray-100 dark:border-gray-600">
+                                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Transfer</span>
+                                      <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate max-w-24">
+                                        {transaction.fromWalletName} → {transaction.toWalletName}
+                                      </span>
+                                    </div>
+                                  )}
                                   <div className="flex justify-between items-center py-0.5">
                                     <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Amount</span>
                                     <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Rp{transaction.amount.toLocaleString()}</span>

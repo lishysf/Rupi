@@ -882,6 +882,12 @@ export async function POST(request: NextRequest) {
                   if (transaction.toWalletName) {
                     toWalletId = findWalletByName(userWallets, transaction.toWalletName, 'bank');
                   }
+                  
+                  // Handle AI response format with walletName2 and walletType2
+                  if (transaction.walletName2 && transaction.walletType2) {
+                    toWalletId = findWalletByName(userWallets, transaction.walletName2, transaction.walletType2);
+                  }
+                  
                   // Fallback: if not specified, use the main walletName for fromWallet
                   if (!fromWalletId && transaction.walletName) {
                     fromWalletId = findWalletByName(userWallets, transaction.walletName, transaction.walletType);
@@ -897,7 +903,7 @@ export async function POST(request: NextRequest) {
                   walletName: transaction.walletName,
                   goalName: transaction.goalName,
                   fromWalletName: transaction.fromWalletName || transaction.walletName,
-                  toWalletName: transaction.toWalletName,
+                  toWalletName: transaction.toWalletName || transaction.walletName2,
                   adminFee: transaction.adminFee,
                   walletId: walletId,
                   fromWalletId: fromWalletId,

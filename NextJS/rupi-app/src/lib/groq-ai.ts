@@ -47,403 +47,98 @@ export interface ParsedMultipleTransactions {
   failedCount: number;
 }
 
-// System prompt for transaction parsing (income, expenses, and savings)
+// Optimized system prompt for transaction parsing (70% token reduction)
 const TRANSACTION_PARSING_PROMPT = `
-BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap pahami Bahasa Inggris bila pengguna memakainya.
-You are an AI assistant that helps parse natural language financial transaction descriptions into structured data.
+Parse financial transactions. Return JSON only.
 
-Available expense categories (BE VERY SPECIFIC):
-1. Housing & Utilities:
-   - Rent (sewa rumah, kontrakan, kos, apartemen)
-   - Mortgage (KPR, cicilan rumah)
-   - Electricity (listrik, PLN, token listrik, bayar listrik) - UTILITY BILLS ONLY
-   - Water (tagihan air PDAM, bayar air PDAM, water bill) - UTILITY BILLS ONLY, NOT for bottled water purchases
-   - Internet (internet, wifi, indihome, first media)
-   - Gas Utility (gas rumah, elpiji, gas lpg)
-   - Home Maintenance (perbaikan rumah, tukang, maintenance, perabot, furniture, mebel, kursi, chair, meja, table, lemari, wardrobe, kasur, bed, sofa, rak, shelf, kulkas, fridge, refrigerator, AC, air conditioner, kipas, fan, TV, television, mesin cuci, washing machine, kompor, stove, rice cooker, blender, setrika, iron, home appliances, elektronik rumah)
-   - Household Supplies (sabun, soap, detergen, detergent, cleaning supplies, sapu, broom, pel, mop, tissue, lap, pembersih)
-2. Food & Groceries:
-   - Groceries (belanja harian, supermarket, minimarket, air minum, aqua, bottled water, le minerale, vit, drinking water)
-   - Dining Out (makan di luar, restoran, warteg, warung)
-   - Coffee & Tea (kopi, teh, boba, coffee shop)
-   - Food Delivery (gofood, grabfood, shopeefood)
-3. Transportation:
-   - Fuel (bensin, bbm, pertamax, pertalite, gas for vehicle)
-   - Vehicle Maintenance (service motor, service mobil, oli, ban, cuci motor, cuci mobil, tune up, ganti oli, car service, motor service, mechanic)
-   - Parking (parkir)
-   - Public Transport (bus, kereta, mrt, lrt, commuter)
-   - Ride Hailing (gojek, grab, ojol, taxi)
-   - Toll (tol, e-toll)
-4. Health & Personal:
-   - Medical & Pharmacy (dokter, doctor, rumah sakit, hospital, klinik, clinic, obat, medicine, apotek, pharmacy, medical checkup, lab test)
-   - Health Insurance (BPJS, asuransi kesehatan, health insurance premium)
-   - Fitness (gym, fitness center, yoga class, pilates, olahraga, sports membership, personal trainer)
-   - Personal Care (salon, potong rambut, haircut, barber, cukur, skincare, perawatan wajah, spa, massage, pijat, facial)
-5. Entertainment & Shopping:
-   - Clothing (baju, pakaian, kaos, t-shirt, celana, pants, jaket, jacket, sepatu, shoes, sandal, fashion, dress, rok, skirt)
-   - Electronics & Gadgets (hp, handphone, smartphone, laptop, komputer, computer, tablet, gadget, elektronik, charger, headphone, earbuds, mouse, keyboard, kabel)
-   - Subscriptions & Streaming (netflix, spotify, youtube premium, disney+, amazon prime, langganan, subscription, streaming service, apple music)
-   - Hobbies & Leisure (game, gaming, video games, mainan, toys, hobi, hobby, collectibles, console, playstation, xbox, nintendo, steam)
-   - Gifts & Celebration (hadiah, gift, kado, present, ulang tahun, birthday, perayaan, celebration, wedding gift, hampers, souvenir)
-6. Financial Obligations:
-   - Debt Payments (bayar hutang, bayar utang, pay debt, cicilan, installment, kredit, credit card payment, kartu kredit, pinjaman, loan payment, angsuran, mortgage payment, KPR, paylater)
-   - Taxes & Fees (pajak, tax, PBB, STNK, pajak kendaraan, retribusi, bea, government fee, tax payment)
-   - Bank Charges (biaya admin, admin fee, biaya bank, bank fee, transfer fee, monthly fee, ATM fee, biaya bulanan)
-7. Family & Others:
-   - Childcare (biaya anak, children expenses, daycare, pengasuhan, babysitter, nanny, penitipan anak)
-   - Education (sekolah, school, kuliah, university, college, SPP, tuition, tuition fee, kursus, course, les, private lesson, buku, books, alat tulis, stationery, tas sekolah)
-   - Pets (kucing, cat, anjing, dog, hewan peliharaan, pet, makanan kucing, cat food, makanan anjing, dog food, vet, dokter hewan, pet grooming)
-   - Travel (travel, trip, liburan, vacation, holiday, tiket pesawat, flight ticket, tiket kereta, hotel, penginapan, accommodation, wisata, tour, tourist, jalan-jalan)
-   - Business Expenses (bisnis, business, usaha, operasional, operational, kantor, office, office supplies, alat kantor, business meeting, client dinner)
-   - Charity & Donations (donasi, donation, sedekah, amal, charity, zakat, infaq, wakaf, sumbangan, contribution)
-   - Emergency (darurat, emergency, urgent expense, keperluan mendesak)
-   - Others (lain-lain, miscellaneous, other expenses, tidak termasuk kategori lain)
+Categories (use EXACT English names only):
+- Groceries, Dining Out, Coffee & Tea, Food Delivery
+- Fuel, Vehicle Maintenance, Parking, Public Transport, Ride Hailing, Toll
+- Rent, Mortgage, Electricity, Water, Internet, Gas Utility, Home Maintenance, Household Supplies
+- Medical & Pharmacy, Health Insurance, Fitness, Personal Care
+- Clothing, Electronics & Gadgets, Subscriptions & Streaming, Hobbies & Leisure, Gifts & Celebration
+- Debt Payments, Taxes & Fees, Bank Charges
+- Childcare, Education, Pets, Travel, Business Expenses, Charity & Donations, Emergency, Others
 
-Available income sources:
-1. Salary (monthly salary, paycheck, wages, gaji bulanan)
-2. Freelance (freelance work, consulting, gig work, kerja lepas)
-3. Business (business income, sales, revenue, penghasilan bisnis, hasil jualan)
-4. Bonus (performance bonus, commission, tips, komisi, bonus kinerja)
-5. Gift (gifts, allowance, money received, hadiah, uang dari orang tua, kiriman)
-6. Others (other income sources, miscellaneous income, pemasukan lainnya)
+CRITICAL: Use ONLY the exact English category names above. Do NOT use Indonesian terms like "Makanan", "Transportasi", or generic terms like "Food", "Transportation", etc.
 
-Your task is to determine if the input is income, expense, savings, or transfer, then parse accordingly. Return ONLY a valid JSON object with this exact structure:
+Food Categorization Rules:
+- "Beli snack", "belanja makanan", "beli makanan" → "Groceries"
+- "Makan di restoran", "makan di luar" → "Dining Out"  
+- "Beli kopi", "beli teh" → "Coffee & Tea"
+- "Gofood", "Grabfood" → "Food Delivery"
 
-For EXPENSES:
-{
-  "type": "expense",
-  "description": "cleaned and formatted description",
-  "amount": number (extracted amount),
-  "category": "exact category name from expense categories",
-  "walletName": "wallet name if mentioned (e.g., BCA, Gojek, Dana)",
-  "walletType": "wallet type if mentioned (e.g., bank, e_wallet, cash)",
-  "confidence": number between 0 and 1
-}
+Income Sources: Salary, Freelance, Business, Bonus, Gift, Others
 
-For INCOME:
-{
-  "type": "income",
-  "description": "cleaned and formatted description",
-  "amount": number (extracted amount),
-  "source": "exact source name from income sources",
-  "walletName": "wallet name if mentioned (e.g., BCA, Gojek, Dana)",
-  "walletType": "wallet type if mentioned (e.g., bank, e_wallet, cash)",
-  "confidence": number between 0 and 1
-}
+Types:
+- Income: money coming in (gaji, bonus, freelance)
+- Expense: money spent (beli, bayar, makan)
+- Savings: transfer to/from savings (tabung, nabung, ambil dari tabungan)
+- Transfer: wallet-to-wallet (transfer dari X ke Y, pindah dari X ke Y)
 
-For SAVINGS:
-{
-  "type": "savings",
-  "description": "cleaned and formatted description",
-  "amount": number (extracted amount),
-  "goalName": "goal name if mentioned, otherwise null",
-  "walletName": "wallet name if mentioned (e.g., BCA, Gojek, Dana)",
-  "walletType": "wallet type if mentioned (e.g., bank, e_wallet, cash)",
-  "confidence": number between 0 and 1
-}
+Wallet Detection:
+- E-wallets: Gojek, Dana, OVO, LinkAja, ShopeePay, Flip, Jenius
+- Banks: BCA, Mandiri, BRI, BNI, CIMB, Bank Jago
+- Cash: tunai, cash
 
-For TRANSFERS (wallet-to-wallet transfers):
-{
-  "type": "transfer",
-  "description": "cleaned and formatted description",
-  "amount": number (extracted amount),
-  "walletName": "source wallet name if mentioned",
-  "walletType": "wallet type if mentioned",
-  "adminFee": number (admin fee if mentioned, 0 if not mentioned),
-  "confidence": number between 0 and 1
-}
+JSON Format:
+Expense: {"type":"expense","description":"clean desc","amount":number,"category":"exact category","walletName":"name or null","walletType":"bank/e_wallet/cash or null","confidence":0-1}
+Income: {"type":"income","description":"clean desc","amount":number,"source":"exact source","walletName":"name or null","walletType":"bank/e_wallet/cash or null","confidence":0-1}
+Savings: {"type":"savings","description":"clean desc","amount":number,"goalName":"goal or null","walletName":"name or null","walletType":"bank/e_wallet/cash or null","confidence":0-1}
+Transfer: {"type":"transfer","description":"clean desc","amount":number,"walletName":"source wallet","walletType":"bank/e_wallet/cash","adminFee":number,"confidence":0-1}
 
-Rules:
-- Detect if input describes receiving money (income), spending money (expense), transferring to/from savings, or wallet-to-wallet transfers
-- Income: money coming into your main account (salary, freelance, etc.)
-- Expenses: money spent from your main account (purchases, bills, etc.)
-- Savings: transferring money between main account and savings account
-  * TO savings: "tabung", "simpan", "nabung", "transfer ke tabungan" (main → savings)
-  * FROM savings: "ambil", "pakai", "tarik dari tabungan", "transfer from savings", "savings to" (savings → main)
-- Transfers: money moved between different wallets (transfer dari X ke Y, pindah dari X ke Y, kirim dari X ke Y) - NOT involving savings
-- Extract the amount as a positive number (remove currency symbols)
-- Choose the most appropriate category/source from the provided lists
-- Clean up the description but keep it informative
-- If type, amount, or category/source is unclear, set confidence lower
-- ALWAYS return valid JSON, nothing else
-
-CATEGORY HINTS (Indonesia-first):
-- Makanan/minuman keywords like: "makan", "bakso", "baso", "mie", "soto", "nasi goreng/nasgor", "warteg", "resto", "cafe", "kopi", "boba" → category = "Dining Out"
-- Belanja harian: "indomaret", "alfamart", "supermarket", "minimarket", "pasar" → category = "Groceries"
-- CRITICAL - Water distinction:
-  * Bottled water purchases: "air minum", "aqua", "le minerale", "vit", "air mineral", "beli air", "air botol" → category = "Groceries"
-  * Water utility bills: "bayar air PDAM", "tagihan air", "air PDAM", "water bill" → category = "Water"
-- Transport - BE VERY SPECIFIC:
-  * Fuel: "bensin", "bbm", "pertamax", "pertalite", "isi bensin", "beli bensin" → category = "Fuel"
-  * Vehicle Maintenance: "service motor", "service mobil", "oli", "ban", "cuci motor", "cuci mobil", "tune up", "ganti oli", "car service" → category = "Vehicle Maintenance"
-  * Parking: "parkir" → category = "Parking"
-  * Public Transport: "bus", "kereta", "commuter", "mrt", "lrt" → category = "Public Transport"
-  * Ride Hailing: "ojol", "gojek", "grab", "taxi" → category = "Ride Hailing"
-  * Toll: "tol", "e-toll", "etoll" → category = "Toll"
-
-Wallet/Payment Method Detection:
-- Look for wallet/payment method mentions in the text
-- Common Indonesian e-wallets: Gojek, GoPay, Dana, OVO, LinkAja, ShopeePay, DANA, Flip, Jenius
-- Common banks: BCA, Mandiri, BRI, BNI, CIMB, Bank Jago
-- Cash: "tunai", "cash", "uang tunai"
-- If wallet is mentioned, add "walletName" and "walletType" fields:
-  * walletType: "e_wallet" for Gojek, Dana, OVO, etc.
-  * walletType: "bank" for BCA, Mandiri, BRI, BNI, etc. (any bank)
-  * walletType: "cash" for physical money
-
-STRICT WALLET RULES:
-- Wallet cue keywords: "pake", "pakai", "dari", "ke", "via", "pakai kartu", "pakai rekening"
-- If any cue keyword is present AND a known wallet/bank alias appears (e.g., "bca", "mandiri", "gopay", "ovo", "dana", "shopeepay", "cash/tunai"), you MUST set walletName and walletType.
-- Normalize names (e.g., "gojek" -> "GoPay", "bca" -> "BCA", "shopee pay" -> "ShopeePay").
-- Do not omit wallet fields when cues are present. If uncertain, pick the closest alias; do not leave them out.
-
-Income Examples:
-Input: "Gajian bulan ini 8 juta"
-Output: {"type": "income", "description": "Monthly salary", "amount": 8000000, "source": "Salary", "confidence": 0.95}
-
-Input: "Dapat bonus kinerja 2 juta"
-Output: {"type": "income", "description": "Performance bonus", "amount": 2000000, "source": "Bonus", "confidence": 0.9}
-
-Input: "Hasil freelance 1.5 juta"
-Output: {"type": "income", "description": "Freelance work payment", "amount": 1500000, "source": "Freelance", "confidence": 0.9}
-
-Expense Examples:
-Input: "Aku beli kopi 50.000"
-Output: {"type": "expense", "description": "Coffee purchase", "amount": 50000, "category": "Food & Groceries", "walletName": null, "walletType": null, "confidence": 0.9}
-
-Input: "Bayar listrik bulan ini 200rb"
-Output: {"type": "expense", "description": "Monthly electricity bill", "amount": 200000, "category": "Electricity", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Beli air minum 5rb"
-Output: {"type": "expense", "description": "Bottled water purchase", "amount": 5000, "category": "Groceries", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Bayar air PDAM 100rb"
-Output: {"type": "expense", "description": "Water utility bill payment", "amount": 100000, "category": "Water", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Bayar cicilan motor 1.5 juta"
-Output: {"type": "expense", "description": "Motorcycle installment payment", "amount": 1500000, "category": "Debt Payments", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Makan nasi padang 50k pake BCA"
-Output: {"type": "expense", "description": "Nasi padang meal", "amount": 50000, "category": "Food & Groceries", "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
-
-Input: "Beli kopi 25rb pakai Gojek"
-Output: {"type": "expense", "description": "Coffee purchase", "amount": 25000, "category": "Food & Groceries", "walletName": "Gojek", "walletType": "e_wallet", "confidence": 0.95}
-
- Input: "makan baso 50k pake bca"
- Output: {"type": "expense", "description": "Meatball meal", "amount": 50000, "category": "Dining Out", "walletName": "BCA", "walletType": "bank", "confidence": 0.9}
-
-Savings Examples (Transfer from main to savings):
-Input: "Tabung deposito 2 juta"
-Output: {"type": "savings", "description": "Transfer to savings deposit", "amount": 2000000, "goalName": null, "confidence": 0.9}
-
-Input: "Nabung 2 juta dari BCA"
-Output: {"type": "savings", "description": "Transfer to savings from BCA", "amount": 2000000, "goalName": null, "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
-
-Input: "Tabung untuk laptop 1 juta"
-Output: {"type": "savings", "description": "Transfer to laptop savings", "amount": 1000000, "goalName": "laptop", "confidence": 0.9}
-
-Input: "Emergency fund 3 juta"
-Output: {"type": "savings", "description": "Transfer to emergency fund", "amount": 3000000, "goalName": "emergency fund", "confidence": 0.9}
-
-Reverse Savings Examples (Transfer from savings to main):
-Input: "Ambil dari tabungan 1 juta"
-Output: {"type": "savings", "description": "Transfer from savings to main balance", "amount": 1000000, "goalName": null, "confidence": 0.9}
-
-Input: "Pakai emergency fund 500rb"
-Output: {"type": "savings", "description": "Transfer from emergency fund to main balance", "amount": 500000, "goalName": "emergency fund", "confidence": 0.9}
-
-Input: "Transfer from savings to BCA 2 juta"
-Output: {"type": "savings", "description": "Transfer from savings to BCA", "amount": 2000000, "goalName": null, "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
-
-Input: "Savings to GoPay 1 juta"
-Output: {"type": "savings", "description": "Transfer from savings to GoPay", "amount": 1000000, "goalName": null, "walletName": "GoPay", "walletType": "e_wallet", "confidence": 0.95}
-
-Wallet Examples:
-Input: "Bayar makan pakai Gojek 50rb"
-Output: {"type": "expense", "description": "Food payment via Gojek", "amount": 50000, "category": "Food & Groceries", "walletName": "Gojek", "walletType": "e_wallet", "confidence": 0.95}
-
-Input: "Gaji 5 juta masuk ke rekening BCA"
-Output: {"type": "income", "description": "Salary to BCA account", "amount": 5000000, "source": "Salary", "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
-
-Input: "Gajian 5juta ke bca"
-Output: {"type": "income", "description": "Salary to BCA", "amount": 5000000, "source": "Salary", "walletName": "BCA", "walletType": "bank", "confidence": 0.95}
-
-Input: "Gaji 3 juta ke Gojek"
-Output: {"type": "income", "description": "Salary to Gojek", "amount": 3000000, "source": "Salary", "walletName": "Gojek", "walletType": "e_wallet", "confidence": 0.95}
-
-Input: "Transfer 1 juta ke Dana"
-Output: {"type": "income", "description": "Transfer to Dana", "amount": 1000000, "source": "Others", "walletName": "Dana", "walletType": "e_wallet", "confidence": 0.9}
-
-Input: "Beli bensin pakai Dana 100rb"
-Output: {"type": "expense", "description": "Gas purchase via Dana", "amount": 100000, "category": "Fuel", "walletName": "Dana", "walletType": "e_wallet", "confidence": 0.9}
-
-Input: "Service motor 200rb"
-Output: {"type": "expense", "description": "Motorcycle service", "amount": 200000, "category": "Vehicle Maintenance", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Ganti oli mobil 350rb"
-Output: {"type": "expense", "description": "Car oil change", "amount": 350000, "category": "Vehicle Maintenance", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Bayar SPP sekolah 500rb"
-Output: {"type": "expense", "description": "School tuition payment", "amount": 500000, "category": "Education", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Beli buku kuliah 150rb"
-Output: {"type": "expense", "description": "College books purchase", "amount": 150000, "category": "Education", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Potong rambut 50rb"
-Output: {"type": "expense", "description": "Haircut", "amount": 50000, "category": "Personal Care", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Bayar gym bulan ini 200rb"
-Output: {"type": "expense", "description": "Monthly gym membership", "amount": 200000, "category": "Fitness", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Beli obat di apotek 75rb"
-Output: {"type": "expense", "description": "Pharmacy medicine purchase", "amount": 75000, "category": "Medical & Pharmacy", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Netflix langganan 50rb"
-Output: {"type": "expense", "description": "Netflix subscription", "amount": 50000, "category": "Subscriptions & Streaming", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Beli sepatu 300rb"
-Output: {"type": "expense", "description": "Shoes purchase", "amount": 300000, "category": "Clothing", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Hadiah ulang tahun teman 100rb"
-Output: {"type": "expense", "description": "Birthday gift for friend", "amount": 100000, "category": "Gifts & Celebration", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Tiket pesawat Jakarta-Bali 800rb"
-Output: {"type": "expense", "description": "Flight ticket Jakarta-Bali", "amount": 800000, "category": "Travel", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Makanan kucing 100rb"
-Output: {"type": "expense", "description": "Cat food purchase", "amount": 100000, "category": "Pets", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Zakat fitrah 50rb"
-Output: {"type": "expense", "description": "Zakat fitrah payment", "amount": 50000, "category": "Charity & Donations", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Bayar pajak kendaraan 300rb"
-Output: {"type": "expense", "description": "Vehicle tax payment", "amount": 300000, "category": "Taxes & Fees", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Beli lemari 2 juta"
-Output: {"type": "expense", "description": "Wardrobe purchase", "amount": 2000000, "category": "Home Maintenance", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Beli kulkas baru 3.5 juta"
-Output: {"type": "expense", "description": "New refrigerator purchase", "amount": 3500000, "category": "Home Maintenance", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Beli sabun cuci piring 15rb"
-Output: {"type": "expense", "description": "Dish soap purchase", "amount": 15000, "category": "Household Supplies", "walletName": null, "walletType": null, "confidence": 0.95}
-
-Input: "Bayar dengan tunai 25rb"
-Output: {"type": "expense", "description": "Cash payment", "amount": 25000, "category": "Others", "walletName": "Cash", "walletType": "cash", "confidence": 0.9}
-
-Input: "Tarik dari laptop savings 2 juta"
-Output: {"type": "savings", "description": "Transfer from laptop savings to main balance", "amount": 2000000, "goalName": "laptop", "confidence": 0.9}
-
-Transfer Examples (Wallet-to-wallet transfers):
-Input: "Transfer 1 juta dari BCA ke GoPay"
-Output: {"type": "transfer", "description": "Transfer from BCA to GoPay", "amount": 1000000, "walletName": "BCA", "walletType": "bank", "adminFee": 0, "confidence": 0.95}
-
-Input: "Pindah 500rb dari Mandiri ke Dana"
-Output: {"type": "transfer", "description": "Transfer from Mandiri to Dana", "amount": 500000, "walletName": "Mandiri", "walletType": "bank", "adminFee": 0, "confidence": 0.95}
-
-Input: "Kirim 2 juta dari Gojek ke BCA"
-Output: {"type": "transfer", "description": "Transfer from Gojek to BCA", "amount": 2000000, "walletName": "Gojek", "walletType": "e_wallet", "adminFee": 0, "confidence": 0.95}
-
-Input: "Transfer 1 juta dari BCA ke GoPay dengan biaya admin 5rb"
-Output: {"type": "transfer", "description": "Transfer from BCA to GoPay", "amount": 1000000, "walletName": "BCA", "walletType": "bank", "adminFee": 5000, "confidence": 0.95}
-
-Input: "Pindah 500rb dari Mandiri ke Dana, fee 2rb"
-Output: {"type": "transfer", "description": "Transfer from Mandiri to Dana", "amount": 500000, "walletName": "Mandiri", "walletType": "bank", "adminFee": 2000, "confidence": 0.95}
+Examples:
+"Beli kopi 25rb pakai BCA" → {"type":"expense","description":"Coffee purchase","amount":25000,"category":"Coffee & Tea","walletName":"BCA","walletType":"bank","confidence":0.95}
+"Beli snack di mall" → {"type":"expense","description":"Snack purchase at mall","amount":25000,"category":"Groceries","walletName":null,"walletType":null,"confidence":0.9}
+"Makan di restoran" → {"type":"expense","description":"Restaurant meal","amount":50000,"category":"Dining Out","walletName":null,"walletType":null,"confidence":0.95}
+"Gaji 5 juta" → {"type":"income","description":"Monthly salary","amount":5000000,"source":"Salary","walletName":null,"walletType":null,"confidence":0.95}
+"Tabung 1 juta" → {"type":"savings","description":"Transfer to savings","amount":1000000,"goalName":null,"walletName":null,"walletType":null,"confidence":0.9}
+"Transfer 500rb dari BCA ke Dana" → {"type":"transfer","description":"Transfer from BCA to Dana","amount":500000,"walletName":"BCA","walletType":"bank","adminFee":0,"confidence":0.95}
 `;
 
 // System prompt for parsing multiple transactions
 const MULTIPLE_TRANSACTION_PARSING_PROMPT = `
-BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap pahami Bahasa Inggris bila pengguna memakainya.
-You are an AI assistant that helps parse natural language financial transaction descriptions that contain MULTIPLE transactions into structured data.
+Parse multiple financial transactions. Return JSON array only.
 
-Available expense categories (BE VERY SPECIFIC):
-1. Housing & Utilities:
-   - Rent (sewa rumah, kontrakan, kos, apartemen)
-   - Mortgage (KPR, cicilan rumah)
-   - Electricity (listrik, PLN, token listrik, bayar listrik) - UTILITY BILLS ONLY
-   - Water (tagihan air PDAM, bayar air PDAM, water bill) - UTILITY BILLS ONLY, NOT for bottled water purchases
-   - Internet (internet, wifi, indihome, first media)
-   - Gas Utility (gas rumah, elpiji, gas lpg)
-   - Home Maintenance (perbaikan rumah, tukang, maintenance, perabot, furniture, mebel, kursi, chair, meja, table, lemari, wardrobe, kasur, bed, sofa, rak, shelf, kulkas, fridge, refrigerator, AC, air conditioner, kipas, fan, TV, television, mesin cuci, washing machine, kompor, stove, rice cooker, blender, setrika, iron, home appliances, elektronik rumah)
-   - Household Supplies (sabun, soap, detergen, detergent, cleaning supplies, sapu, broom, pel, mop, tissue, lap, pembersih)
-2. Food & Groceries:
-   - Groceries (belanja harian, supermarket, minimarket, air minum, aqua, bottled water, le minerale, vit, drinking water)
-   - Dining Out (makan di luar, restoran, warteg, warung)
-   - Coffee & Tea (kopi, teh, boba, coffee shop)
-   - Food Delivery (gofood, grabfood, shopeefood)
-3. Transportation:
-   - Fuel (bensin, bbm, pertamax, pertalite, gas for vehicle)
-   - Vehicle Maintenance (service motor, service mobil, oli, ban, cuci motor, cuci mobil, tune up, ganti oli, car service, motor service, mechanic)
-   - Parking (parkir)
-   - Public Transport (bus, kereta, mrt, lrt, commuter)
-   - Ride Hailing (gojek, grab, ojol, taxi)
-   - Toll (tol, e-toll)
-4. Health & Personal:
-   - Medical & Pharmacy (dokter, doctor, rumah sakit, hospital, klinik, clinic, obat, medicine, apotek, pharmacy, medical checkup, lab test)
-   - Health Insurance (BPJS, asuransi kesehatan, health insurance premium)
-   - Fitness (gym, fitness center, yoga class, pilates, olahraga, sports membership, personal trainer)
-   - Personal Care (salon, potong rambut, haircut, barber, cukur, skincare, perawatan wajah, spa, massage, pijat, facial)
-5. Entertainment & Shopping:
-   - Clothing (baju, pakaian, kaos, t-shirt, celana, pants, jaket, jacket, sepatu, shoes, sandal, fashion, dress, rok, skirt)
-   - Electronics & Gadgets (hp, handphone, smartphone, laptop, komputer, computer, tablet, gadget, elektronik, charger, headphone, earbuds, mouse, keyboard, kabel)
-   - Subscriptions & Streaming (netflix, spotify, youtube premium, disney+, amazon prime, langganan, subscription, streaming service, apple music)
-   - Hobbies & Leisure (game, gaming, video games, mainan, toys, hobi, hobby, collectibles, console, playstation, xbox, nintendo, steam)
-   - Gifts & Celebration (hadiah, gift, kado, present, ulang tahun, birthday, perayaan, celebration, wedding gift, hampers, souvenir)
-6. Financial Obligations:
-   - Debt Payments (bayar hutang, bayar utang, pay debt, cicilan, installment, kredit, credit card payment, kartu kredit, pinjaman, loan payment, angsuran, mortgage payment, KPR, paylater)
-   - Taxes & Fees (pajak, tax, PBB, STNK, pajak kendaraan, retribusi, bea, government fee, tax payment)
-   - Bank Charges (biaya admin, admin fee, biaya bank, bank fee, transfer fee, monthly fee, ATM fee, biaya bulanan)
-7. Family & Others:
-   - Childcare (biaya anak, children expenses, daycare, pengasuhan, babysitter, nanny, penitipan anak)
-   - Education (sekolah, school, kuliah, university, college, SPP, tuition, tuition fee, kursus, course, les, private lesson, buku, books, alat tulis, stationery, tas sekolah)
-   - Pets (kucing, cat, anjing, dog, hewan peliharaan, pet, makanan kucing, cat food, makanan anjing, dog food, vet, dokter hewan, pet grooming)
-   - Travel (travel, trip, liburan, vacation, holiday, tiket pesawat, flight ticket, tiket kereta, hotel, penginapan, accommodation, wisata, tour, tourist, jalan-jalan)
-   - Business Expenses (bisnis, business, usaha, operasional, operational, kantor, office, office supplies, alat kantor, business meeting, client dinner)
-   - Charity & Donations (donasi, donation, sedekah, amal, charity, zakat, infaq, wakaf, sumbangan, contribution)
-   - Emergency (darurat, emergency, urgent expense, keperluan mendesak)
-   - Others (lain-lain, miscellaneous, other expenses, tidak termasuk kategori lain)
+Categories (use EXACT English names only):
+- Groceries, Dining Out, Coffee & Tea, Food Delivery
+- Fuel, Vehicle Maintenance, Parking, Public Transport, Ride Hailing, Toll
+- Rent, Mortgage, Electricity, Water, Internet, Gas Utility, Home Maintenance, Household Supplies
+- Medical & Pharmacy, Health Insurance, Fitness, Personal Care
+- Clothing, Electronics & Gadgets, Subscriptions & Streaming, Hobbies & Leisure, Gifts & Celebration
+- Debt Payments, Taxes & Fees, Bank Charges
+- Childcare, Education, Pets, Travel, Business Expenses, Charity & Donations, Emergency, Others
 
-Available income sources:
-1. Salary (monthly salary, paycheck, wages, gaji bulanan)
-2. Freelance (freelance work, consulting, gig work, kerja lepas)
-3. Business (business income, sales, revenue, penghasilan bisnis, hasil jualan)
-4. Bonus (performance bonus, commission, tips, komisi, bonus kinerja)
-5. Gift (gifts, allowance, money received, hadiah, uang dari orang tua, kiriman)
-6. Others (other income sources, miscellaneous income, pemasukan lainnya)
+CRITICAL: Use ONLY the exact English category names above. Do NOT use Indonesian terms like "Makanan", "Transportasi", or generic terms like "Food", "Transportation", etc.
 
-Your task is to identify and parse ALL transactions mentioned in the input. Look for multiple transactions separated by commas, "terus", "lalu", "kemudian", or other connecting words.
+Income Sources: Salary, Freelance, Business, Bonus, Gift, Others
 
-Return ONLY a valid JSON object with this exact structure:
+Types:
+- Income: money coming in (gaji, bonus, freelance)
+- Expense: money spent (beli, bayar, makan)
+- Savings: transfer to/from savings (tabung, nabung, ambil dari tabungan)
+- Transfer: wallet-to-wallet (transfer dari X ke Y, pindah dari X ke Y)
 
-{
-  "transactions": [
+Wallet Detection:
+- E-wallets: Gojek, Dana, OVO, LinkAja, ShopeePay, Flip, Jenius
+- Banks: BCA, Mandiri, BRI, BNI, CIMB, Bank Jago
+- Cash: tunai, cash
+
+JSON Array Format:
+[
     {
       "type": "expense|income|savings|transfer",
-      "description": "cleaned and formatted description",
-      "amount": number (extracted amount),
-      "category": "exact category name from expense categories" (for expenses only),
-      "source": "exact source name from income sources" (for income only),
-      "goalName": "goal name if mentioned, otherwise null" (for savings only),
-      "assetName": "asset name if mentioned, otherwise null" (for investments only),
-       "walletName": "wallet name if mentioned (e.g., BCA, Gojek, Dana)",
-       "walletType": "wallet type if mentioned (e.g., bank, e_wallet, cash)",
-       "adminFee": number (admin fee for transfers, 0 if not mentioned),
-      "confidence": number between 0 and 1
-    }
-  ]
-}
-
-Rules:
-- Parse EACH transaction separately
-- Income: money coming into your main account (salary, freelance, etc.)
-- Expenses: money spent from your main account (purchases, bills, etc.)
-- Savings: transferring money FROM main account TO savings account
-- Transfer: moving money between wallets (e.g., "transfer dari BCA ke GoPay")
-- Extract amounts as positive numbers (remove currency symbols)
-- Choose the most appropriate category/source from the provided lists
-- Clean up descriptions but keep them informative
-- If any transaction is unclear, set confidence lower but still include it
-- ALWAYS return valid JSON, nothing else
+    "description": "clean desc",
+    "amount": number,
+    "category": "exact category" (expenses only),
+    "source": "exact source" (income only),
+    "goalName": "goal or null" (savings only),
+    "walletName": "name or null",
+    "walletType": "bank/e_wallet/cash or null",
+    "adminFee": number (transfers only),
+    "confidence": 0-1
+  }
+]
 
 CRITICAL CATEGORY DISTINCTIONS:
 - Bottled water purchases ("air minum", "aqua", "le minerale") → "Groceries", NOT "Water"
@@ -454,15 +149,12 @@ CRITICAL CATEGORY DISTINCTIONS:
 
 IMPORTANT: Wallet-to-wallet transfers should be classified as "transfer", NOT "savings"
 
-Multiple Transaction Examples:
-Input: "hari ini aku beli kopi 50k, makan di warteg 10k, terus dapat gaji 1 juta"
-Output: {
-  "transactions": [
-    {"type": "expense", "description": "Coffee purchase", "amount": 50000, "category": "Food & Groceries", "walletName": null, "walletType": null, "confidence": 0.9},
-    {"type": "expense", "description": "Meal at warteg", "amount": 10000, "category": "Food & Groceries", "walletName": null, "walletType": null, "confidence": 0.9},
-    {"type": "income", "description": "Salary received", "amount": 1000000, "source": "Salary", "walletName": null, "walletType": null, "confidence": 0.95}
-  ]
-}
+Examples:
+"Hari ini beli kopi 25rb pakai BCA, makan siang 50rb pakai Gojek" → 
+[{"type":"expense","description":"Coffee purchase","amount":25000,"category":"Coffee & Tea","walletName":"BCA","walletType":"bank","confidence":0.95},{"type":"expense","description":"Lunch","amount":50000,"category":"Dining Out","walletName":"Gojek","walletType":"e_wallet","confidence":0.95}]
+
+"Gaji 5 juta ke BCA, bonus 1 juta ke GoPay" → 
+[{"type":"income","description":"Monthly salary to BCA","amount":5000000,"source":"Salary","walletName":"BCA","walletType":"bank","confidence":0.95},{"type":"income","description":"Performance bonus to GoPay","amount":1000000,"source":"Bonus","walletName":"GoPay","walletType":"e_wallet","confidence":0.9}]
 
 Input: "bayar listrik 200rb, bensin 50rb, terus tabung 500rb"
 Output: {
@@ -541,7 +233,8 @@ export class GroqAIService {
       const lower = (category || '').toLowerCase();
       const descLower = description.toLowerCase();
       // Expanded keyword-based normalization for Indonesian users
-      const isDiningOut = /(makan|resto|restoran|warteg|warung|sushi|ayam|nasi goreng|nasgor|nasi padang|kopi|coffee|boba|cafe|bakso|baso|mie ayam|mie\b|soto|kuliner)/.test(descLower);
+      const isDiningOut = /(makan|resto|restoran|warteg|warung|sushi|ayam|nasi goreng|nasgor|nasi padang|bakso|baso|mie ayam|mie\b|soto|kuliner)/.test(descLower);
+      const isCoffeeTea = /(kopi|coffee|boba|cafe|teh|tea)/.test(descLower);
       const isBottledWater = /(air minum|aqua|le minerale|vit\b|air mineral|beli air|air botol|drinking water|bottled water)/.test(descLower);
       const isWaterBill = /(bayar air|tagihan air|air pdam|water bill|pdam)/.test(descLower);
       const isFurniture = /(perabot|furniture|mebel|kursi|chair|meja|table|lemari|wardrobe|kasur|bed|sofa|rak|shelf|kulkas|fridge|refrigerator|ac\b|air conditioner|kipas|fan|tv\b|television|mesin cuci|washing machine|kompor|stove|rice cooker|blender|setrika|iron)/.test(descLower);
@@ -579,8 +272,35 @@ export class GroqAIService {
       }
       // If AI returned a generic/foreign label, normalize using description cues
       if (!category || lower === 'others' || lower === 'food & groceries' || lower === 'food & dining' || lower === 'makanan' || lower === 'minuman' || lower === 'kuliner') {
-        if (isDiningOut) category = 'Dining Out';
+        if (isCoffeeTea) category = 'Coffee & Tea';
+        else if (isDiningOut) category = 'Dining Out';
         else if (isGroceries) category = 'Groceries';
+      }
+      
+      // Handle specific Indonesian generic terms
+      if (lower === 'makanan' || lower === 'minuman' || lower === 'makanan/minuman') {
+        if (isCoffeeTea) category = 'Coffee & Tea';
+        else if (isDiningOut) category = 'Dining Out';
+        else if (isGroceries) category = 'Groceries';
+        else category = 'Groceries'; // Default fallback for food items
+      }
+      
+      // Handle generic shopping terms
+      if (lower === 'fashion' || lower === 'shopping' || lower === 'belanja') {
+        if (isClothing) category = 'Clothing';
+        else if (isElectronics) category = 'Electronics & Gadgets';
+        else if (isHobbies) category = 'Hobbies & Leisure';
+        else category = 'Clothing'; // Default fallback for shopping
+      }
+      
+      if (lower === 'transportasi') {
+        if (isVehicleMaintenance) category = 'Vehicle Maintenance';
+        else if (isFuel) category = 'Fuel';
+        else if (isParking) category = 'Parking';
+        else if (isPublicTransport) category = 'Public Transport';
+        else if (isRideHailing) category = 'Ride Hailing';
+        else if (isToll) category = 'Toll';
+        else category = 'Fuel'; // Default fallback
       }
       // Housing items
       if (!category || lower === 'housing & utilities' || lower === 'rumah' || lower === 'home') {
@@ -623,9 +343,18 @@ export class GroqAIService {
         else if (isEmergency) category = 'Emergency';
       }
       // Generic buckets mapped using description cues when AI returns broad labels
-      if ((lower === 'food & dining' || lower === 'makanan' || lower === 'minuman' || lower === 'kuliner') && isDiningOut) category = 'Dining Out';
-      if ((lower === 'food & groceries' || lower === 'belanja' || lower === 'belanja harian') && !isDiningOut && isGroceries) category = 'Groceries';
-      if (lower === 'transportation' || lower === 'transportasi') category = 'Fuel';
+      if ((lower === 'food & dining' || lower === 'makanan' || lower === 'minuman' || lower === 'kuliner') && isCoffeeTea) category = 'Coffee & Tea';
+      else if ((lower === 'food & dining' || lower === 'makanan' || lower === 'minuman' || lower === 'kuliner') && isDiningOut) category = 'Dining Out';
+      if ((lower === 'food & groceries' || lower === 'belanja' || lower === 'belanja harian') && !isDiningOut && !isCoffeeTea && isGroceries) category = 'Groceries';
+      if (lower === 'transportation' || lower === 'transportasi') {
+        if (isVehicleMaintenance) category = 'Vehicle Maintenance';
+        else if (isFuel) category = 'Fuel';
+        else if (isParking) category = 'Parking';
+        else if (isPublicTransport) category = 'Public Transport';
+        else if (isRideHailing) category = 'Ride Hailing';
+        else if (isToll) category = 'Toll';
+        else category = 'Fuel'; // Default fallback
+      }
       if (lower === 'health & personal' || lower === 'kesehatan' || lower === 'personal') category = 'Medical & Pharmacy';
       if (lower === 'entertainment & shopping' || lower === 'hiburan' || lower === 'belanja') {
         if (!category) category = isClothing ? 'Clothing' : isElectronics ? 'Electronics & Gadgets' : isSubscriptions ? 'Subscriptions & Streaming' : isGifts ? 'Gifts & Celebration' : isHobbies ? 'Hobbies & Leisure' : undefined;
@@ -716,7 +445,6 @@ export class GroqAIService {
     }
 
     const DECIDE_PROMPT = `
-BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap pahami Bahasa Inggris bila pengguna memakainya.
 You are an AI for a finance app. Decide the user's intent and, if applicable, parse transactions.
 
 Intent values:
@@ -724,6 +452,23 @@ Intent values:
 - multiple_transaction: multiple transactions in one message
 - data_analysis: user asks about their data/summary/insights
 - general_chat: normal chat/questions about the app
+
+CRITICAL CATEGORY RULES - Use EXACT English names only:
+- Food: "Groceries", "Dining Out", "Coffee & Tea", "Food Delivery"
+- Transport: "Fuel", "Vehicle Maintenance", "Parking", "Public Transport", "Ride Hailing", "Toll"
+- Home: "Rent", "Mortgage", "Electricity", "Water", "Internet", "Gas Utility", "Home Maintenance", "Household Supplies"
+- Health: "Medical & Pharmacy", "Health Insurance", "Fitness", "Personal Care"
+- Shopping: "Clothing", "Electronics & Gadgets", "Subscriptions & Streaming", "Hobbies & Leisure", "Gifts & Celebration"
+- Finance: "Debt Payments", "Taxes & Fees", "Bank Charges"
+- Other: "Childcare", "Education", "Pets", "Travel", "Business Expenses", "Charity & Donations", "Emergency", "Others"
+
+FORBIDDEN: "Makanan", "Minuman", "Makanan/Minuman", "Fashion", "Transportasi", "Food", "Transportation", "Shopping"
+
+Examples:
+"Beli permen di mall" → category: "Groceries"
+"Beli sepatu baru" → category: "Clothing"
+"Beli kopi" → category: "Coffee & Tea"
+"Makan di restoran" → category: "Dining Out"
 
 ${walletContext}
 
@@ -737,7 +482,7 @@ Return ONLY JSON in this structure:
       "type": "expense|income|savings|transfer",
       "description": "...",
       "amount": number,
-      "category": "..." (for expense),
+      "category": "..." (for expense - use EXACT English names above),
       "source": "..." (for income),
       "goalName": "..." or null (for savings),
       "assetName": "..." or null (for investments),
@@ -756,9 +501,9 @@ Return ONLY JSON in this structure:
           { role: 'user', content: userInput }
         ],
         model: 'llama-3.1-8b-instant',
-        temperature: 0.1,
-        max_completion_tokens: 400,
-        top_p: 0.9,
+        temperature: 0.3,
+        max_completion_tokens: 500,
+        top_p: 0.8,
         stream: false,
         stop: null
       });
@@ -1269,7 +1014,6 @@ Return ONLY JSON in this structure:
       }
 
       const intentPrompt = `
-BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap pahami Bahasa Inggris bila pengguna memakainya.
 You are an AI intent classifier for a financial assistant. Analyze the user's message and determine the most appropriate response type.
 
 Response types:
@@ -1568,25 +1312,22 @@ Return ONLY one of these exact words: transaction, multiple_transaction, data_an
   static async generateChatResponse(userMessage: string, context?: string, conversationHistory?: string): Promise<string> {
     try {
       const systemPrompt = `
-BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap pahami Bahasa Inggris bila pengguna memakainya.
-You are a helpful AI financial assistant for the Rupi expense tracking app. 
-You help users track their expenses, analyze their financial data, and provide insights.
+You are a financial assistant for Rupi expense tracking app. Help users with transactions, analysis, and insights.
 
-Your capabilities:
-1. Record transactions (income, expenses, savings)
-2. Analyze financial data and provide insights
-3. Answer questions about spending patterns, budgets, and financial health
-4. Support specific category analysis (e.g., "analyze my food spending", "breakdown transportation costs")
+Capabilities:
+- Record transactions (income, expenses, savings)
+- Analyze financial data and provide insights
+- Answer questions about spending patterns and budgets
 
-Response guidelines:
-- Keep responses friendly, helpful, and conversational
-- Use clear formatting with bullet points, numbers, or sections when appropriate
-- When analyzing data, provide specific amounts and percentages
-- Give actionable advice based on the user's financial situation
-- Use emojis sparingly but effectively to make responses more engaging
-- Format currency as "Rp X,XXX,XXX" for better readability
-- Use conversation history context when provided to give more relevant responses
-- Support follow-up questions by referencing previous context
+Categories: Groceries, Dining Out, Coffee & Tea, Food Delivery, Fuel, Vehicle Maintenance, Parking, Public Transport, Ride Hailing, Toll, Rent, Mortgage, Electricity, Water, Internet, Gas Utility, Home Maintenance, Household Supplies, Medical & Pharmacy, Health Insurance, Fitness, Personal Care, Clothing, Electronics & Gadgets, Subscriptions & Streaming, Hobbies & Leisure, Gifts & Celebration, Debt Payments, Taxes & Fees, Bank Charges, Childcare, Education, Pets, Travel, Business Expenses, Charity & Donations, Emergency, Others
+
+Guidelines:
+- Be friendly and conversational
+- Use clear formatting with bullet points
+- Provide specific amounts and percentages
+- Give actionable advice
+- Format currency as "Rp X,XXX,XXX"
+- Use conversation history when provided
 
 Current Date: ${new Date().toLocaleDateString('en-US', { 
   weekday: 'long', 
@@ -1595,13 +1336,7 @@ Current Date: ${new Date().toLocaleDateString('en-US', {
   day: 'numeric' 
 })} (${new Date().toISOString().split('T')[0]})
 
-${context ? `Current financial data context: ${context}` : ''}
-
-Examples of good responses:
-- "Here's your spending breakdown for this month: 🍽️ Food & Dining: Rp 2,500,000 (45%) 🚗 Transportation: Rp 1,200,000 (22%) 🏠 Housing: Rp 1,800,000 (33%)"
-- "Great job! You've saved Rp 5,000,000 this month, which is 25% of your income. Consider increasing your emergency fund to 6 months of expenses."
-- "I notice you spent Rp 800,000 on dining out this week. Try meal planning to reduce this to Rp 400,000 and save Rp 400,000 monthly."
-- "Based on your previous question about food spending, here's a detailed breakdown of your Food & Groceries category..."
+${context ? `Financial context: ${context}` : ''}
       `;
 
       const messages: Array<{role: "system" | "user" | "assistant", content: string}> = [
@@ -1808,20 +1543,17 @@ Output: {"fromWalletId": 2, "toWalletId": 1, "fromWalletName": "Gojek", "toWalle
       console.log('Generating data analysis with data:', financialData);
       
       const systemPrompt = `
-BAHASA: Utamakan Bahasa Indonesia untuk memahami dan menghasilkan output. Tetap pahami Bahasa Inggris bila pengguna memakainya.
-You are a financial data analyst AI. You MUST use the EXACT numbers provided in the data.
+You are a financial data analyst. Use EXACT numbers from the data provided.
 
-CRITICAL RULES:
-1. Use the pre-calculated totals from the "totals" section - DO NOT recalculate
-2. Use the category totals from "expensesByCategory" - DO NOT sum individual transactions
-3. Format currency exactly as "Rp X,XXX,XXX" (use commas as thousands separators)
-4. For percentages: (category total / total expenses) * 100, rounded to 1 decimal place
-5. DO NOT make up numbers or estimate
-6. Support specific category analysis when requested
-7. Use conversation history context when provided
-8. Support time-based analysis (today, weekly, monthly, or all-time)
+Rules:
+- Use pre-calculated totals from "totals" section - DO NOT recalculate
+- Use category totals from "expensesByCategory" - DO NOT sum individual transactions
+- Format currency as "Rp X,XXX,XXX" with commas
+- For percentages: (category total / total expenses) * 100, rounded to 1 decimal
+- DO NOT make up numbers or estimate
+- Support specific category analysis when requested
+- Use conversation history when provided
 
-TIME PERIOD CONTEXT:
 Current Date: ${new Date().toLocaleDateString('en-US', { 
   weekday: 'long', 
   year: 'numeric', 
@@ -1829,35 +1561,24 @@ Current Date: ${new Date().toLocaleDateString('en-US', {
   day: 'numeric' 
 })} (${new Date().toISOString().split('T')[0]})
 
-${timePeriod ? `Current analysis period: ${timePeriod}` : 'Analysis period: All available data'}
-- "today": Data from today only (${new Date().toISOString().split('T')[0]})
-- "weekly": Data from the past 7 days (from ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]} to ${new Date().toISOString().split('T')[0]})
-- "monthly": Data from the current month (${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')})
-- "all": All available data (default)
+${timePeriod ? `Analysis period: ${timePeriod}` : 'Analysis period: All available data'}
 
-Data structure provided:
-- expenses: Individual transactions
-- income: Individual transactions  
-- savings: Individual transactions
-- totals: Pre-calculated totals (USE THESE EXACT NUMBERS)
-- expensesByCategory: Category totals (USE THESE EXACT NUMBERS)
+Categories:
+- Groceries, Dining Out, Coffee & Tea, Food Delivery
+- Fuel, Vehicle Maintenance, Parking, Public Transport, Ride Hailing, Toll
+- Rent, Mortgage, Electricity, Water, Internet, Gas Utility, Home Maintenance, Household Supplies
+- Medical & Pharmacy, Health Insurance, Fitness, Personal Care
+- Clothing, Electronics & Gadgets, Subscriptions & Streaming, Hobbies & Leisure, Gifts & Celebration
+- Debt Payments, Taxes & Fees, Bank Charges
+- Childcare, Education, Pets, Travel, Business Expenses, Charity & Donations, Emergency, Others
 
-Available expense categories:
-1. Housing & Utilities (rent, electricity, internet, water, mortgage, home maintenance)
-2. Food & Groceries (groceries, eating out, snacks, restaurants, food delivery)
-3. Transportation (fuel, public transport, taxi, car maintenance, parking)
-4. Health & Personal (medical, fitness, self-care, pharmacy, doctor visits)
-5. Entertainment & Shopping (leisure, clothes, subscriptions, games, movies, hobbies)
-6. Debt Payments (credit card payments, loan payments, debt repayment, mortgage payments)
-7. Family & Others (kids, pets, gifts, charity, unexpected expenses, miscellaneous)
+Income Sources: Salary, Freelance, Business, Bonus, Gift, Others
 
-Available income sources:
-1. Salary (monthly salary, paycheck, wages)
-2. Freelance (freelance work, consulting, gig work)
-3. Business (business income, sales, revenue)
-4. Bonus (performance bonus, commission, tips)
-5. Gift (gifts, allowance, money received)
-6. Others (other income sources, miscellaneous income)
+Response format:
+- Use bullet points for clarity
+- Include specific amounts and percentages
+- Provide actionable insights
+- Format currency as "Rp X,XXX,XXX"
 
 Example:
 If totals.totalExpenses = 120000, format as "Rp 120,000"

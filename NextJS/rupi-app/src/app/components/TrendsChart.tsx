@@ -3,6 +3,13 @@
 import * as React from "react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { useFinancialData } from '@/contexts/FinancialDataContext'
+import { 
+  getIndonesiaDate, 
+  getIndonesiaStartOfMonth, 
+  getIndonesiaEndOfMonth, 
+  formatIndonesiaDate,
+  getIndonesiaLastDaysRange 
+} from '@/lib/indonesia-timezone'
 
 import {
   Card,
@@ -137,18 +144,18 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
       const totalIncome = income.reduce((sum, incomeItem) => sum + parseFloat(incomeItem.amount.toString()), 0)
       const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount.toString()), 0)
       
-      // Create data points for the selected time range
-      const now = new Date()
+      // Create data points for the selected time range using Indonesia timezone
+      const now = getIndonesiaDate()
       let startDate: Date
       let endDate: Date
       
       if (timeRange === 'week') {
-        endDate = new Date()
-        startDate = new Date()
-        startDate.setDate(startDate.getDate() - 6) // 7 days total including today
+        const weekRange = getIndonesiaLastDaysRange(7)
+        startDate = weekRange.startDate
+        endDate = weekRange.endDate
       } else { // month
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
-        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+        startDate = getIndonesiaStartOfMonth(now)
+        endDate = getIndonesiaEndOfMonth(now)
       }
       
       // Generate date series
@@ -178,7 +185,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
         const month = String(date.getMonth() + 1).padStart(2, '0')
         const day = String(date.getDate()).padStart(2, '0')
         const displayDate = `${month}/${day}`
-        const dateString = date.toISOString().split('T')[0]
+        const dateString = formatIndonesiaDate(date)
         
         // Calculate daily amounts for each date
         let dailyValue = 0
@@ -189,7 +196,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
         if (dataType === 'total_assets') {
           // Get all transactions up to and including this date
           const transactionsUpToDate = allTransactions.filter(item => {
-            const itemDate = new Date(item.date).toISOString().split('T')[0]
+            const itemDate = formatIndonesiaDate(new Date(item.date))
             return itemDate <= dateString
           })
           
@@ -208,7 +215,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
           
           if (dateString === '2024-10-23' || dateString === '2024-10-24' || dateString === '2025-10-23' || dateString === '2025-10-24') {
             const todayTransactions = transactionsUpToDate.filter(t => 
-              new Date(t.date).toISOString().split('T')[0] === dateString
+              formatIndonesiaDate(new Date(t.date)) === dateString
             )
             console.log(`📊 ${dateString}:`)
             console.log(`  Transactions today:`, todayTransactions.map(t => `${t.type}: ${t.amount}`))
@@ -220,7 +227,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
           if (dataType === 'income') {
             dailyIncome = income
               .filter(item => {
-                const itemDate = new Date(item.date).toISOString().split('T')[0]
+                const itemDate = formatIndonesiaDate(new Date(item.date))
                 // Exclude initial wallet balance transactions
                 const isInitialBalance = item.description && (
                   item.description.toLowerCase().includes('initial balance') ||
@@ -234,7 +241,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
           } else if (dataType === 'expense') {
             dailyExpenses = expenses
               .filter(item => {
-                const itemDate = new Date(item.date).toISOString().split('T')[0]
+                const itemDate = formatIndonesiaDate(new Date(item.date))
                 return itemDate === dateString
               })
               .reduce((sum, item) => sum + parseFloat(item.amount.toString()), 0)
@@ -242,7 +249,7 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
           } else if (dataType === 'savings') {
             dailySavings = savings
               .filter(item => {
-                const itemDate = new Date(item.date).toISOString().split('T')[0]
+                const itemDate = formatIndonesiaDate(new Date(item.date))
                 return itemDate === dateString
               })
               .reduce((sum, item) => sum + parseFloat(item.amount.toString()), 0)
@@ -477,18 +484,17 @@ export default function TrendsChart({ widgetSize = 'half' }: TrendsChartProps) {
                 const entry = payload[0];
                 const data = entry.payload;
                 
-                // Format the full date for display
+                // Format the full date for display using Indonesia timezone
                 const formatDate = (dateString: string) => {
                   try {
                     // Parse date string as local date to avoid timezone issues
                     const [year, month, day] = dateString.split('-').map(Number);
                     const date = new Date(year, month - 1, day);
-                    // Add 1 day to match X-axis display
-                    date.setDate(date.getDate() + 1);
                     return date.toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
-                      day: 'numeric'
+                      day: 'numeric',
+                      timeZone: 'Asia/Jakarta'
                     });
                   } catch {
                     return dateString;

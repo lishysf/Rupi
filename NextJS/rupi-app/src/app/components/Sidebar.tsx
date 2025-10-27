@@ -12,7 +12,8 @@ import {
   Bars3Icon,
   XMarkIcon,
   WalletIcon,
-  BanknotesIcon
+  BanknotesIcon,
+  ChartPieIcon
 } from '@heroicons/react/24/outline';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -50,6 +51,12 @@ const getNavigationItems = (username: string, t: (k: string) => string) => [
     name: t('table'),
     href: `/table`,
     icon: ChartBarIcon,
+    current: false
+  },
+  {
+    name: 'Analytics',
+    href: `/analytics`,
+    icon: ChartPieIcon,
     current: false
   },
   {
@@ -183,10 +190,10 @@ export default function Sidebar({ currentPage = 'Dashboard' }: SidebarProps) {
                 {/* User profile */}
                 <div className="flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800">
                   <div className="flex-shrink-0">
-                    {session.user.image ? (
+                    {(session.user as any)?.image ? (
                       <img
                         className="h-8 w-8 sm:h-10 sm:w-10 rounded-full"
-                        src={session.user.image}
+                        src={(session.user as any).image}
                         alt={session.user.name || 'User'}
                       />
                     ) : (

@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { initializeDatabase } from '@/lib/database';
 import { Pool } from 'pg';
 import { requireAuth } from '@/lib/auth-utils';
+import { 
+  getIndonesiaDate, 
+  getIndonesiaCurrentMonthRange, 
+  getIndonesiaLastMonthRange, 
+  getIndonesiaLastDaysRange,
+  formatIndonesiaDate 
+} from '@/lib/indonesia-timezone';
 
 // Database connection
 const pool = new Pool({
@@ -29,38 +36,37 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const timeRange = searchParams.get('range') || 'current_month';
     
-    // Calculate date range based on time range
+    // Calculate date range based on time range using Indonesia timezone
     let startDate: Date;
     let endDate: Date;
     
     if (timeRange === 'current_month') {
-      // Current month - full month from 1st to last day
-      const now = new Date();
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
+      // Current month - full month from 1st to last day in Indonesia timezone
+      const monthRange = getIndonesiaCurrentMonthRange();
+      startDate = monthRange.startDate;
+      endDate = monthRange.endDate;
     } else if (timeRange === 'last_month') {
-      // Previous month - full month
-      const now = new Date();
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0); // Last day of previous month
+      // Previous month - full month in Indonesia timezone
+      const monthRange = getIndonesiaLastMonthRange();
+      startDate = monthRange.startDate;
+      endDate = monthRange.endDate;
     } else if (timeRange === '7d') {
-      // Last 7 days including today + 1 day buffer to ensure we capture all data
-      endDate = new Date();
-      endDate.setDate(endDate.getDate() + 1); // Add 1 day buffer
-      startDate = new Date();
-      startDate.setDate(startDate.getDate() - 6); // 7 days total including today
+      // Last 7 days including today in Indonesia timezone
+      const daysRange = getIndonesiaLastDaysRange(7);
+      startDate = daysRange.startDate;
+      endDate = daysRange.endDate;
     } else {
       // Legacy support for days-based ranges
       const days = parseInt(timeRange.replace('d', '')) || 30;
-      endDate = new Date();
-      startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
+      const daysRange = getIndonesiaLastDaysRange(days);
+      startDate = daysRange.startDate;
+      endDate = daysRange.endDate;
     }
     
     // Debug: Log the date range being used
     console.log(`Date range for ${timeRange}:`, {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
+      startDate: formatIndonesiaDate(startDate),
+      endDate: formatIndonesiaDate(endDate),
       daysDifference: Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
     });
     
@@ -130,25 +136,21 @@ export async function GET(request: NextRequest) {
      
      const topExpensesResult = await pool.query(topExpensesQuery, [startDate, endDate, user.id]);
      
-     // Group top expense categories by date
-     const topExpensesByDate: Record<string, Array<{category: string, amount: number, count: number}>> = {};
-     topExpensesResult.rows.forEach(row => {
-       // Use consistent date formatting to match the main data transformation
-       const date = new Date(row.expense_date);
-       const year = date.getFullYear();
-       const month = String(date.getMonth() + 1).padStart(2, '0');
-       const day = String(date.getDate()).padStart(2, '0');
-       const dateStr = `${year}-${month}-${day}`;
-       
-       if (!topExpensesByDate[dateStr]) {
-         topExpensesByDate[dateStr] = [];
-       }
-       topExpensesByDate[dateStr].push({
-         category: row.category,
-         amount: parseFloat(row.total_amount),
-         count: parseInt(row.transaction_count)
-       });
-     });
+    // Group top expense categories by date
+    const topExpensesByDate: Record<string, Array<{category: string, amount: number, count: number}>> = {};
+    topExpensesResult.rows.forEach(row => {
+      // Use consistent date formatting to match the main data transformation
+      const dateStr = formatIndonesiaDate(new Date(row.expense_date));
+      
+      if (!topExpensesByDate[dateStr]) {
+        topExpensesByDate[dateStr] = [];
+      }
+      topExpensesByDate[dateStr].push({
+        category: row.category,
+        amount: parseFloat(row.total_amount),
+        count: parseInt(row.transaction_count)
+      });
+    });
      
      // Debug: Log the raw database result
      console.log(`Database result for ${timeRange}:`, {
@@ -160,37 +162,32 @@ export async function GET(request: NextRequest) {
      // Debug: Log top expense categories by date
      console.log('Top expense categories by date:', Object.keys(topExpensesByDate).slice(0, 5), '...');
      
-     // Transform the data to match the expected format
-     const trendsData = result.rows.map(row => {
-       // Handle date formatting consistently - use local date to avoid timezone issues
-       const date = new Date(row.date);
-       const year = date.getFullYear();
-       const month = String(date.getMonth() + 1).padStart(2, '0');
-       const day = String(date.getDate()).padStart(2, '0');
-       
-       const dateStr = `${year}-${month}-${day}`;
-       
-       // Debug: Log date matching for first few entries
-       if (result.rows.indexOf(row) < 3) {
-         console.log(`Date matching debug:`, {
-           originalDate: row.date,
-           formattedDate: dateStr,
-           hasTopCategories: !!topExpensesByDate[dateStr],
-           topCategoriesCount: topExpensesByDate[dateStr]?.length || 0
-         });
-       }
-       
-       return {
-         date: dateStr, // Format as YYYY-MM-DD in local timezone
-         income: parseFloat(row.income) || 0,
-         expenses: parseFloat(row.expenses) || 0,
-         savings: parseFloat(row.savings) || 0,
-         investments: parseFloat(row.investments) || 0,
-         net: parseFloat(row.net) || 0,
-         total_assets: parseFloat(row.total_assets) || 0,
-         top_expenses: topExpensesByDate[dateStr] || []
-       };
-     });
+    // Transform the data to match the expected format
+    const trendsData = result.rows.map(row => {
+      // Handle date formatting consistently - use Indonesia timezone
+      const dateStr = formatIndonesiaDate(new Date(row.date));
+      
+      // Debug: Log date matching for first few entries
+      if (result.rows.indexOf(row) < 3) {
+        console.log(`Date matching debug:`, {
+          originalDate: row.date,
+          formattedDate: dateStr,
+          hasTopCategories: !!topExpensesByDate[dateStr],
+          topCategoriesCount: topExpensesByDate[dateStr]?.length || 0
+        });
+      }
+      
+      return {
+        date: dateStr, // Format as YYYY-MM-DD in Indonesia timezone
+        income: parseFloat(row.income) || 0,
+        expenses: parseFloat(row.expenses) || 0,
+        savings: parseFloat(row.savings) || 0,
+        investments: parseFloat(row.investments) || 0,
+        net: parseFloat(row.net) || 0,
+        total_assets: parseFloat(row.total_assets) || 0,
+        top_expenses: topExpensesByDate[dateStr] || []
+      };
+    });
 
     return NextResponse.json({
       success: true,
