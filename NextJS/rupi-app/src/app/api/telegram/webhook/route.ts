@@ -1383,7 +1383,7 @@ async function handleMessage(update: TelegramUpdate) {
   // Handle /start command
   if (text === '/start') {
     console.log('🚀 Handling /start command');
-    const welcomeMessage = `👋 Welcome to *Fundy AI Assistant*!\n\nI can help you manage your finances through Telegram.\n\n🔐 *To get started, you need to login with your Fundy account.*\n\nUse /login to authenticate with your email and password.\n\nOnce logged in, you can:\n• Record expenses and income\n• Analyze your spending\n• Track your budgets\n• And much more!\n\nTry /help to see all available commands.`;
+    const welcomeMessage = `👋 Welcome to *Fundy AI Assistant*!\n\nI can help you manage your finances through Telegram.\n\n🔐 *To get started, you need to login with your Fundy account.*\n\nUse /login to authenticate with your email and password.\n\nOnce logged in, you can:\n• Record expenses and income (Chat & Voice)\n• Analyze your spending\n• Track your Goals\n• And much more!\n\nTry /help to see all available commands.`;
     
     try {
       const result = await TelegramBotService.sendMessage(chatId, welcomeMessage);
@@ -1402,7 +1402,7 @@ async function handleMessage(update: TelegramUpdate) {
 
   // Handle /help command
   if (text === '/help') {
-    const helpMessage = `📚 *Fundy Bot Commands*\n\n/start - Start the bot\n/login - Login with your Fundy account\n/logout - Logout from your account\n/status - Check your login status\n/transaction - Switch to Transaction Mode (record only)\n/chat - Switch to General Chat Mode\n/savings - View your savings goals\n/help - Show this help message\n\n💬 *Once logged in, just chat with me naturally!*\n\nExamples:\n• "Beli kopi 30k pakai Gopay"\n• "Gaji 5 juta ke BCA"\n• "Tabung 500k ke BCA untuk liburan"\n• "Analisis pengeluaran bulan ini"\n• "Berapa total pengeluaran?"`;
+    const helpMessage = `📚 *Fundy Bot Commands*\n\n/start - Start the bot\n/login - Login with your Fundy account\n/logout - Logout from your account\n/status - Check your login status\n/transaction - Switch to Transaction Mode (record only)\n/chat - Switch to General Chat Mode\n/savings - View your savings goals\n/help - Show this help message\n\n💬 *Once logged in, just chat with me naturally!*\n\nExamples:\n\n"*Transaction Mode*"\n• "Expense: Beli kopi 30k pakai Gopay"\n• "Income: Gaji 5 juta ke BCA"\n• "Savings: Nabung 500k Dari BCA"\n• "Transfer: Transfer dari BCA ke Mandiri 100k"\n\n"*General Chat*"\n• "Analisa Keuangan ku"\n• "Berapa Pengeluaran bulan ini"\n• "Pengeluaran apa yg paling banyak?"`;
     
     await TelegramBotService.sendMessage(chatId, helpMessage);
     return;
