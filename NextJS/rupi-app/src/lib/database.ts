@@ -91,10 +91,15 @@ export async function initializeDatabase() {
         email VARCHAR(255) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
         name VARCHAR(255) NOT NULL,
+        -- optional flag to indicate onboarding completion
+        onboarding_completed BOOLEAN DEFAULT false,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Ensure column exists for pre-existing deployments
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT false`);
 
     // Create user_wallets table (optimized - no redundant balance column)
     console.log('💳 Creating user_wallets table...');
@@ -181,6 +186,45 @@ export async function initializeDatabase() {
       )
     `);
 
+    // Create user_profiles table for onboarding details
+    console.log('🧩 Creating user_profiles table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        display_name VARCHAR(255),
+        currency VARCHAR(10),
+        occupation VARCHAR(255),
+        financial_goal_target DECIMAL(15, 2),
+        discovery_source VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create user_preferences table
+    console.log('⚙️ Creating user_preferences table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_preferences (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        theme VARCHAR(20) DEFAULT 'system',
+        language VARCHAR(10) DEFAULT 'en',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create user_consents table
+    console.log('✅ Creating user_consents table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_consents (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        accepted_terms BOOLEAN DEFAULT false,
+        accepted_privacy BOOLEAN DEFAULT false,
+        consent_financial_analysis BOOLEAN DEFAULT false,
+        accepted_at TIMESTAMP WITH TIME ZONE
+      )
+    `);
+
     // Create migration_log table
     console.log('📝 Creating migration_log table...');
     await pool.query(`
@@ -219,6 +263,10 @@ export async function initializeDatabase() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_daily_assets_user_id ON daily_assets(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_daily_assets_date ON daily_assets(date)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_daily_assets_user_date ON daily_assets(user_id, date)`);
+
+    // Profiles and preferences indexes
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_profiles_currency ON user_profiles(currency)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_profiles_goal ON user_profiles(financial_goal_target)`);
 
     // Note: Daily assets are calculated on-demand, not pre-populated
 
@@ -335,6 +383,7 @@ export interface User {
   id: number;
   email: string;
   name: string;
+  onboarding_completed?: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -501,7 +550,7 @@ export class UserDatabase {
   // Get user by ID
   static async getUserById(id: number): Promise<User | null> {
     const query = `
-      SELECT id, email, name, created_at, updated_at
+      SELECT id, email, name, onboarding_completed, created_at, updated_at
       FROM users 
       WHERE id = $1
     `;

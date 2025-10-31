@@ -35,9 +35,11 @@ export default function IncomeExpenseSummary({ widgetSize = 'square' }: IncomeEx
     weekEnd.setDate(weekStart.getDate() + 6); // Sunday
     weekEnd.setHours(23, 59, 59, 999);
     
-    // Get this month's data
+    // Get this month's data (inclusive end of month)
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
 
     // Filter expenses for current week and month
     const weeklyExpenses = expenses

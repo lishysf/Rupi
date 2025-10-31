@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, MessageCircle, X, CheckCircle, AlertCircle, Receipt, MessageSquare } from 'lucide-react';
+import { Send, MessageCircle, X, CheckCircle, AlertCircle, Receipt, MessageSquare, Plus, MinusCircle, PlusCircle, PiggyBank, ArrowLeftRight } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import TransactionEditModal from './TransactionEditModal';
+import AddTransactionModal from './AddTransactionModal';
+import SavingsTransactionModal from './SavingsTransactionModal';
+import WalletTransferModal from './WalletTransferModal';
 import MultipleTransactionEditModal from './MultipleTransactionEditModal';
 
 interface ChatMessage {
@@ -43,6 +46,11 @@ export default function FloatingChat() {
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
   const [multipleEditModalOpen, setMultipleEditModalOpen] = useState(false);
   const [editingMultipleTransactions, setEditingMultipleTransactions] = useState<{ transactions: any[], messageId: string } | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addModalType, setAddModalType] = useState<'income' | 'expense'>('expense');
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showSavingsModal, setShowSavingsModal] = useState<null | 'deposit' | 'withdrawal'>(null);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
@@ -805,8 +813,8 @@ export default function FloatingChat() {
           </div>
         )}
 
-        {/* Chat Input */}
-        <div className="relative">
+        {/* Chat Input with external Add button */}
+        <div className="relative flex items-center gap-2">
           <div className="flex items-center bg-white dark:bg-neutral-800 rounded-3xl shadow-lg border border-neutral-200/50 dark:border-neutral-700/50 p-3 w-full">
             <input
               ref={inputRef}
@@ -827,10 +835,16 @@ export default function FloatingChat() {
             </button>
           </div>
 
-          {/* Floating indicator when collapsed */}
-          {!isExpanded && (
-            <div className="absolute -top-2 -right-2 w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></div>
-          )}
+          {/* External Add button on the right */}
+          <div>
+            <button
+              onClick={() => setShowAddMenu(true)}
+              className="p-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full transition-all duration-200 shadow-sm hover:shadow-md flex-shrink-0"
+              title="Add transaction"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -862,6 +876,109 @@ export default function FloatingChat() {
           onSave={handleSaveMultipleEditedTransactions}
           isLoading={isLoading}
         />
+      )}
+
+      {/* Add Transaction Modal (manual) */}
+      <AddTransactionModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        transactionType={addModalType}
+        onTransactionAdded={() => {
+          setShowAddModal(false);
+          refreshAfterTransaction();
+        }}
+      />
+
+      {/* Savings Transaction Modal */}
+      <SavingsTransactionModal
+        isOpen={!!showSavingsModal}
+        onClose={() => setShowSavingsModal(null)}
+        transactionType={showSavingsModal || 'deposit'}
+      />
+
+      {/* Wallet Transfer Modal */}
+      <WalletTransferModal
+        isOpen={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+      />
+
+      {/* Add Menu Popup */}
+      {showAddMenu && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4" onClick={() => setShowAddMenu(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative z-41 w-full max-w-sm bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-2xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Add Transaction</h3>
+              <button className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200 text-xs" onClick={() => setShowAddMenu(false)}>Close</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => { setAddModalType('expense'); setShowAddModal(true); setShowAddMenu(false); }}
+                className="group rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 text-left hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30">
+                    <MinusCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                  </span>
+                  <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Expense</span>
+                </div>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400">Record a purchase or spending</p>
+              </button>
+
+              <button
+                onClick={() => { setAddModalType('income'); setShowAddModal(true); setShowAddMenu(false); }}
+                className="group rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 text-left hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+                    <PlusCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  </span>
+                  <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Income</span>
+                </div>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400">Add salary or other income</p>
+              </button>
+
+              <button
+                onClick={() => { setShowSavingsModal('deposit'); setShowAddMenu(false); }}
+                className="group rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 text-left hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30">
+                    <PiggyBank className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  </span>
+                  <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Savings Deposit</span>
+                </div>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400">Move money into savings</p>
+              </button>
+
+              <button
+                onClick={() => { setShowSavingsModal('withdrawal'); setShowAddMenu(false); }}
+                className="group rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 text-left hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                    <PiggyBank className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  </span>
+                  <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Savings Withdrawal</span>
+                </div>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400">Take money out from savings</p>
+              </button>
+
+              <button
+                onClick={() => { setShowTransferModal(true); setShowAddMenu(false); }}
+                className="group col-span-2 rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
+                    <ArrowLeftRight className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  </span>
+                  <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Wallet Transfer</span>
+                </div>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400">Move money between your wallets</p>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

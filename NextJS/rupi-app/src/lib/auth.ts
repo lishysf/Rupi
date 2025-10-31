@@ -49,11 +49,22 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
       }
+      // Fetch onboarding status when we have a user id
+      if (token.id) {
+        try {
+          const idNum = parseInt(token.id as string, 10);
+          const dbUser = await UserDatabase.getUserById(idNum);
+          (token as any).onboardingCompleted = (dbUser as any)?.onboarding_completed === true;
+        } catch (e) {
+          // Leave as undefined on error
+        }
+      }
       return token;
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
+        (session.user as any).onboardingCompleted = (token as any).onboardingCompleted === true;
       }
       return session;
     },

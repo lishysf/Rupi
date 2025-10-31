@@ -78,6 +78,7 @@ export default function Sidebar({ currentPage = 'Dashboard' }: SidebarProps) {
   const { data: session } = useSession();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+  const [subscriptionNotice, setSubscriptionNotice] = useState<string | null>(null);
   const router = useRouter();
   
   // Language context with safe fallback
@@ -190,43 +191,85 @@ export default function Sidebar({ currentPage = 'Dashboard' }: SidebarProps) {
             })}
           </nav>
 
+          {/* Telegram bot link (above separator) */}
+          <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+            <a
+              href="https://t.me/fundyIDbot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white rounded-lg transition-opacity duration-200 hover:opacity-90"
+              style={{ background: 'linear-gradient(180deg, #37AEE2 0%, #1E96C8 100%)' }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                className="mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5 fill-current"
+              >
+                <path d="M12 0C5.373 0 0 5.373 0 12c0 6.628 5.373 12 12 12s12-5.372 12-12C24 5.373 18.627 0 12 0zm5.574 7.454l-1.644 7.749c-.124.558-.45.693-.911.43l-2.506-1.846-1.208 1.164c-.133.133-.245.245-.5.245l.179-2.524 4.59-4.149c.199-.179-.043-.279-.309-.099l-5.666 3.569-2.439-.761c-.53-.166-.54-.53.112-.786l9.522-3.675c.45-.166.845.099.699.786z" />
+              </svg>
+              Chat On Phone
+            </a>
+
+          </div>
+
           {/* User info at bottom */}
           <div className="border-t border-neutral-200 dark:border-neutral-700 p-3 sm:p-4">
             {session?.user && (
               <div className="space-y-3 sm:space-y-4">
-                {/* User profile */}
-                <div className="flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800">
-                  <div className="flex-shrink-0">
-                    {(session.user as any)?.image ? (
-                      <img
-                        className="h-8 w-8 sm:h-10 sm:w-10 rounded-full"
-                        src={(session.user as any).image}
-                        alt={session.user.name || 'User'}
-                      />
-                    ) : (
-                      <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
-                        <UserIcon className="h-4 w-4 sm:h-6 sm:w-6 text-emerald-600 dark:text-emerald-400" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                      {session.user.name}
-                    </p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                      {session.user.email}
-                    </p>
-                  </div>
+                {/* Subscription (inside user section) */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubscriptionNotice('Subscriptions will be available soon.');
+                      setTimeout(() => setSubscriptionNotice(null), 3000);
+                    }}
+                    className="glow-on-hover w-full h-9 sm:h-10 text-xs sm:text-sm font-medium cursor-pointer select-none"
+                    style={{ ['--glow-base-color' as any]: 'linear-gradient(135deg, #065f46 0%, #047857 50%, #059669 100%)' }}
+                  >
+                    Subscription
+                  </button>
+                  {subscriptionNotice && (
+                    <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-400">
+                      {subscriptionNotice}
+                    </div>
+                  )}
                 </div>
 
-                {/* Sign out button */}
-                <button
-                  onClick={handleSignOut}
-                  className="w-full flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors duration-200"
-                >
-                  <ArrowRightOnRectangleIcon className="mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5" />
-                  {t('signOut')}
-                </button>
+                {/* User profile */}
+                <div className="flex items-center justify-between p-2 sm:p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800">
+                  <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+                    <div className="flex-shrink-0">
+                      {(session.user as any)?.image ? (
+                        <img
+                          className="h-8 w-8 sm:h-10 sm:w-10 rounded-full"
+                          src={(session.user as any).image}
+                          alt={session.user.name || 'User'}
+                        />
+                      ) : (
+                        <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
+                          <UserIcon className="h-4 w-4 sm:h-6 sm:w-6 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                        {session.user.name}
+                      </p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                        {session.user.email}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="ml-3 inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors duration-200"
+                    title={t('signOut')}
+                  >
+                    <ArrowRightOnRectangleIcon className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             )}
           </div>

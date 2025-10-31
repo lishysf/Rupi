@@ -407,4 +407,60 @@
 }
 
 
+/* Glow-on-hover button (used for Subscription - coming soon) */
+.glow-on-hover {
+  position: relative;
+  z-index: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--glow-base-color, #111);
+}
+
+.glow-on-hover:before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  /* Blue → Teal/Cyan → Green → Yellow family only */
+  background: linear-gradient(45deg,
+    #1E96C8,
+    #06B6D4,
+    #10B981,
+    #A3E635,
+    #34D399,
+    #1E96C8
+  );
+  background-size: 300%;
+  filter: blur(5px);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity .3s ease-in-out;
+  border-radius: 10px;
+}
+
+.glow-on-hover:hover:before { opacity: 1; }
+
+.glow-on-hover:after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--glow-base-color, #111);
+  border-radius: 10px;
+  z-index: -1;
+}
+
+@keyframes glowing {
+  0% { background-position: 0 0; }
+  50% { background-position: 300% 0; }
+  100% { background-position: 0 0; }
+}
+
+.glow-on-hover:before { animation: glowing 8s linear infinite; }
+
+
 

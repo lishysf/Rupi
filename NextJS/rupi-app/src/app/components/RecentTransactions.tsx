@@ -515,44 +515,7 @@ export default function RecentTransactions({ widgetSize = 'long' }: RecentTransa
         }))}
       </div>
 
-      {/* Quick Action - Add Activity chooser */}
-      {widgetSize !== 'square' && (
-        <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-neutral-200 dark:border-neutral-700 flex-shrink-0">
-          <div className={`${widgetSize === 'half' ? 'w-full' : ''}`}>
-            <details className="group">
-              <summary className={`list-none cursor-pointer ${
-                widgetSize === 'half' ? 'w-full' : 'inline-flex'
-              } bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-3 sm:px-4 rounded-lg transition-colors text-xs sm:text-sm flex items-center justify-between`}>
-                <span>{t('addActivity')}</span>
-                <span className="ml-2 transition-transform group-open:rotate-180">▾</span>
-              </summary>
-              <div className="mt-2 sm:mt-3 grid grid-cols-2 gap-1 sm:gap-2">
-                {[
-                  { key: 'expense', label: t('addExpense'), color: 'bg-red-600 hover:bg-red-700' },
-                  { key: 'income', label: t('addIncome'), color: 'bg-emerald-600 hover:bg-emerald-700' },
-                  { key: 'savings', label: t('addSavings'), color: 'bg-blue-600 hover:bg-blue-700' },
-                ].map(opt => (
-                  <button
-                    key={opt.key}
-                    className={`${opt.color} text-white font-medium py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm`}
-                    onClick={() => {
-                      if (opt.key === 'income' || opt.key === 'expense') {
-                        setAddModalType(opt.key);
-                        setShowAddModal(true);
-                      } else {
-                        // TODO: open the appropriate add modal/form for savings
-                        alert(`Add ${opt.label} - coming soon`);
-                      }
-                    }}
-                  >
-                    + {opt.label}
-                  </button>
-                ))}
-              </div>
-            </details>
-          </div>
-        </div>
-      )}
+      {/* Quick Action removed - using + button in chat input */}
 
       {/* Transaction Edit Modal */}
       <TransactionEditModal

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Heart, TrendingUp, Activity, PiggyBank } from 'lucide-react';
+import { Heart, TrendingUp, Activity, PiggyBank, Info } from 'lucide-react';
 import { useFinancialData } from '@/contexts/FinancialDataContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -32,12 +32,33 @@ interface FinancialHealthScoreProps {
 
 export default function FinancialHealthScore({ widgetSize = 'square' }: FinancialHealthScoreProps) {
   const { state } = useFinancialData();
+  const [showTip, setShowTip] = useState(false);
+  const [assetTarget, setAssetTarget] = useState<number | null>(null);
   const language = useLanguage();
   const t = language?.t || ((key: string) => key);
   const { expenses, income, savings, wallets } = state.data;
   
   // Wallet loading state from context - only show loading during initial load
   const walletLoading = state.loading.wallets && state.loading.initial;
+
+  // Load user's financial target (total asset target)
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/user/profile');
+        if (!res.ok) return;
+        const json = await res.json();
+        const target = json?.data?.financial_goal_target;
+        if (!active) return;
+        if (target !== null && target !== undefined) {
+          const n = typeof target === 'string' ? parseFloat(target) : Number(target);
+          if (!Number.isNaN(n) && n > 0) setAssetTarget(n);
+        }
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, []);
 
   
   // Debug log to check data
@@ -52,9 +73,13 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
   const financialData: FinancialData = useMemo(() => {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    currentMonthStart.setHours(0, 0, 0, 0);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    currentMonthEnd.setHours(23, 59, 59, 999);
     const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    previousMonthStart.setHours(0, 0, 0, 0);
     const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    previousMonthEnd.setHours(23, 59, 59, 999);
 
     // Calculate totals
     const totalExpenses = expenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0);
@@ -125,16 +150,10 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
     const totalSavings = financialData.savings.reduce((sum, saving) => sum + (typeof saving.amount === 'string' ? parseFloat(saving.amount) : saving.amount), 0);
     const totalAssets = walletBalance + totalSavings;
     
-    // Score based on total assets (max 50 points)
-    // More achievable targets for total assets
-    if (totalAssets >= 100000000) score += 50;       // Excellent: 100jt+ (Mass Affluent)
-    else if (totalAssets >= 75000000) score += 45;   // Very Good: 75-100jt
-    else if (totalAssets >= 50000000) score += 40;   // Good Plus: 50-75jt
-    else if (totalAssets >= 25000000) score += 35;   // Good: 25-50jt
-    else if (totalAssets >= 10000000) score += 30;   // Fair Plus: 10-25jt
-    else if (totalAssets >= 5000000) score += 25;    // Fair: 5-10jt
-    else if (totalAssets > 0) score += 20;           // Starting: Mulai nabung
-    // 0 points if no assets
+    // Score based on total assets (max 50 points) relative to user's Financial Target
+    const targetBase = assetTarget && assetTarget > 0 ? assetTarget : 500000000; // fallback 500jt
+    const assetsProgress = Math.min(1, Math.max(0, totalAssets / targetBase));
+    score += Math.round(assetsProgress * 50);
     
     return Math.min(100, Math.max(0, Math.round(score)));
   };
@@ -183,26 +202,16 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
       totalAssets
     });
     
-    // Calculate percentage based on A Class target (500jt)
-    const targetAssets = 500000000; // 500jt (A Class)
-    const percentage = Math.min(100, Math.max(0, (totalAssets / targetAssets) * 100));
-    
-    // Get the appropriate class label based on total assets
-    let classLabel = '';
-    if (totalAssets >= 500000000) classLabel = 'A Class';
-    else if (totalAssets >= 250000000) classLabel = 'B+ Class';
-    else if (totalAssets >= 100000000) classLabel = 'B Class';
-    else if (totalAssets >= 50000000) classLabel = 'C+ Class';
-    else if (totalAssets >= 25000000) classLabel = 'C Class';
-    else if (totalAssets >= 10000000) classLabel = 'D Class';
-    else if (totalAssets >= 5000000) classLabel = 'E Class';
-    else classLabel = 'Starting';
+    // Calculate percentage based on user's financial target (fallback 500jt for percentage only)
+    const targetAssets = assetTarget && assetTarget > 0 ? assetTarget : null;
+    const percentageBase = targetAssets ?? 500000000;
+    const percentage = Math.min(100, Math.max(0, (totalAssets / percentageBase) * 100));
     
     return { 
       amount: totalAssets,
       score: percentage,
       percentage: Math.round(percentage),
-      class: classLabel
+      target: targetAssets
     };
   };
 
@@ -228,7 +237,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
     { 
       name: t('totalAssetsLabel'), 
       score: totalAssets.percentage, // Use percentage for progress bar
-      detail: `${formatCurrency(totalAssets.amount)} (${totalAssets.class})`,
+      detail: totalAssets.target ? `${formatCurrency(totalAssets.amount)} / ${formatCurrency(totalAssets.target)}` : `${formatCurrency(totalAssets.amount)}`,
       icon: PiggyBank 
     }
   ];
@@ -260,13 +269,50 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-transparent p-3 h-full flex flex-col group hover:shadow-2xl transition-all duration-300">
-      <div className="flex items-center mb-2 flex-shrink-0">
-        <div className="w-4 h-4 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center mr-2 shadow-lg">
-          <Heart className="w-2.5 h-2.5 text-white" />
+      <div className="flex items-center justify-between mb-2 flex-shrink-0">
+        <div className="flex items-center">
+          <div className="w-4 h-4 bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center mr-2 shadow-lg">
+            <Heart className="w-2.5 h-2.5 text-white" />
+          </div>
+          <h2 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+            {t('financialHealth')}
+          </h2>
         </div>
-        <h2 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-          {t('financialHealth')}
-        </h2>
+        <div 
+          className="relative inline-block"
+          onMouseEnter={() => setShowTip(true)}
+          onMouseLeave={() => setShowTip(false)}
+        >
+          <div
+            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors cursor-default"
+            aria-label="How is this calculated?"
+          >
+            <Info className="w-3 h-3" />
+            How it works
+          </div>
+          {showTip && (
+            <div className="absolute right-0 top-6 w-72 sm:w-80 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl p-3 z-50">
+              <div className="text-xs text-neutral-700 dark:text-neutral-300 space-y-2">
+                <div className="font-semibold">What affects your score</div>
+                <div className="flex items-start gap-2">
+                  <div className="shrink-0 mt-0.5 text-emerald-600">50%</div>
+                  <div>
+                    <div className="font-medium">Monthly Buffer</div>
+                    <div>How much of your income you keep after spending each month. Bigger buffer = better health.</div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="shrink-0 mt-0.5 text-emerald-600">50%</div>
+                  <div>
+                    <div className="font-medium">Total Assets Progress</div>
+                    <div>Your wallets + savings, moving toward your Financial Target from onboarding.</div>
+                  </div>
+                </div>
+                <div className="text-neutral-500 dark:text-neutral-400">Tip: Set a realistic Financial Target to personalize the goal.</div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Content - Side by Side Layout */}
@@ -315,6 +361,7 @@ export default function FinancialHealthScore({ widgetSize = 'square' }: Financia
           })}
         </div>
       </div>
+      {/* Tooltip handled via group hover above */}
     </div>
   );
 }

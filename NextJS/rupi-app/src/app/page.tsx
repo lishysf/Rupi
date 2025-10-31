@@ -18,7 +18,12 @@ export default function Home() {
 
     // Redirect to the user's dashboard
     if (session.user?.name) {
-      router.push(`/${session.user.name}/dashboard`);
+      const completed = (session.user as any).onboardingCompleted === true;
+      if (!completed) {
+        router.push('/onboarding');
+      } else {
+        router.push(`/${session.user.name}/dashboard`);
+      }
     }
   }, [session, status, router]);
 

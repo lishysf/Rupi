@@ -71,8 +71,8 @@ export default function SignUp() {
       if (result?.error) {
         setError('Account created but failed to sign in. Please try signing in manually.');
       } else {
-        // Redirect directly to dashboard to avoid timing issues
-        router.push(`/${formData.name}/dashboard`);
+        // Redirect to onboarding
+        router.push(`/onboarding`);
         router.refresh();
       }
     } catch (error) {

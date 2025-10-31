@@ -42,9 +42,13 @@ export default function FinancialSummary({ widgetSize = 'square' }: FinancialSum
   const financialData: FinancialTotal = useMemo(() => {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    currentMonthStart.setHours(0, 0, 0, 0);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    currentMonthEnd.setHours(23, 59, 59, 999);
     const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    previousMonthStart.setHours(0, 0, 0, 0);
     const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    previousMonthEnd.setHours(23, 59, 59, 999);
 
     // Filter expenses for current month
     const currentMonthExpenses = expenses

@@ -15,6 +15,7 @@ import {
   ArrowRightIcon
 } from '@heroicons/react/24/outline';
 import { useLanguage } from '@/contexts/LanguageContext';
+import Sidebar from '@/app/components/Sidebar';
 
 interface SplitBillItem {
   id: string;
@@ -88,6 +89,50 @@ export default function SplitBillPage() {
     return null;
   }
 
+  // Image compression utility
+  const compressImage = (file: File, maxWidth: number = 1920, quality: number = 0.8): Promise<File> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+
+      img.onload = () => {
+        // Calculate new dimensions
+        let { width, height } = img;
+        
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+
+        // Set canvas dimensions
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw and compress
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name, {
+                type: file.type,
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              resolve(file); // Fallback to original if compression fails
+            }
+          },
+          file.type,
+          quality
+        );
+      };
+
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -108,15 +153,21 @@ export default function SplitBillPage() {
     setError('');
 
     try {
-      // Convert to base64 for preview
+      // Compress the image
+      console.log(`Original file size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+      const compressedFile = await compressImage(file, 1920, 0.8);
+      console.log(`Compressed file size: ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`);
+      console.log(`Compression ratio: ${((1 - compressedFile.size / file.size) * 100).toFixed(1)}%`);
+
+      // Convert to base64 for preview (use original for preview)
       const reader = new FileReader();
       reader.onload = (e) => {
         setUploadedImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
 
-      // Process the image with Groq AI
-      await processBillImage(file);
+      // Process the compressed image with Groq AI
+      await processBillImage(compressedFile);
     } catch (error) {
       console.error('Error uploading image:', error);
       setError('Failed to upload image. Please try again.');
@@ -431,24 +482,31 @@ export default function SplitBillPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                Split Bill
-              </h1>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Upload a bill image or create manually to split expenses
-              </p>
+    <div className="flex h-screen bg-neutral-50 dark:bg-neutral-950">
+      {/* Sidebar */}
+      <Sidebar currentPage="Split Bill" />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden lg:ml-64 pt-12 lg:pt-0">
+        {/* Header */}
+        <div className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-neutral-900 dark:text-white">
+                  Split Bill
+                </h1>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                  Upload a bill image or create manually to split expenses
+                </p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-auto">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Step 1: Upload Image */}
         {currentStep === 'upload' && (
@@ -1341,6 +1399,8 @@ export default function SplitBillPage() {
           </div>
         )}
 
+          </div>
+        </div>
       </div>
     </div>
   );
