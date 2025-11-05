@@ -226,12 +226,18 @@ export class TelegramDatabase {
 
         if (existingSession.rows.length > 0) {
           console.log('📝 Updating existing session for user:', telegramUserId);
-          // Update last activity
+          // Update last activity and chat_id
           await pool.query(
             'UPDATE telegram_sessions SET last_activity = CURRENT_TIMESTAMP, chat_id = $1 WHERE telegram_user_id = $2',
             [chatId, telegramUserId]
           );
-          return existingSession.rows[0] as TelegramSession;
+          // Fetch the updated session to ensure we have the latest chat_id
+          const updatedSession = await pool.query(
+            'SELECT * FROM telegram_sessions WHERE telegram_user_id = $1',
+            [telegramUserId]
+          );
+          console.log('✅ Session updated with chat_id:', updatedSession.rows[0]?.chat_id);
+          return updatedSession.rows[0] as TelegramSession;
         }
 
         console.log('🆕 Creating new session for user:', telegramUserId);
