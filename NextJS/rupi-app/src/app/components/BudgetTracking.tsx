@@ -131,7 +131,8 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
 
   const totalBudget = budgets.reduce((sum, item) => sum + item.amount, 0);
   const totalSpent = budgets.reduce((sum, item) => sum + item.spent, 0);
-  const overallProgress = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+  const totalRemaining = totalBudget - totalSpent;
+  const overallProgress = totalBudget > 0 ? ((totalBudget - totalSpent) / totalBudget) * 100 : 0;
 
   // Get available categories for dropdown
   const usedCategories = budgets.map(b => b.category);
@@ -190,14 +191,14 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
               {t('monthlyBudget')}
             </span>
             <span className="text-xs text-emerald-700 dark:text-emerald-300">
-              {overallProgress.toFixed(1)}%
+              {overallProgress.toFixed(1)}% remaining
             </span>
           </div>
           <div className="flex justify-between items-center mb-2">
             <span className={`${
               widgetSize === 'half' ? 'text-sm' : 'text-lg'
             } font-bold text-emerald-900 dark:text-emerald-100`}>
-              {formatCurrency(totalSpent)}
+              {formatCurrency(totalRemaining)}
             </span>
             <span className="text-xs text-emerald-700 dark:text-emerald-300">
               {t('ofLabel')} {formatCurrency(totalBudget)}
@@ -206,7 +207,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
           <div className="w-full bg-emerald-200 dark:bg-emerald-800 rounded-full h-1.5">
             <div 
               className={`h-1.5 rounded-full transition-all duration-300 ${getProgressColor(totalSpent, totalBudget)}`}
-              style={{ width: `${Math.min(overallProgress, 100)}%` }}
+              style={{ width: `${Math.max(Math.min(overallProgress, 100), 0)}%` }}
             ></div>
           </div>
         </div>
@@ -232,8 +233,10 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
           </div>
         ) : (
           visibleBudgets.map((budget) => {
-            const percentage = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
-            const isOverspending = percentage >= 100;
+            const remainingPercentage = budget.amount > 0 ? ((budget.amount - budget.spent) / budget.amount) * 100 : 100;
+            const spentPercentage = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
+            const remaining = budget.amount - budget.spent;
+            const isOverspending = spentPercentage >= 100;
             
             return (
               <div
@@ -255,7 +258,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                   </div>
                   <div className="flex items-center space-x-1">
                     <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
-                      {percentage.toFixed(0)}%
+                      {remainingPercentage.toFixed(0)}% left
                     </span>
                     <button
                       onClick={() => startEdit(budget)}
@@ -276,7 +279,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                 
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-xs text-neutral-600 dark:text-neutral-300">
-                    {formatCurrency(budget.spent)}
+                    {formatCurrency(remaining >= 0 ? remaining : 0)}
                   </span>
                   <span className="text-xs text-neutral-500 dark:text-neutral-400">
                     / {formatCurrency(budget.amount)}
@@ -286,7 +289,7 @@ export default function BudgetTracking({ widgetSize = 'medium' }: BudgetTracking
                 <div className="w-full bg-neutral-200 dark:bg-neutral-600 rounded-full h-1">
                   <div 
                     className={`h-1 rounded-full transition-all duration-300 ${getProgressColor(budget.spent, budget.amount)}`}
-                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                    style={{ width: `${Math.max(Math.min(remainingPercentage, 100), 0)}%` }}
                   ></div>
                 </div>
               </div>

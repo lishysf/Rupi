@@ -275,12 +275,24 @@ export default function BudgetEditModal({
                 <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700">
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between items-center">
-                      <span className="text-neutral-600 dark:text-neutral-400">Current spent:</span>
-                      <span className="font-medium">{formatCurrency(budget.spent || 0)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
                       <span className="text-neutral-600 dark:text-neutral-400">Current budget:</span>
                       <span className="font-medium">{formatCurrency(budget.amount || 0)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-600 dark:text-neutral-400">Remaining:</span>
+                      <span className={`font-medium ${
+                        budget.amount && budget.amount > 0 && (budget.spent || 0) / budget.amount >= 1
+                          ? 'text-red-600 dark:text-red-400'
+                          : budget.amount && budget.amount > 0 && (budget.spent || 0) / budget.amount >= 0.8
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-emerald-600 dark:text-emerald-400'
+                      }`}>
+                        {formatCurrency(Math.max(0, (budget.amount || 0) - (budget.spent || 0)))}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-600 dark:text-neutral-400">Spent:</span>
+                      <span className="font-medium">{formatCurrency(budget.spent || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-neutral-600 dark:text-neutral-400">Usage:</span>

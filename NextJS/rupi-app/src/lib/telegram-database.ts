@@ -180,6 +180,24 @@ export class TelegramDatabase {
           ALTER TABLE telegram_sessions 
           ADD COLUMN IF NOT EXISTS auth_email VARCHAR(255);
         `);
+
+        // Create OAuth tokens table for Telegram OAuth login
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS telegram_oauth_tokens (
+            token VARCHAR(255) PRIMARY KEY,
+            telegram_user_id VARCHAR(255) NOT NULL,
+            expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        // Create index for faster lookups
+        await pool.query(`
+          CREATE INDEX IF NOT EXISTS idx_oauth_token ON telegram_oauth_tokens(token);
+        `);
+        await pool.query(`
+          CREATE INDEX IF NOT EXISTS idx_oauth_telegram_user ON telegram_oauth_tokens(telegram_user_id);
+        `);
       });
 
       console.log('✅ Telegram sessions table initialized');
@@ -330,6 +348,58 @@ export class TelegramDatabase {
     } catch (error) {
       console.error('Error getting auth state:', error);
       return null;
+    }
+  }
+
+  // Store Telegram OAuth token
+  static async storeOAuthToken(token: string, telegramUserId: string): Promise<void> {
+    try {
+      await this.retryOperation(async () => {
+        // Store token with expiration (10 minutes)
+        await pool.query(
+          `INSERT INTO telegram_oauth_tokens (token, telegram_user_id, expires_at)
+           VALUES ($1, $2, NOW() + INTERVAL '10 minutes')
+           ON CONFLICT (token) DO UPDATE 
+           SET telegram_user_id = $2, expires_at = NOW() + INTERVAL '10 minutes'`,
+          [token, telegramUserId]
+        );
+      });
+    } catch (error) {
+      console.error('Error storing OAuth token:', error);
+      throw error;
+    }
+  }
+
+  // Get Telegram user ID from OAuth token
+  static async getTelegramUserFromToken(token: string): Promise<string | null> {
+    try {
+      const result = await this.retryOperation(async () => {
+        return await pool.query(
+          `SELECT telegram_user_id FROM telegram_oauth_tokens 
+           WHERE token = $1 AND expires_at > NOW()`,
+          [token]
+        );
+      });
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return result.rows[0].telegram_user_id;
+    } catch (error) {
+      console.error('Error getting Telegram user from token:', error);
+      return null;
+    }
+  }
+
+  // Delete OAuth token after use
+  static async deleteOAuthToken(token: string): Promise<void> {
+    try {
+      await this.retryOperation(async () => {
+        await pool.query('DELETE FROM telegram_oauth_tokens WHERE token = $1', [token]);
+      });
+    } catch (error) {
+      console.error('Error deleting OAuth token:', error);
     }
   }
 

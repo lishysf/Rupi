@@ -530,6 +530,28 @@ export class UserDatabase {
     }
   }
 
+  // Create a new OAuth user (without password)
+  // Uses a special marker value to indicate OAuth authentication
+  static async createOAuthUser(email: string, name: string): Promise<User> {
+    // Use a special marker that indicates OAuth authentication
+    // This value won't match any real bcrypt hash (which start with $2a$, $2b$, or $2y$)
+    const oauthMarker = 'OAUTH_USER_NO_PASSWORD';
+    const query = `
+      INSERT INTO users (email, password_hash, name)
+      VALUES ($1, $2, $3)
+      RETURNING id, email, name, created_at, updated_at
+    `;
+    const values = [email, oauthMarker, name];
+    
+    try {
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error creating OAuth user:', error);
+      throw error;
+    }
+  }
+
   // Get user by email
   static async getUserByEmail(email: string): Promise<User & { password_hash: string } | null> {
     const query = `
@@ -597,6 +619,24 @@ export class UserDatabase {
       return result.rows[0];
     } catch (error) {
       console.error('Error updating user:', error);
+      throw error;
+    }
+  }
+
+  // Update user password (for OAuth users to set password for Telegram bot)
+  static async updatePassword(id: number, passwordHash: string): Promise<boolean> {
+    const query = `
+      UPDATE users 
+      SET password_hash = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id
+    `;
+    
+    try {
+      const result = await pool.query(query, [passwordHash, id]);
+      return result.rows.length > 0;
+    } catch (error) {
+      console.error('Error updating password:', error);
       throw error;
     }
   }

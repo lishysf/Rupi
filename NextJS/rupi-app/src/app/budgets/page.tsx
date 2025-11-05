@@ -56,7 +56,8 @@ function BudgetTrackingContent() {
   const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
   const totalSpent = budgets.reduce((sum, b) => sum + (b.spent || 0), 0);
   const totalRemaining = totalBudget - totalSpent;
-  const overallPercentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+  const overallPercentage = totalBudget > 0 ? ((totalBudget - totalSpent) / totalBudget) * 100 : 100;
+  const overallSpentPercentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
   // Get available categories for dropdown
   const usedCategories = budgets.map(b => b.category);
@@ -208,7 +209,7 @@ function BudgetTrackingContent() {
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-neutral-600 dark:text-neutral-400">Spent</div>
-                  <div className={`text-2xl font-bold ${getTextColor(overallPercentage)}`}>
+                  <div className={`text-2xl font-bold ${getTextColor(overallSpentPercentage)}`}>
                     {formatCurrency(totalSpent)}
                   </div>
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
@@ -219,16 +220,24 @@ function BudgetTrackingContent() {
               
               {/* Overall Progress Bar */}
               <div className="mb-2">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className={`font-medium ${getTextColor(overallSpentPercentage)}`}>
+                    {formatCurrency(totalRemaining >= 0 ? totalRemaining : 0)}
+                  </span>
+                  <span className="text-neutral-500 dark:text-neutral-400">
+                    {overallPercentage.toFixed(1)}% remaining
+                  </span>
+                </div>
                 <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-4">
                   <div 
-                    className={`h-4 rounded-full transition-all duration-300 ${getProgressColor(overallPercentage)}`}
-                    style={{ width: `${Math.min(overallPercentage, 100)}%` }}
+                    className={`h-4 rounded-full transition-all duration-300 ${getProgressColor(overallSpentPercentage)}`}
+                    style={{ width: `${Math.max(Math.min(overallPercentage, 100), 0)}%` }}
                   ></div>
                 </div>
               </div>
               <div className="flex justify-between items-center">
-                <span className={`text-sm font-semibold ${getTextColor(overallPercentage)}`}>
-                  {overallPercentage.toFixed(1)}% Used
+                <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                  Spent: {formatCurrency(totalSpent)}
                 </span>
                 {budgets.length > 0 && (
                   <span className="text-sm text-neutral-500 dark:text-neutral-400">
@@ -264,13 +273,14 @@ function BudgetTrackingContent() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {budgets.map((budget) => {
-                  const percentage = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
+                  const spentPercentage = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
+                  const remainingPercentage = budget.amount > 0 ? ((budget.amount - budget.spent) / budget.amount) * 100 : 100;
                   const remaining = budget.amount - budget.spent;
                   
                   return (
                     <div
                       key={budget.category}
-                      className={`p-6 rounded-2xl border shadow-lg hover:shadow-xl transition-shadow ${getBgColor(percentage)}`}
+                      className={`p-6 rounded-2xl border shadow-lg hover:shadow-xl transition-shadow ${getBgColor(spentPercentage)}`}
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
@@ -302,28 +312,28 @@ function BudgetTrackingContent() {
                       {/* Progress Bar */}
                       <div className="mb-3">
                         <div className="flex justify-between text-sm mb-2">
-                          <span className={`font-medium ${getTextColor(percentage)}`}>
-                            {formatCurrency(budget.spent)}
+                          <span className={`font-medium ${getTextColor(spentPercentage)}`}>
+                            {formatCurrency(remaining >= 0 ? remaining : 0)}
                           </span>
                           <span className="text-neutral-500 dark:text-neutral-400">
-                            {percentage.toFixed(0)}%
+                            {remainingPercentage.toFixed(0)}% remaining
                           </span>
                         </div>
                         <div className="w-full bg-neutral-200 dark:bg-neutral-600 rounded-full h-2.5">
                           <div 
-                            className={`h-2.5 rounded-full transition-all duration-300 ${getProgressColor(percentage)}`}
-                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                            className={`h-2.5 rounded-full transition-all duration-300 ${getProgressColor(spentPercentage)}`}
+                            style={{ width: `${Math.max(Math.min(remainingPercentage, 100), 0)}%` }}
                           ></div>
                         </div>
                       </div>
 
-                      {/* Remaining/Over Budget */}
+                      {/* Spent/Over Budget */}
                       <div className="flex items-center justify-between pt-3 border-t border-neutral-200 dark:border-neutral-700">
                         {remaining >= 0 ? (
                           <>
-                            <span className="text-xs text-neutral-600 dark:text-neutral-400">Remaining</span>
-                            <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                              {formatCurrency(remaining)}
+                            <span className="text-xs text-neutral-600 dark:text-neutral-400">Spent</span>
+                            <span className={`text-sm font-semibold ${getTextColor(spentPercentage)}`}>
+                              {formatCurrency(budget.spent)}
                             </span>
                           </>
                         ) : (
@@ -333,7 +343,7 @@ function BudgetTrackingContent() {
                               Over Budget
                             </span>
                             <span className="text-sm font-semibold text-red-600 dark:text-red-400">
-                              {formatCurrency(Math.abs(remaining))}
+                              {formatCurrency(budget.spent)}
                             </span>
                           </>
                         )}
