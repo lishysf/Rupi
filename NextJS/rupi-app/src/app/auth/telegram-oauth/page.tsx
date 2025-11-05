@@ -9,8 +9,10 @@ function TelegramOAuthCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [linkingComplete, setLinkingComplete] = useState(false);
 
   useEffect(() => {
+    // Prevent any redirects while we're on this page
     const handleCallback = async () => {
       const token = searchParams.get('token');
 
@@ -24,7 +26,7 @@ function TelegramOAuthCallbackContent() {
         // Wait a bit for session cookie to be set after OAuth redirect
         let session = null;
         let attempts = 0;
-        const maxAttempts = 5;
+        const maxAttempts = 10; // Increased attempts
         
         while (!session && attempts < maxAttempts) {
           session = await getSession();
@@ -36,9 +38,11 @@ function TelegramOAuthCallbackContent() {
         
         if (!session || !session.user?.id) {
           setStatus('error');
-          setMessage('Please sign in first. If you just completed OAuth, please wait a moment and try again.');
+          setMessage('Session not found. Please try logging in again from Telegram.');
           return;
         }
+
+        console.log('Session found, linking Telegram account...', { userId: session.user.id, token });
 
         // Get Telegram user ID from token
         const response = await fetch('/api/telegram/link-account', {
@@ -53,14 +57,18 @@ function TelegramOAuthCallbackContent() {
         });
 
         const data = await response.json();
+        console.log('Link account response:', data);
 
         if (data.success) {
+          setLinkingComplete(true);
           setStatus('success');
           setMessage('✅ Successfully linked your Telegram account! You can now return to Telegram and start using the bot.');
           
           // Redirect to Telegram after 3 seconds
           setTimeout(() => {
             window.close();
+            // If window doesn't close, redirect to dashboard
+            router.push(`/${session.user.name}/dashboard`);
           }, 3000);
         } else {
           setStatus('error');

@@ -1509,6 +1509,14 @@ async function handleMessage(update: TelegramUpdate) {
       return;
     }
 
+    // Ensure session exists with chat_id before generating OAuth link
+    try {
+      await TelegramDatabase.getOrCreateSession(telegramUserId, chatId, username, firstName, lastName);
+      console.log('✅ Session created/updated with chat_id for OAuth flow');
+    } catch (error) {
+      console.error('Error creating session for OAuth:', error);
+    }
+
     // Generate OAuth link
     try {
       const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';

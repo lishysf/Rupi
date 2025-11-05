@@ -51,23 +51,52 @@ export async function POST(request: NextRequest) {
     // Get user info to send welcome message
     const user = await UserDatabase.getUserById(parseInt(userId));
     
-    // Get Telegram session to get chat_id
+    // Get Telegram session to get chat_id - query directly from database
     try {
-      // Use getOrCreateSession to get the session (it will use existing chat_id if session exists)
-      const telegramSession = await TelegramDatabase.getOrCreateSession(telegramUserId, '', '', '');
+      // Import pool from telegram-database or query directly
+      const { Pool } = await import('pg');
+      let pool: Pool;
+      
+      if (process.env.DATABASE_URL) {
+        pool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          ssl: { rejectUnauthorized: false },
+          max: 2,
+          min: 0,
+          idleTimeoutMillis: 5000,
+        });
+      } else {
+        pool = new Pool({
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT || '5432'),
+          database: process.env.DB_NAME || 'rupi_db',
+          user: process.env.DB_USER || 'postgres',
+          password: process.env.DB_PASSWORD || 'password',
+        });
+      }
+      
+      const result = await pool.query(
+        'SELECT chat_id FROM telegram_sessions WHERE telegram_user_id = $1',
+        [telegramUserId]
+      );
       
       // Send success message to Telegram if we have a chat_id
-      if (telegramSession && telegramSession.chat_id) {
+      if (result.rows.length > 0 && result.rows[0].chat_id) {
         try {
           await TelegramBotService.sendMessage(
-            telegramSession.chat_id,
+            result.rows[0].chat_id,
             `✅ *Login successful!*\n\nWelcome back, ${user?.name || 'User'}!\n\nYou can now chat with me to manage your finances. Try:\n• "Beli kopi 30k pakai Gopay"\n• "Analisis pengeluaran bulan ini"`
           );
+          console.log('✅ Successfully sent login notification to Telegram');
         } catch (error) {
           console.error('Error sending Telegram notification:', error);
           // Don't fail the request if notification fails
         }
+      } else {
+        console.warn('⚠️ No chat_id found for Telegram user:', telegramUserId);
       }
+      
+      await pool.end();
     } catch (error) {
       console.error('Error getting Telegram session for notification:', error);
       // Continue even if we can't send notification
