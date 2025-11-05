@@ -21,12 +21,22 @@ function TelegramOAuthCallbackContent() {
       }
 
       try {
-        // Get the authenticated user session
-        const session = await getSession();
+        // Wait a bit for session cookie to be set after OAuth redirect
+        let session = null;
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        while (!session && attempts < maxAttempts) {
+          session = await getSession();
+          if (!session) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+            attempts++;
+          }
+        }
         
         if (!session || !session.user?.id) {
           setStatus('error');
-          setMessage('Please sign in first, then try again from Telegram.');
+          setMessage('Please sign in first. If you just completed OAuth, please wait a moment and try again.');
           return;
         }
 

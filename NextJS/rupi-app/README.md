@@ -13,7 +13,10 @@ GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 ```
 
-**Note**: For production, update `NEXTAUTH_URL` to your production domain (e.g., `https://yourdomain.com`)
+**Note**: 
+- For production, update `NEXTAUTH_URL` to your production domain
+- **IMPORTANT**: If your domain uses `www`, set `NEXTAUTH_URL=https://www.fundy.id` (with www)
+- The `NEXTAUTH_URL` must match exactly what Google Cloud Console sees (including www or no www)
 
 #### Setting up Google OAuth
 
@@ -28,11 +31,15 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
    - For production: `https://yourdomain.com`
 8. Add **Authorized redirect URIs** (exact callback URLs):
    - For development: `http://localhost:3000/api/auth/callback/google`
-   - For production: `https://yourdomain.com/api/auth/callback/google`
+   - For production: **ADD BOTH** (if your domain uses www):
+     - `https://www.fundy.id/api/auth/callback/google` (with www)
+     - `https://fundy.id/api/auth/callback/google` (without www)
    - **Important**: 
      - No trailing slashes, exact path match required
-     - This is the ONLY redirect URI you need - NextAuth handles all redirects internally
+     - If your domain redirects www to non-www (or vice versa), add BOTH versions
+     - This is the ONLY redirect URI pattern you need - NextAuth handles all redirects internally
      - The `/auth/telegram-oauth` page is handled by NextAuth's redirect callback, not as a separate redirect URI
+   - **Common Issue**: If you see `redirect_uri=https://www.fundy.id/api/auth/callback/google` in the error, make sure you have the www version in Google Cloud Console
 9. Copy the Client ID and Client Secret to your `.env.local` file
 
 **Note**: Make sure there are no trailing slashes in the URIs and that the paths match exactly.
