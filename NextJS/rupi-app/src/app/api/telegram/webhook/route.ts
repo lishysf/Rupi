@@ -737,12 +737,12 @@ async function processTranscribedText(transcribedText: string, originalMessage: 
       console.error('❌ Error getting auth state from database:', error);
     }
     
-    if (userState) {
-      console.log(`🔍 User is in authentication flow: ${userState.state}`);
-      // Handle authentication flow - for now, just send a message
-      await TelegramBotService.sendMessage(chatId, 'Please complete your authentication first.');
-      return;
-    }
+  if (userState) {
+    console.log(`🔍 Legacy auth flow detected, clearing and redirecting to /link`);
+    try { await TelegramDatabase.clearAuthState(telegramUserId); } catch {}
+    await TelegramBotService.sendMessage(chatId, '🔗 Login flow has changed. Please use /link to connect your account via Google.');
+    return;
+  }
 
     // Check if user is authenticated
     const session = await TelegramDatabase.getOrCreateSession(telegramUserId, username, firstName, lastName);
@@ -1305,7 +1305,7 @@ async function handleMessage(update: TelegramUpdate) {
         const user = await UserDatabase.getUserByEmail(email);
         
         if (!user) {
-          await TelegramBotService.sendMessage(chatId, '❌ Invalid email or password. Please try /login again.');
+          await TelegramBotService.sendMessage(chatId, '❌ Invalid credentials. Please use /link to connect your account.');
           await TelegramDatabase.clearAuthState(telegramUserId);
           return;
         }
@@ -1313,7 +1313,7 @@ async function handleMessage(update: TelegramUpdate) {
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
         
         if (!isPasswordValid) {
-          await TelegramBotService.sendMessage(chatId, '❌ Invalid email or password. Please try /login again.');
+          await TelegramBotService.sendMessage(chatId, '❌ Invalid credentials. Please use /link to connect your account.');
           await TelegramDatabase.clearAuthState(telegramUserId);
           return;
         }
@@ -1328,7 +1328,7 @@ async function handleMessage(update: TelegramUpdate) {
         );
       } catch (error) {
         console.error('Authentication error:', error);
-        await TelegramBotService.sendMessage(chatId, '❌ Authentication failed. Please try /login again.');
+        await TelegramBotService.sendMessage(chatId, '❌ Authentication failed. Please try /link again.');
         await TelegramDatabase.clearAuthState(telegramUserId);
       }
       return;
@@ -1384,7 +1384,7 @@ async function handleMessage(update: TelegramUpdate) {
   // Handle /start command
   if (text === '/start') {
     console.log('🚀 Handling /start command');
-    const welcomeMessage = `👋 Welcome to *Fundy AI Assistant*!\n\nI can help you manage your finances through Telegram.\n\n🔐 *To get started, you need to login with your Fundy account.*\n\nUse /login to authenticate with your email and password.\n\nOnce logged in, you can:\n• Record expenses and income (Chat & Voice)\n• Analyze your spending\n• Track your Goals\n• And much more!\n\nTry /help to see all available commands.`;
+    const welcomeMessage = `👋 Welcome to *Fundy AI Assistant*!\n\nI can help you manage your finances through Telegram.\n\n🔐 *To get started, link your account via Google.*\n\nUse /link to connect.\n\nOnce linked, you can:\n• Record expenses and income (Chat & Voice)\n• Analyze your spending\n• Track your Goals\n• And much more!\n\nTry /help to see all available commands.`;
     
     try {
       const result = await TelegramBotService.sendMessage(chatId, welcomeMessage);
@@ -1393,7 +1393,7 @@ async function handleMessage(update: TelegramUpdate) {
       console.error('❌ Failed to send /start message:', error);
       // Try a simpler fallback message
       try {
-        await TelegramBotService.sendMessage(chatId, 'Welcome! Use /login to start.');
+        await TelegramBotService.sendMessage(chatId, 'Welcome! Use /link to start.');
       } catch (fallbackError) {
         console.error('❌ Fallback /start message also failed:', fallbackError);
       }
@@ -1403,7 +1403,7 @@ async function handleMessage(update: TelegramUpdate) {
 
   // Handle /help command
   if (text === '/help') {
-    const helpMessage = `📚 *Fundy Bot Commands*\n\n/start - Start the bot\n/login - Login with your Fundy account\n/logout - Logout from your account\n/status - Check your login status\n/transaction - Switch to Transaction Mode (record only)\n/chat - Switch to General Chat Mode\n/savings - View your savings goals\n/help - Show this help message\n\n💬 *Once logged in, just chat with me naturally!*\n\nExamples:\n\n"*Transaction Mode*"\n• "Expense: Beli kopi 30k pakai Gopay"\n• "Income: Gaji 5 juta ke BCA"\n• "Savings: Nabung 500k Dari BCA"\n• "Transfer: Transfer dari BCA ke Mandiri 100k"\n\n"*General Chat*"\n• "Analisa Keuangan ku"\n• "Berapa Pengeluaran bulan ini"\n• "Pengeluaran apa yg paling banyak?"`;
+    const helpMessage = `📚 *Fundy Bot Commands*\n\n/start - Start the bot\n/link - Link your account (Google)\n/logout - Logout from your account\n/status - Check your login status\n/transaction - Switch to Transaction Mode (record only)\n/chat - Switch to General Chat Mode\n/savings - View your savings goals\n/help - Show this help message\n\n💬 *Once linked, just chat with me naturally!*\n\nExamples:\n\n"*Transaction Mode*"\n• "Expense: Beli kopi 30k pakai Gopay"\n• "Income: Gaji 5 juta ke BCA"\n• "Savings: Nabung 500k Dari BCA"\n• "Transfer: Transfer dari BCA ke Mandiri 100k"\n\n"*General Chat*"\n• "Analisa Keuangan ku"\n• "Berapa Pengeluaran bulan ini"\n• "Pengeluaran apa yg paling banyak?"`;
     
     await TelegramBotService.sendMessage(chatId, helpMessage);
     return;
@@ -1418,7 +1418,7 @@ async function handleMessage(update: TelegramUpdate) {
         '📝 *Transaction Mode Activated!*\n\nYou can now record transactions only. I will ask you to confirm each transaction before saving.\n\nExamples:\n• "Beli kopi 30k pakai Gopay"\n• "Gaji 5 juta ke BCA"\n• "Tabung 500k ke BCA untuk liburan"\n• "Transfer 100k dari BCA ke Dana"\n\nUse /chat to switch back to General Chat mode.'
       );
     } else {
-      await TelegramBotService.sendMessage(chatId, '❌ You are not logged in. Use /login to authenticate.');
+      await TelegramBotService.sendMessage(chatId, '❌ You are not linked. Use /link to connect your account.');
     }
     return;
   }
@@ -1432,7 +1432,7 @@ async function handleMessage(update: TelegramUpdate) {
         '💬 *General Chat Mode Activated!*\n\nYou can now chat with me naturally, ask questions, and analyze your financial data.\n\nExamples:\n• "Analisis pengeluaran bulan ini"\n• "Berapa total pengeluaran?"\n• "Show me my budget status"\n\nUse /transaction to switch to Transaction Mode for recording transactions.'
       );
     } else {
-      await TelegramBotService.sendMessage(chatId, '❌ You are not logged in. Use /login to authenticate.');
+      await TelegramBotService.sendMessage(chatId, '❌ You are not linked. Use /link to connect your account.');
     }
     return;
   }
@@ -1465,7 +1465,7 @@ async function handleMessage(update: TelegramUpdate) {
         await TelegramBotService.sendMessage(chatId, '❌ Error fetching savings goals. Please try again.');
       }
     } else {
-      await TelegramBotService.sendMessage(chatId, '❌ You are not logged in. Use /login to authenticate.');
+      await TelegramBotService.sendMessage(chatId, '❌ You are not linked. Use /link to connect your account.');
     }
     return;
   }
@@ -1478,10 +1478,10 @@ async function handleMessage(update: TelegramUpdate) {
         const statusMessage = `✅ *You are logged in*\n\nEmail: ${user?.email}\nName: ${user?.name}\n\nYou can now chat with me to manage your finances!`;
         await TelegramBotService.sendMessage(chatId, statusMessage);
       } catch (error) {
-        await TelegramBotService.sendMessage(chatId, '❌ Error fetching user info. Please try /login again.');
+      await TelegramBotService.sendMessage(chatId, '❌ Error fetching user info. Please try /link again.');
       }
     } else {
-      await TelegramBotService.sendMessage(chatId, '❌ You are not logged in. Use /login to authenticate.');
+      await TelegramBotService.sendMessage(chatId, '❌ You are not linked. Use /link to connect your account.');
     }
     return;
   }
@@ -1507,19 +1507,9 @@ async function handleMessage(update: TelegramUpdate) {
     return;
   }
 
-  // Handle /login command
+  // /login removed; instruct to use /link
   if (text === '/login') {
-    console.log('🔐 Handling /login command');
-    if (session.is_authenticated) {
-      console.log('⚠️ User already authenticated');
-      await TelegramBotService.sendMessage(chatId, '✅ You are already logged in! Use /logout to logout first.');
-      return;
-    }
-
-    console.log('📧 Starting login flow - requesting email');
-      await TelegramDatabase.setAuthState(telegramUserId.toString(), 'awaiting_email');
-    const result = await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
-    console.log('📤 Login email prompt sent:', result ? 'SUCCESS' : 'FAILED');
+    await TelegramBotService.sendMessage(chatId, '🔗 Login flow has changed. Please use /link to connect your account.');
     return;
   }
 
@@ -1543,7 +1533,7 @@ async function handleMessage(update: TelegramUpdate) {
     try {
       const result = await TelegramBotService.sendMessage(
         chatId, 
-        '🔐 Please login first using /login to chat with me.'
+        '🔐 Please link your account first using /link to chat with me.'
       );
       console.log('📤 Login prompt sent:', result ? 'SUCCESS' : 'FAILED');
       responseSent = result;
@@ -1552,7 +1542,7 @@ async function handleMessage(update: TelegramUpdate) {
       
       // Try a simpler message as fallback
       try {
-        const fallbackResult = await TelegramBotService.sendMessage(chatId, 'Please use /login to start.');
+        const fallbackResult = await TelegramBotService.sendMessage(chatId, 'Please use /link to start.');
         console.log('📤 Fallback message sent:', fallbackResult ? 'SUCCESS' : 'FAILED');
         responseSent = fallbackResult;
       } catch (fallbackError) {
@@ -1560,7 +1550,7 @@ async function handleMessage(update: TelegramUpdate) {
         
         // Last resort - try the simplest possible message
         try {
-          const lastResortResult = await TelegramBotService.sendMessage(chatId, 'Hi! Use /login');
+          const lastResortResult = await TelegramBotService.sendMessage(chatId, 'Hi! Use /link');
           console.log('📤 Last resort message sent:', lastResortResult ? 'SUCCESS' : 'FAILED');
           responseSent = lastResortResult;
         } catch (lastResortError) {
