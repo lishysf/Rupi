@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getSession } from 'next-auth/react';
-import { TelegramDatabase } from '@/lib/telegram-database';
 
-export default function TelegramOAuthCallback() {
+function TelegramOAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -121,6 +120,23 @@ export default function TelegramOAuthCallback() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function TelegramOAuthCallback() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:via-neutral-800 dark:to-neutral-900 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-neutral-800 rounded-xl shadow-lg p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+            Loading...
+          </h2>
+        </div>
+      </div>
+    }>
+      <TelegramOAuthCallbackContent />
+    </Suspense>
   );
 }
 
