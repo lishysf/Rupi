@@ -26,22 +26,37 @@ function LinkTelegramInner() {
       });
       const json = await res.json();
       if (json.ok) {
-        setMessage('✅ Linked successfully. You can return to Telegram.');
+        // Redirect to success page with countdown
+        window.location.href = '/link-telegram/success';
       } else {
         setMessage(json.error || '❌ Invalid or expired code.');
+        setSubmitting(false);
       }
     } catch {
       setMessage('❌ Something went wrong. Try again.');
-    } finally {
       setSubmitting(false);
     }
   };
+
+  // Show loading state while checking session
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
+        <div className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6">
+          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Link Telegram</h1>
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
       <div className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6">
         <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Link Telegram</h1>
-        {!session ? (
+        {status === 'unauthenticated' || !session ? (
           <div>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">Sign in with Google to continue.</p>
             <button onClick={handleGoogle} className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white">Continue with Google</button>

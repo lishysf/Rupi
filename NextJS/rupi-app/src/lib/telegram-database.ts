@@ -320,6 +320,27 @@ export class TelegramDatabase {
     }
   }
 
+  // Get session by telegram_user_id
+  static async getSessionByTelegramUserId(telegramUserId: string): Promise<TelegramSession | null> {
+    try {
+      const result = await this.retryOperation(async () => {
+        return await pool.query(
+          'SELECT * FROM telegram_sessions WHERE telegram_user_id = $1',
+          [telegramUserId]
+        );
+      });
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return result.rows[0] as TelegramSession;
+    } catch (error) {
+      console.error('Error getting session by telegram_user_id:', error);
+      throw error;
+    }
+  }
+
   // Get authenticated session
   static async getAuthenticatedSession(telegramUserId: string): Promise<TelegramSession | null> {
     try {

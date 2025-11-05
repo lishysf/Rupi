@@ -145,13 +145,35 @@ export async function initializeDatabase() {
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           goal_name VARCHAR(150) NOT NULL,
-          target_amount DECIMAL(10, 2) NOT NULL,
-          allocated_amount DECIMAL(10, 2) DEFAULT 0,
+          target_amount DECIMAL(15, 2) NOT NULL,
+          allocated_amount DECIMAL(15, 2) DEFAULT 0,
           target_date DATE,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
       `);
+    
+    // Migrate existing savings_goals columns to DECIMAL(15, 2) if they exist as DECIMAL(10, 2)
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'savings_goals' 
+                   AND column_name = 'target_amount' 
+                   AND data_type = 'numeric' 
+                   AND numeric_precision = 10) THEN
+          ALTER TABLE savings_goals ALTER COLUMN target_amount TYPE DECIMAL(15, 2);
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'savings_goals' 
+                   AND column_name = 'allocated_amount' 
+                   AND data_type = 'numeric' 
+                   AND numeric_precision = 10) THEN
+          ALTER TABLE savings_goals ALTER COLUMN allocated_amount TYPE DECIMAL(15, 2);
+        END IF;
+      END $$;
+    `);
     
     // Create budgets table (optimized - no redundant spent column)
     console.log('📊 Creating budgets table...');

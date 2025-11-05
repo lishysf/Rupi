@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { TelegramDatabase } from '@/lib/telegram-database';
+import { TelegramBotService } from '@/lib/telegram-bot';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +28,21 @@ export async function POST(request: NextRequest) {
     }
 
     await TelegramDatabase.authenticateUser(telegramUserId, fundyUserId);
+    
+    // Get chat_id from session to send success message
+    try {
+      const telegramSession = await TelegramDatabase.getSessionByTelegramUserId(telegramUserId);
+      if (telegramSession && telegramSession.chat_id) {
+        await TelegramBotService.sendMessage(
+          telegramSession.chat_id,
+          '✅ Your Telegram account has been successfully linked to your Fundy account!\n\nYou can now use all features through Telegram.'
+        );
+      }
+    } catch (telegramError) {
+      console.error('Error sending Telegram success message:', telegramError);
+      // Don't fail the whole request if Telegram message fails
+    }
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('Link consume error:', error);
