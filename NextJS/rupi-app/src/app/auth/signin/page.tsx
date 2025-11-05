@@ -12,6 +12,24 @@ function SignInInner() {
   const searchParams = useSearchParams();
   const tgLinkToken = searchParams.get('tg_link');
 
+  // Persist tg_link across OAuth redirects using a short-lived cookie
+  useEffect(() => {
+    if (tgLinkToken) {
+      // Set cookie for 10 minutes
+      const expires = new Date(Date.now() + 10 * 60 * 1000).toUTCString();
+      document.cookie = `tg_link=${encodeURIComponent(tgLinkToken)}; path=/; expires=${expires}; SameSite=Lax`;
+    }
+  }, [tgLinkToken]);
+
+  const readTgCookie = (): string | null => {
+    const m = document.cookie.match(/(?:^|; )tg_link=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  };
+
+  const clearTgCookie = () => {
+    document.cookie = `tg_link=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+  };
+
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
@@ -19,8 +37,8 @@ function SignInInner() {
     try {
       // OAuth providers need to redirect, so we'll let NextAuth handle the redirect
       // After redirect, the user will be redirected back to our callback URL
-      const base = `${window.location.origin}/auth/signin`;
-      const callbackUrl = tgLinkToken ? `${base}?tg_link=${encodeURIComponent(tgLinkToken)}` : base;
+      // Redirect back to home; we'll read tg_link from cookie after auth
+      const callbackUrl = `${window.location.origin}/`;
       await signIn('google', { callbackUrl });
     } catch (err) {
       setError('An error occurred. Please try again.');
@@ -32,14 +50,17 @@ function SignInInner() {
   useEffect(() => {
     getSession().then(async (session) => {
       if (session && session.user?.name) {
-        if (tgLinkToken) {
+        // Use query token if present, else fall back to cookie
+        const tokenToUse = tgLinkToken || readTgCookie();
+        if (tokenToUse) {
           try {
             await fetch('/api/telegram/link/consume', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ token: tgLinkToken })
+              body: JSON.stringify({ token: tokenToUse })
             });
           } catch {}
+          clearTgCookie();
         }
         const completed = (session.user as any).onboardingCompleted === true;
         if (!completed) {
