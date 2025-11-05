@@ -42,7 +42,11 @@ function TelegramOAuthCallbackContent() {
           return;
         }
 
-        console.log('Session found, linking Telegram account...', { userId: session.user.id, token });
+        console.log('✅ Session found, linking Telegram account...', { 
+          userId: session.user.id, 
+          token: token.substring(0, 10) + '...',
+          email: session.user.email 
+        });
 
         // Get Telegram user ID from token
         const response = await fetch('/api/telegram/link-account', {
@@ -57,7 +61,11 @@ function TelegramOAuthCallbackContent() {
         });
 
         const data = await response.json();
-        console.log('Link account response:', data);
+        console.log('📨 Link account response:', data);
+        
+        if (!data.success) {
+          console.error('❌ Link account failed:', data.error);
+        }
 
         if (data.success) {
           setLinkingComplete(true);

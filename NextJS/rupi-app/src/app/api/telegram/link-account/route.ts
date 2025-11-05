@@ -45,61 +45,95 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log('🔗 Starting Telegram account linking...', { telegramUserId, userId });
+    
+    // Verify session exists before linking
+    const { Pool } = await import('pg');
+    let pool: Pool;
+    
+    if (process.env.DATABASE_URL) {
+      pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+        max: 2,
+        min: 0,
+        idleTimeoutMillis: 5000,
+      });
+    } else if (process.env.SUPABASE_DB_PASSWORD) {
+      const supabaseUrl = process.env.SUPABASE_DB_HOST || 'db.thkdrlozedfysuukvwmd.supabase.co';
+      pool = new Pool({
+        host: supabaseUrl,
+        port: 5432,
+        database: 'postgres',
+        user: 'postgres',
+        password: process.env.SUPABASE_DB_PASSWORD,
+        ssl: { rejectUnauthorized: false },
+        max: 2,
+        min: 0,
+        idleTimeoutMillis: 5000,
+      });
+    } else {
+      pool = new Pool({
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432'),
+        database: process.env.DB_NAME || 'rupi_db',
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || 'password',
+      });
+    }
+    
+    // Check session before linking
+    const beforeCheck = await pool.query(
+      'SELECT chat_id, is_authenticated, fundy_user_id FROM telegram_sessions WHERE telegram_user_id = $1',
+      [telegramUserId]
+    );
+    console.log('📊 Session before authentication:', beforeCheck.rows[0] || 'No session found');
+    
     // Link Telegram account to user
     await TelegramDatabase.authenticateUser(telegramUserId, parseInt(userId));
+    console.log('✅ Account authenticated in database');
+    
+    // Verify authentication worked
+    const afterCheck = await pool.query(
+      'SELECT chat_id, is_authenticated, fundy_user_id FROM telegram_sessions WHERE telegram_user_id = $1',
+      [telegramUserId]
+    );
+    console.log('📊 Session after authentication:', afterCheck.rows[0] || 'No session found');
 
     // Get user info to send welcome message
     const user = await UserDatabase.getUserById(parseInt(userId));
+    console.log('📧 User info retrieved:', { userId: user?.id, name: user?.name });
     
-    // Get Telegram session to get chat_id - query directly from database
+    // Use the same pool to get chat_id
     try {
-      // Import pool from telegram-database or query directly
-      const { Pool } = await import('pg');
-      let pool: Pool;
-      
-      if (process.env.DATABASE_URL) {
-        pool = new Pool({
-          connectionString: process.env.DATABASE_URL,
-          ssl: { rejectUnauthorized: false },
-          max: 2,
-          min: 0,
-          idleTimeoutMillis: 5000,
-        });
-      } else {
-        pool = new Pool({
-          host: process.env.DB_HOST || 'localhost',
-          port: parseInt(process.env.DB_PORT || '5432'),
-          database: process.env.DB_NAME || 'rupi_db',
-          user: process.env.DB_USER || 'postgres',
-          password: process.env.DB_PASSWORD || 'password',
-        });
-      }
-      
-      const result = await pool.query(
-        'SELECT chat_id FROM telegram_sessions WHERE telegram_user_id = $1',
-        [telegramUserId]
-      );
-      
       // Send success message to Telegram if we have a chat_id
-      if (result.rows.length > 0 && result.rows[0].chat_id) {
+      const sessionData = afterCheck.rows[0];
+      if (sessionData && sessionData.chat_id) {
+        const chatId = sessionData.chat_id;
+        console.log('💬 Attempting to send message to Telegram chat_id:', chatId);
+        
         try {
           await TelegramBotService.sendMessage(
-            result.rows[0].chat_id,
+            chatId,
             `✅ *Login successful!*\n\nWelcome back, ${user?.name || 'User'}!\n\nYou can now chat with me to manage your finances. Try:\n• "Beli kopi 30k pakai Gopay"\n• "Analisis pengeluaran bulan ini"`
           );
           console.log('✅ Successfully sent login notification to Telegram');
-        } catch (error) {
-          console.error('Error sending Telegram notification:', error);
+        } catch (error: any) {
+          console.error('❌ Error sending Telegram notification:', error);
+          console.error('Error message:', error?.message);
+          console.error('Error stack:', error?.stack);
           // Don't fail the request if notification fails
         }
       } else {
         console.warn('⚠️ No chat_id found for Telegram user:', telegramUserId);
+        console.warn('Session data:', sessionData);
+        console.warn('This means the session was not created with a chat_id when the user clicked /login');
       }
-      
-      await pool.end();
     } catch (error) {
-      console.error('Error getting Telegram session for notification:', error);
+      console.error('❌ Error getting Telegram session for notification:', error);
       // Continue even if we can't send notification
+    } finally {
+      await pool.end();
     }
 
     // Delete the token after use
