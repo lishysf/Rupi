@@ -239,6 +239,27 @@ export class TelegramDatabase {
     return result.rows[0].telegram_user_id as string;
   }
 
+  // Generate and save a 6-digit numeric link code
+  static async createLinkCode(telegramUserId: string, ttlSeconds: number = 600): Promise<string> {
+    const expiresAtQuery = `NOW() + INTERVAL '${ttlSeconds} seconds'`;
+    for (let i = 0; i < 5; i++) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      try {
+        await this.retryOperation(async () => {
+          await pool.query(
+            `INSERT INTO telegram_link_tokens (token, telegram_user_id, expires_at, used)
+             VALUES ($1, $2, ${expiresAtQuery}, FALSE)`,
+            [code, telegramUserId]
+          );
+        });
+        return code;
+      } catch (e) {
+        // retry on collision
+      }
+    }
+    throw new Error('Failed to generate link code');
+  }
+
   // Get or create telegram session
   static async getOrCreateSession(
     telegramUserId: string,

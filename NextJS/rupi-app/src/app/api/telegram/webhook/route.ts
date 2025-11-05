@@ -1486,7 +1486,7 @@ async function handleMessage(update: TelegramUpdate) {
     return;
   }
 
-  // Handle /link command (auto-link via deep link)
+  // Handle /link command (code-based linking)
   if (text === '/link') {
     console.log('🔗 Handling /link command');
     if (session.is_authenticated) {
@@ -1495,10 +1495,10 @@ async function handleMessage(update: TelegramUpdate) {
     }
     try {
       await TelegramDatabase.initializeTables();
-      const token = await TelegramDatabase.createLinkToken(telegramUserId, 600);
+      const code = await TelegramDatabase.createLinkCode(telegramUserId, 600);
       const appBase = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-      const link = `${appBase}/auth/signin?tg_link=${encodeURIComponent(token)}`;
-      const message = `🔗 To link your Telegram with your Fundy account:\n\n1) Tap this link and sign in with Google:\n${link}\n\n2) After login, your Telegram will link automatically.`;
+      const link = `${appBase}/link-telegram`;
+      const message = `🔗 To link your Telegram:\n\nYour code: ${code}\n\nOpen: ${link}\nThen sign in with Google (if needed) and enter the code.`;
       await TelegramBotService.sendMessage(chatId, cleanTextForTelegram(message), { parse_mode: undefined });
     } catch (e) {
       console.error('Link token error:', e);
