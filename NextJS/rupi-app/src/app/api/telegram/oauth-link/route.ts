@@ -21,8 +21,10 @@ export async function POST(request: NextRequest) {
     await TelegramDatabase.storeOAuthToken(token, telegramUserId);
 
     // Create OAuth URL with the token as state parameter
+    // Use the provider directly instead of signin page
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    const oauthUrl = `${baseUrl}/api/auth/signin?callbackUrl=${encodeURIComponent(`${baseUrl}/auth/telegram-oauth?token=${token}`)}`;
+    const callbackUrl = `${baseUrl}/auth/telegram-oauth?token=${token}`;
+    const oauthUrl = `${baseUrl}/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`;
 
     return NextResponse.json({
       success: true,

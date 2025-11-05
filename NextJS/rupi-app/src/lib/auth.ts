@@ -4,12 +4,22 @@ import GoogleProvider from 'next-auth/providers/google';
 import bcrypt from 'bcryptjs';
 import { UserDatabase } from './database';
 
+// Validate Google OAuth credentials
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+if (!googleClientId || !googleClientSecret) {
+  console.warn('⚠️ Google OAuth credentials not configured. GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required.');
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    }),
+    ...(googleClientId && googleClientSecret ? [
+      GoogleProvider({
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
+      })
+    ] : []),
     CredentialsProvider({
       name: 'credentials',
       credentials: {
@@ -107,8 +117,12 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
     async redirect({ url, baseUrl }) {
+      // Handle Telegram OAuth callback - check if URL contains telegram-oauth
+      if (url.includes('/auth/telegram-oauth')) {
+        return url;
+      }
+      
       // Handle post-login redirect
-      // Check if user has completed onboarding
       if (url.startsWith('/')) {
         return `${baseUrl}${url}`;
       }

@@ -29,7 +29,10 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 8. Add **Authorized redirect URIs** (exact callback URLs):
    - For development: `http://localhost:3000/api/auth/callback/google`
    - For production: `https://yourdomain.com/api/auth/callback/google`
-   - **Important**: No trailing slashes, exact path match required
+   - **Important**: 
+     - No trailing slashes, exact path match required
+     - This is the ONLY redirect URI you need - NextAuth handles all redirects internally
+     - The `/auth/telegram-oauth` page is handled by NextAuth's redirect callback, not as a separate redirect URI
 9. Copy the Client ID and Client Secret to your `.env.local` file
 
 **Note**: Make sure there are no trailing slashes in the URIs and that the paths match exactly.
