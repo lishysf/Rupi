@@ -1499,8 +1499,7 @@ async function handleMessage(update: TelegramUpdate) {
       const appBase = process.env.NEXTAUTH_URL || 'http://localhost:3000';
       const link = `${appBase}/auth/signin?tg_link=${encodeURIComponent(token)}`;
       const message = `🔗 To link your Telegram with your Fundy account:\n\n1) Tap this link and sign in with Google:\n${link}\n\n2) After login, your Telegram will link automatically.`;
-      await TelegramBotService.sendMessage(chatId, message, { parse_mode: undefined });
-      await TelegramBotService.sendMessage(chatId, message, { parse_mode: undefined });
+      await TelegramBotService.sendMessage(chatId, cleanTextForTelegram(message), { parse_mode: undefined });
     } catch (e) {
       console.error('Link token error:', e);
       await TelegramBotService.sendMessage(chatId, '❌ Unable to start linking right now. Please try again later.');
