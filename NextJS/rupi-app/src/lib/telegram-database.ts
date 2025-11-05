@@ -181,22 +181,18 @@ export class TelegramDatabase {
           ADD COLUMN IF NOT EXISTS auth_email VARCHAR(255);
         `);
 
-        // Create OAuth tokens table for Telegram OAuth login
+        // Link tokens table for auto-linking via deep link
         await pool.query(`
-          CREATE TABLE IF NOT EXISTS telegram_oauth_tokens (
-            token VARCHAR(255) PRIMARY KEY,
+          CREATE TABLE IF NOT EXISTS telegram_link_tokens (
+            token VARCHAR(64) PRIMARY KEY,
             telegram_user_id VARCHAR(255) NOT NULL,
             expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            used BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           )
         `);
-
-        // Create index for faster lookups
         await pool.query(`
-          CREATE INDEX IF NOT EXISTS idx_oauth_token ON telegram_oauth_tokens(token);
-        `);
-        await pool.query(`
-          CREATE INDEX IF NOT EXISTS idx_oauth_telegram_user ON telegram_oauth_tokens(telegram_user_id);
+          CREATE INDEX IF NOT EXISTS idx_link_tokens_telegram_user ON telegram_link_tokens(telegram_user_id);
         `);
       });
 
@@ -205,6 +201,42 @@ export class TelegramDatabase {
       console.error('Error initializing telegram sessions table:', error);
       throw error;
     }
+  }
+
+  // Create a short-lived, single-use link token for auto-link
+  static async createLinkToken(telegramUserId: string, ttlSeconds: number = 600): Promise<string> {
+    const token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+    const expiresAtQuery = `NOW() + INTERVAL '${ttlSeconds} seconds'`;
+
+    await this.retryOperation(async () => {
+      await pool.query(
+        `INSERT INTO telegram_link_tokens (token, telegram_user_id, expires_at, used)
+         VALUES ($1, $2, ${expiresAtQuery}, FALSE)`,
+        [token, telegramUserId]
+      );
+    });
+
+    return token;
+  }
+
+  // Consume a link token and return telegram_user_id if valid
+  static async consumeLinkToken(token: string): Promise<string | null> {
+    const result = await this.retryOperation(async () => {
+      return await pool.query(
+        `UPDATE telegram_link_tokens
+         SET used = TRUE
+         WHERE token = $1
+           AND used = FALSE
+           AND expires_at > NOW()
+         RETURNING telegram_user_id`,
+        [token]
+      );
+    });
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+    return result.rows[0].telegram_user_id as string;
   }
 
   // Get or create telegram session
@@ -226,18 +258,12 @@ export class TelegramDatabase {
 
         if (existingSession.rows.length > 0) {
           console.log('📝 Updating existing session for user:', telegramUserId);
-          // Update last activity and chat_id
+          // Update last activity
           await pool.query(
             'UPDATE telegram_sessions SET last_activity = CURRENT_TIMESTAMP, chat_id = $1 WHERE telegram_user_id = $2',
             [chatId, telegramUserId]
           );
-          // Fetch the updated session to ensure we have the latest chat_id
-          const updatedSession = await pool.query(
-            'SELECT * FROM telegram_sessions WHERE telegram_user_id = $1',
-            [telegramUserId]
-          );
-          console.log('✅ Session updated with chat_id:', updatedSession.rows[0]?.chat_id);
-          return updatedSession.rows[0] as TelegramSession;
+          return existingSession.rows[0] as TelegramSession;
         }
 
         console.log('🆕 Creating new session for user:', telegramUserId);
@@ -354,58 +380,6 @@ export class TelegramDatabase {
     } catch (error) {
       console.error('Error getting auth state:', error);
       return null;
-    }
-  }
-
-  // Store Telegram OAuth token
-  static async storeOAuthToken(token: string, telegramUserId: string): Promise<void> {
-    try {
-      await this.retryOperation(async () => {
-        // Store token with expiration (10 minutes)
-        await pool.query(
-          `INSERT INTO telegram_oauth_tokens (token, telegram_user_id, expires_at)
-           VALUES ($1, $2, NOW() + INTERVAL '10 minutes')
-           ON CONFLICT (token) DO UPDATE 
-           SET telegram_user_id = $2, expires_at = NOW() + INTERVAL '10 minutes'`,
-          [token, telegramUserId]
-        );
-      });
-    } catch (error) {
-      console.error('Error storing OAuth token:', error);
-      throw error;
-    }
-  }
-
-  // Get Telegram user ID from OAuth token
-  static async getTelegramUserFromToken(token: string): Promise<string | null> {
-    try {
-      const result = await this.retryOperation(async () => {
-        return await pool.query(
-          `SELECT telegram_user_id FROM telegram_oauth_tokens 
-           WHERE token = $1 AND expires_at > NOW()`,
-          [token]
-        );
-      });
-
-      if (result.rows.length === 0) {
-        return null;
-      }
-
-      return result.rows[0].telegram_user_id;
-    } catch (error) {
-      console.error('Error getting Telegram user from token:', error);
-      return null;
-    }
-  }
-
-  // Delete OAuth token after use
-  static async deleteOAuthToken(token: string): Promise<void> {
-    try {
-      await this.retryOperation(async () => {
-        await pool.query('DELETE FROM telegram_oauth_tokens WHERE token = $1', [token]);
-      });
-    } catch (error) {
-      console.error('Error deleting OAuth token:', error);
     }
   }
 

@@ -623,24 +623,6 @@ export class UserDatabase {
     }
   }
 
-  // Update user password (for OAuth users to set password for Telegram bot)
-  static async updatePassword(id: number, passwordHash: string): Promise<boolean> {
-    const query = `
-      UPDATE users 
-      SET password_hash = $1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2
-      RETURNING id
-    `;
-    
-    try {
-      const result = await pool.query(query, [passwordHash, id]);
-      return result.rows.length > 0;
-    } catch (error) {
-      console.error('Error updating password:', error);
-      throw error;
-    }
-  }
-
   // Delete user
   static async deleteUser(id: number): Promise<boolean> {
     const query = `DELETE FROM users WHERE id = $1`;

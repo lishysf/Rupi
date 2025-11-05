@@ -2,13 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { signIn, getSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tgLinkToken = searchParams.get('tg_link');
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -17,19 +19,28 @@ export default function SignIn() {
     try {
       // OAuth providers need to redirect, so we'll let NextAuth handle the redirect
       // After redirect, the user will be redirected back to our callback URL
-      await signIn('google', {
-        callbackUrl: `${window.location.origin}/auth/signin`,
-      });
+      const base = `${window.location.origin}/auth/signin`;
+      const callbackUrl = tgLinkToken ? `${base}?tg_link=${encodeURIComponent(tgLinkToken)}` : base;
+      await signIn('google', { callbackUrl });
     } catch (err) {
       setError('An error occurred. Please try again.');
       setLoading(false);
     }
   };
 
-  // Check if user is already signed in
+  // After login, if tg_link is present, auto-consume to link telegram
   useEffect(() => {
-    getSession().then((session) => {
+    getSession().then(async (session) => {
       if (session && session.user?.name) {
+        if (tgLinkToken) {
+          try {
+            await fetch('/api/telegram/link/consume', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: tgLinkToken })
+            });
+          } catch {}
+        }
         const completed = (session.user as any).onboardingCompleted === true;
         if (!completed) {
           router.push('/onboarding');
@@ -38,7 +49,7 @@ export default function SignIn() {
         }
       }
     });
-  }, [router]);
+  }, [router, tgLinkToken]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:via-neutral-800 dark:to-neutral-900 flex items-center">

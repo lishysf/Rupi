@@ -203,6 +203,7 @@ function splitMessage(text: string, maxLength: number): string[] {
     return [text];
   }
 
+
   const chunks: string[] = [];
   let currentChunk = '';
   
@@ -1309,21 +1310,6 @@ async function handleMessage(update: TelegramUpdate) {
           return;
         }
 
-        // Check if user is an OAuth user (no password set)
-        if (!user.password_hash || user.password_hash === 'OAUTH_USER_NO_PASSWORD') {
-          await TelegramBotService.sendMessage(
-            chatId, 
-            `❌ This account uses Google sign-in and doesn't have a password set.\n\n` +
-            `To use Telegram bot, you need to set a password:\n\n` +
-            `1. Go to your web dashboard\n` +
-            `2. Navigate to Settings → Security\n` +
-            `3. Set a password for Telegram bot access\n\n` +
-            `Or use the web interface to link your Telegram account.`
-          );
-          await TelegramDatabase.clearAuthState(telegramUserId);
-          return;
-        }
-
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
         
         if (!isPasswordValid) {
@@ -1500,6 +1486,27 @@ async function handleMessage(update: TelegramUpdate) {
     return;
   }
 
+  // Handle /link command (auto-link via deep link)
+  if (text === '/link') {
+    console.log('🔗 Handling /link command');
+    if (session.is_authenticated) {
+      await TelegramBotService.sendMessage(chatId, '✅ Your Telegram is already linked! Use /logout to unlink first.');
+      return;
+    }
+    try {
+      await TelegramDatabase.initializeTables();
+      const token = await TelegramDatabase.createLinkToken(telegramUserId, 600);
+      const appBase = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+      const link = `${appBase}/auth/signin?tg_link=${encodeURIComponent(token)}`;
+      const message = `🔗 To link your Telegram with your Fundy account:\n\n1) Tap this link and sign in with Google:\n${link}\n\n2) After login, your Telegram will link automatically.`;
+      await TelegramBotService.sendMessage(chatId, message);
+    } catch (e) {
+      console.error('Link token error:', e);
+      await TelegramBotService.sendMessage(chatId, '❌ Unable to start linking right now. Please try again later.');
+    }
+    return;
+  }
+
   // Handle /login command
   if (text === '/login') {
     console.log('🔐 Handling /login command');
@@ -1509,67 +1516,10 @@ async function handleMessage(update: TelegramUpdate) {
       return;
     }
 
-    // Ensure session exists with chat_id before generating OAuth link
-    try {
-      await TelegramDatabase.getOrCreateSession(telegramUserId, chatId, username, firstName, lastName);
-      console.log('✅ Session created/updated with chat_id for OAuth flow');
-    } catch (error) {
-      console.error('Error creating session for OAuth:', error);
-    }
-
-    // Generate OAuth link
-    try {
-      const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-      const tokenResponse = await fetch(`${baseUrl}/api/telegram/oauth-link`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ telegramUserId }),
-      });
-
-      const tokenData = await tokenResponse.json();
-
-      if (tokenData.success && tokenData.oauthUrl) {
-        await TelegramBotService.sendMessage(
-          chatId,
-          `🔐 *Login Options*\n\n` +
-          `Choose how you want to log in:\n\n` +
-          `1️⃣ *Google OAuth* (Recommended)\n` +
-          `Click the button below to sign in with Google\n\n` +
-          `2️⃣ *Email/Password*\n` +
-          `Type your email to continue with traditional login`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: '🔐 Sign in with Google',
-                    url: tokenData.oauthUrl
-                  }
-                ],
-                [
-                  {
-                    text: '📧 Use Email/Password',
-                    callback_data: 'login_email_password'
-                  }
-                ]
-              ]
-            }
-          }
-        );
-      } else {
-        // Fallback to email/password if OAuth link generation fails
-        console.log('📧 OAuth link generation failed, falling back to email/password');
-        await TelegramDatabase.setAuthState(telegramUserId.toString(), 'awaiting_email');
-        await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
-      }
-    } catch (error) {
-      console.error('Error generating OAuth link:', error);
-      // Fallback to email/password
+    console.log('📧 Starting login flow - requesting email');
       await TelegramDatabase.setAuthState(telegramUserId.toString(), 'awaiting_email');
-      await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
-    }
+    const result = await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
+    console.log('📤 Login email prompt sent:', result ? 'SUCCESS' : 'FAILED');
     return;
   }
 
@@ -2097,23 +2047,8 @@ async function handleCallbackQuery(callbackQuery: any) {
   const chatId = callbackQuery.message?.chat?.id?.toString();
   const messageId = callbackQuery.message?.message_id;
 
-  if (!chatId) {
-    console.error('Missing chat ID in callback query');
-    await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Error: Missing chat ID');
-    return;
-  }
-
-  // Handle email/password login option
-  if (data === 'login_email_password') {
-    await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Starting email/password login...');
-    await TelegramDatabase.setAuthState(telegramUserId, 'awaiting_email');
-    await TelegramBotService.sendMessage(chatId, '📧 Please enter your Fundy account email:');
-    return;
-  }
-
-  if (!messageId) {
-    console.error('Missing message ID in callback query');
-    await TelegramBotService.answerCallbackQuery(callbackQueryId, 'Error: Missing message ID');
+  if (!chatId || !messageId) {
+    console.error('Missing chat ID or message ID in callback query');
     return;
   }
 
@@ -2619,6 +2554,8 @@ export async function GET() {
 export async function OPTIONS() {
   return new NextResponse(null, { status: 200 });
 }
+
+
 
 
 
